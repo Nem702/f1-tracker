@@ -15,7 +15,7 @@ weekend.
 
 - [x] **part 1** — fetch-only script (`fetch_laps.py`), no DB. Pulls and
       prints lap data for both drivers from the latest completed race session.
-- [x] **part 2 (in progress)** — retry/backoff for the API's 3 req/sec rate
+- [x] **part 2** — retry/backoff for the API's 3 req/sec rate
       limit, proper exception handling (retryable vs. non-retryable
       failures), and proactive request pacing.
 - [ ] **part 3** — Postgres via Docker Compose. Schema for races/drivers/laps.
@@ -56,12 +56,58 @@ across multiple drivers' requests in the same run).
   DNF, retirement, or red flag means fewer laps for one driver. This needs
   intentional handling downstream (e.g. when comparing two drivers), not a
   fix to the fetch logic itself.
+- **Global live-session lockout (free tier).** While _any_ F1 session is
+  live — from ~30 min before it starts to ~30 min after it ends — OpenF1
+  blocks **all** unauthenticated requests, not just requests for that
+  session's data. A `/sessions` query asking only for fully historical
+  races still gets a 401 if some unrelated session elsewhere on the
+  calendar happens to be live at request time. Filtering by `date_end < now`
+  in the query params doesn't avoid this — the lockout is enforced before
+  any server-side filtering happens. On the free tier, there's no
+  workaround; you wait for the live window to close. Confirmed live during
+  the 2026 Austrian GP (June 28).
 
 ## Running it
 
 ```bash
 py fetch_laps.py
 ```
+
+## Local Development Setup
+
+### Why a virtual environment (venv)?
+
+Without one, every Python package you install goes into a single global
+location shared by _every_ project on your machine. That becomes a problem
+the moment two projects need different versions of the same package —
+installing a newer version for one can silently break the other.
+
+A venv is a self-contained folder (the `venv/` directory in this repo) that
+holds its own private Python interpreter and its own private set of
+installed packages. Activating it points `pip install` and `py` at that
+private copy instead of the system-wide one, keeping this project's
+dependencies fully isolated.
+
+To activate (PowerShell):
+
+```powershell
+.\venv\Scripts\Activate.ps1
+```
+
+You'll know it worked when your prompt shows `(venv)` at the start.
+
+### Why port 5432? (relevant from Part 3 onward)
+
+5432 is Postgres's registered default port — the same way 443 is HTTPS's
+default. It's not configurable inside the Docker image without overriding
+it; Postgres listens on 5432 _inside the container_ by convention.
+
+What's configurable is the **host-side** port — the one your local script
+actually connects to. In `docker-compose.yml`, the mapping is written as
+`"host_port:container_port"`, e.g. `"5432:5432"`. The right-hand side stays
+5432 (Postgres's internal port); the left-hand side is yours to change —
+for example, to `"5433:5432"` if you already have a native Postgres
+install on Windows occupying 5432.
 
 (Windows: use `py`, not `python` — avoids the Windows Store alias issue.)
 
