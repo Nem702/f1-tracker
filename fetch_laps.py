@@ -7,6 +7,7 @@ openf1_client.py — this file just calls into it.
 from datetime import datetime, timezone
 
 from openf1_client import BASE_URL, request_with_retry
+from db import get_connection, upsert_race, upsert_driver, upsert_laps
 
 DRIVERS = {"Hamilton": 44, "Leclerc": 16}
 
@@ -27,8 +28,6 @@ def get_latest_completed_race_session(year=2026):
             if datetime.fromisoformat(r["date_end"]) < now:
                 completed.append(r)
         except (TypeError, ValueError):
-            # date_end is None for a session that hasn't finished (or is
-            # malformed) — skip it instead of crashing the whole pull.
             print(f"Skipping race with invalid date_end: {r}")
 
     if not completed:
@@ -49,11 +48,18 @@ def get_laps(session_key, driver_number):
 def main():
     session = get_latest_completed_race_session()
     print(f"Latest completed race: {session['location']} ({session['date_start']}) — session_key={session['session_key']}")
-    for name, number in DRIVERS.items():
-        laps = get_laps(session["session_key"], number)
-        print(f"\n{name} (#{number}) — {len(laps)} laps")
-        for lap in laps[:5]:
-            print(f"  Lap {lap['lap_number']}: {lap['lap_duration']}s")
+
+    conn = get_connection()
+    try:
+        upsert_race(conn, session)
+
+        for name, number in DRIVERS.items():
+            upsert_driver(conn, number, name)
+            laps = get_laps(session["session_key"], number)
+            upsert_laps(conn, session["session_key"], number, laps)
+            print(f"{name} (#{number}) — {len(laps)} laps upserted")
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":
