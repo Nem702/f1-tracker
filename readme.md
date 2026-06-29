@@ -11,6 +11,14 @@ Pulls lap-by-lap timing data for two drivers (Hamilton #44, Leclerc #16) from
 the [OpenF1 API](https://openf1.org/) for the most recently completed race
 weekend.
 
+## Project structure
+
+- **`openf1_client.py`** — transport layer. Request pacing and retry/backoff
+  for talking to OpenF1 safely. Has no idea what a "lap" or "driver" is.
+- **`fetch_laps.py`** — domain layer. Which drivers/session to pull and what
+  to do with the data; imports `request_with_retry` from the client instead
+  of calling `requests` directly.
+
 ## Status
 
 - [x] **part 1** — fetch-only script (`fetch_laps.py`), no DB. Pulls and
@@ -25,10 +33,12 @@ weekend.
       when, what was pulled, what failed) instead of print statements.
 - [ ] **part 5** — GitHub Actions scheduling, running automatically after
       each race weekend.
+- [ ] **part 6** — minimal read-only frontend once Part 3's DB has
+      a few races in it (e.g. a small Flask + Jinja2 page, or Grafana pointed
+      at the Postgres container) to visualize lap time trends and Hamilton vs.
+      Leclerc deltas across races.
 
-This is a skill-building project, not a finished product. The point is
-hands-on practice with API integration, resilience patterns, and
-containerized storage — done by hand rather than generated wholesale.
+This is a skill-building project, not a finished product.
 
 ## Design decisions so far
 
@@ -49,6 +59,14 @@ Calls are proactively spaced rather than only backing off after a 429 —
 OpenF1's free tier allows 3 req/sec, so waiting for a rejection before
 slowing down means a call has already been wasted (and risks compounding
 across multiple drivers' requests in the same run).
+
+**Transport split from domain logic.**
+Pacing/retry (`openf1_client.py`) moved out of `fetch_laps.py` once more
+endpoints (pit stops, stints) were on the way. Without the split, one file
+would end up mixing HTTP plumbing, endpoint-specific calls, and (soon)
+database writes — harder to test and easy to break unrelated things while
+editing. The client has zero opinions about laps/drivers; it just does
+"GET this URL safely."
 
 ## Known data quirks (not bugs)
 
@@ -113,7 +131,7 @@ install on Windows occupying 5432.
 
 ## Stack
 
-- Python + `requests` — OpenF1 REST API client
+- Python + `requests` — OpenF1 REST API client (`openf1_client.py`)
 - Postgres via Docker Compose — storage (Week 3+)
 - GitHub Actions — scheduling (Week 5)
 
