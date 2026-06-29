@@ -9,7 +9,7 @@ dataset.
 
 Pulls lap-by-lap timing data for two drivers (Hamilton #44, Leclerc #16) from
 the [OpenF1 API](https://openf1.org/) for the most recently completed race
-weekend.
+weekend, and persists it to Postgres.
 
 ## Project structure
 
@@ -18,6 +18,10 @@ weekend.
 - **`fetch_laps.py`** — domain layer. Which drivers/session to pull and what
   to do with the data; imports `request_with_retry` from the client instead
   of calling `requests` directly.
+- **`db.py`** — persistence layer. Postgres connection handling and the
+  upsert functions (`upsert_race`, `upsert_driver`, `upsert_laps`). Knows
+  about the schema; doesn't know anything about HTTP.
+- **`schema.sql`** — table definitions for `races`, `drivers`, `laps`.
 
 ## Status
 
@@ -26,7 +30,7 @@ weekend.
 - [x] **part 2** — retry/backoff for the API's 3 req/sec rate
       limit, proper exception handling (retryable vs. non-retryable
       failures), and proactive request pacing.
-- [ ] **part 3** — Postgres via Docker Compose. Schema for races/drivers/laps.
+- [x] **part 3** — Postgres via Docker Compose. Schema for races/drivers/laps.
       Idempotent upserts (`ON CONFLICT ... DO UPDATE`) so re-running a race
       doesn't duplicate rows. Credentials in `.env`, never hardcoded.
 - [ ] **part 4** — structured logging via the `logging` module (what ran,
@@ -63,10 +67,30 @@ across multiple drivers' requests in the same run).
 **Transport split from domain logic.**
 Pacing/retry (`openf1_client.py`) moved out of `fetch_laps.py` once more
 endpoints (pit stops, stints) were on the way. Without the split, one file
-would end up mixing HTTP plumbing, endpoint-specific calls, and (soon)
-database writes — harder to test and easy to break unrelated things while
-editing. The client has zero opinions about laps/drivers; it just does
-"GET this URL safely."
+would end up mixing HTTP plumbing, endpoint-specific calls, and database
+writes — harder to test and easy to break unrelated things while editing.
+The client has zero opinions about laps/drivers; it just does "GET this
+URL safely."
+
+**Composite primary key on `laps`, not an auto-incrementing id.**
+`(session_key, driver_number, lap_number)` together _are_ the identity of a
+lap — there's no other sensible definition of "the same lap" across reruns.
+An auto-incrementing `id` would have no way to recognize "I've already seen
+this lap" on a second run, so every rerun would insert duplicates instead of
+updating in place. The composite key is what makes `ON CONFLICT ... DO
+UPDATE` actually idempotent rather than just syntactically present.
+
+**Dropped the per-driver sector segment arrays (`segments_sector_1/2/3`).**
+OpenF1 returns these as arrays of mini-sector color codes. Flattening an
+array into a relational column means either a JSON column or a separate
+child table — both add real complexity for data that doesn't serve the
+project's actual goal (comparing lap times between two drivers). Left out
+deliberately, not missed by accident.
+
+**One `cur.execute()` per lap, not a bulk insert.**
+At ~70 laps × 2 drivers per run, the overhead of bulk insert helpers
+(`execute_values` etc.) isn't worth the added complexity yet. Worth
+revisiting if the project ever pulls a full season instead of one race.
 
 ## Known data quirks (not bugs)
 
@@ -88,6 +112,7 @@ editing. The client has zero opinions about laps/drivers; it just does
 ## Running it
 
 ```bash
+docker compose up -d   # start Postgres (first time only, or after a reboot)
 py fetch_laps.py
 ```
 
@@ -114,7 +139,27 @@ To activate (PowerShell):
 
 You'll know it worked when your prompt shows `(venv)` at the start.
 
-### Why port 5432? (relevant from Part 3 onward)
+### Database setup (Postgres via Docker Compose)
+
+1. Copy `.env.example` to `.env` and fill in real values (never committed —
+   `.env` is gitignored).
+2. Start the container:
+
+```bash
+   docker compose up -d
+```
+
+3. Apply the schema (first time only):
+
+```powershell
+   Get-Content schema.sql -Raw | docker exec -i f1_tracker_db psql -U f1user -d f1tracker
+```
+
+(PowerShell's `<` redirection operator is reserved/unsupported — piping
+via `Get-Content` is the workaround. Git Bash supports `<` natively if
+you'd rather use that.)
+
+### Why port 5432?
 
 5432 is Postgres's registered default port — the same way 443 is HTTPS's
 default. It's not configurable inside the Docker image without overriding
@@ -132,10 +177,9 @@ install on Windows occupying 5432.
 ## Stack
 
 - Python + `requests` — OpenF1 REST API client (`openf1_client.py`)
-- Postgres via Docker Compose — storage (Week 3+)
-- GitHub Actions — scheduling (Week 5)
+- `psycopg2` + Postgres via Docker Compose — persistence (`db.py`, `schema.sql`)
+- GitHub Actions — scheduling (Part 5)
 
 ---
 
-This README will fill out further (setup steps, schema, env vars) as later
-weeks land.
+This README will fill out further (logging, CI scheduling) as later parts land.
