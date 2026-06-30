@@ -2,8 +2,7 @@
 
 Personal project for hands-on practice with REST API integration, retry/backoff
 handling, idempotent database upserts, structured logging, containerized
-storage, and CI scheduling — using real F1 lap timing data instead of a toy
-dataset.
+storage, and CI scheduling — using real F1 lap timing data.
 
 ## What it does
 
@@ -33,7 +32,7 @@ weekend, and persists it to Postgres.
 - [x] **part 3** — Postgres via Docker Compose. Schema for races/drivers/laps.
       Idempotent upserts (`ON CONFLICT ... DO UPDATE`) so re-running a race
       doesn't duplicate rows. Credentials in `.env`, never hardcoded.
-- [ ] **part 4** — structured logging via the `logging` module (what ran,
+- [x] **part 4** — structured logging via the `logging` module (what ran,
       when, what was pulled, what failed) instead of print statements.
 - [ ] **part 5** — GitHub Actions scheduling, running automatically after
       each race weekend.
@@ -91,6 +90,16 @@ deliberately, not missed by accident.
 At ~70 laps × 2 drivers per run, the overhead of bulk insert helpers
 (`execute_values` etc.) isn't worth the added complexity yet. Worth
 revisiting if the project ever pulls a full season instead of one race.
+
+**Structured logging via a shared `logger.py`, not per-file `getLogger()` calls.**
+All four files import the same `logger` instance from `logger.py`. That
+means format, level, and handler configuration live in exactly one place —
+changing the log format or adding a file handler later is a one-line edit,
+not a hunt across every module. Log levels follow standard conventions:
+`INFO` for the happy path (run started, laps upserted), `WARNING` for
+recoverable surprises (malformed date in API response), `DEBUG` for
+internal plumbing that's useful when debugging but noise otherwise (retry
+delays, individual DB upsert confirmations).
 
 ## Known data quirks (not bugs)
 
@@ -181,5 +190,3 @@ install on Windows occupying 5432.
 - GitHub Actions — scheduling (Part 5)
 
 ---
-
-This README will fill out further (logging, CI scheduling) as later parts land.

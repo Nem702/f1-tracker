@@ -7,6 +7,8 @@ import os
 import psycopg2
 from dotenv import load_dotenv
 
+from logger import logger
+
 load_dotenv()
 
 
@@ -18,6 +20,7 @@ def get_connection():
         user=os.environ["POSTGRES_USER"],
         password=os.environ["POSTGRES_PASSWORD"],
     )
+
 
 def upsert_race(conn, session):
     """session is the raw dict from /sessions — already has everything we need."""
@@ -45,6 +48,7 @@ def upsert_race(conn, session):
             ),
         )
     conn.commit()
+    logger.debug("upserted race session_key=%s (%s)", session["session_key"], session.get("location"))
 
 
 def upsert_driver(conn, driver_number, name):
@@ -58,6 +62,7 @@ def upsert_driver(conn, driver_number, name):
             (driver_number, name),
         )
     conn.commit()
+    logger.debug("upserted driver #%d (%s)", driver_number, name)
 
 
 def upsert_laps(conn, session_key, driver_number, laps):
@@ -99,3 +104,4 @@ def upsert_laps(conn, session_key, driver_number, laps):
                 ),
             )
     conn.commit()
+    logger.debug("upserted %d laps for driver #%d session_key=%s", len(laps), driver_number, session_key)
