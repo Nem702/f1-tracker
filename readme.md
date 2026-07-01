@@ -34,12 +34,15 @@ weekend, and persists it to Postgres.
       doesn't duplicate rows. Credentials in `.env`, never hardcoded.
 - [x] **part 4** — structured logging via the `logging` module (what ran,
       when, what was pulled, what failed) instead of print statements.
-- [ ] **part 5** — GitHub Actions scheduling, running automatically after
-      each race weekend.
-- [ ] **part 6** — minimal read-only frontend once Part 3's DB has
+- [ ] **part 5** — GitHub Actions scheduling (Monday + Thursday), migrating
+      the database from local Docker Compose to a managed cloud Postgres
+      instance (Neon) so a scheduled job has something to actually connect
+      to, plus a schema expansion (stints, pit stops, weather, lap-by-lap
+      position, race control messages) ahead of Part 6.
+- [ ] **part 6** — minimal read-only frontend once Part 5's DB has
       a few races in it (e.g. a small Flask + Jinja2 page, or Grafana pointed
-      at the Postgres container) to visualize lap time trends and Hamilton vs.
-      Leclerc deltas across races.
+      at Postgres) to visualize lap time trends, tire strategy, and Hamilton
+      vs. Leclerc deltas across races.
 
 This is a skill-building project, not a finished product.
 
@@ -100,6 +103,42 @@ not a hunt across every module. Log levels follow standard conventions:
 recoverable surprises (malformed date in API response), `DEBUG` for
 internal plumbing that's useful when debugging but noise otherwise (retry
 delays, individual DB upsert confirmations).
+
+**Managed Postgres (Neon) instead of local Docker Compose, for Part 5.**
+GitHub Actions runners are ephemeral cloud VMs with no route to a home
+network — a scheduled cloud job can't reach a Postgres container running
+on a local machine. Neon was chosen over Supabase and Railway: it's plain
+Postgres with no bundled auth/storage this project doesn't need, and its
+scale-to-zero free tier fits a job that only writes twice a week — no
+idle-pause risk like Supabase's weekly timeout, no always-on billing like
+Railway's default. Free tier limits (500 MB storage, 100 CU-hrs/month)
+leave comfortable headroom even scaled up to a full 22-driver grid.
+
+**Twice-weekly schedule (Monday + Thursday), not once.**
+Monday is the primary run — a race weekend wraps by Sunday, so that's when
+new completed-race data is actually available. Thursday is redundancy: with
+idempotent upserts, re-running against an already-fetched race is a no-op,
+so it costs nothing and catches a silently failed Monday run before the
+next race weekend.
+
+**Data model expanded beyond laps, ahead of Part 6.**
+`stints` (tire compound/age), `pit` (stop duration/lap), `weather`
+(track/air temp, humidity, rainfall), `positions` (lap-by-lap position
+changes), and `race_control` (flags, safety car, penalties) were added to
+the schema before frontend work starts — these produce genuinely different
+chart types (tire strategy strips, position line charts, pit stop
+comparisons) instead of just more rows in a lap-time table. `car_data` and
+`location` (high-frequency telemetry, many samples per second) are
+explicitly excluded — orders of magnitude more volume than everything else
+combined, and not needed at race-weekend granularity.
+
+**`race_control` is insert-only, not upserted.**
+Unlike a lap time, a race control message is an append-only event — it
+never gets corrected after the fact, so there's no "same row, updated" case
+the way there is for laps or stints. Simpler to insert without an
+`ON CONFLICT` clause and rely on a higher-level check (has this session's
+race control data already been pulled) than to force a synthetic key onto
+data that doesn't need one.
 
 ## Known data quirks (not bugs)
 
@@ -186,7 +225,8 @@ install on Windows occupying 5432.
 ## Stack
 
 - Python + `requests` — OpenF1 REST API client (`openf1_client.py`)
-- `psycopg2` + Postgres via Docker Compose — persistence (`db.py`, `schema.sql`)
+- `psycopg2` + Postgres via Docker Compose — local persistence (`db.py`, `schema.sql`)
+- Neon — managed Postgres, reachable by scheduled cloud runs (Part 5)
 - GitHub Actions — scheduling (Part 5)
 
 ---
