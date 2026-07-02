@@ -1,3 +1,6 @@
 ﻿venv/
 __pycache__/
 .env
+test_neon_connection.py
+apply_schema.py
+check_tables.py
