@@ -1,0 +1,10 @@
+# API-layer deps — kept separate from the root requirements.txt so the
+# scheduled GitHub Actions fetch job doesn't install a web framework it never uses.
+# psycopg2-binary and python-dotenv are duplicated from the root file (versions
+# kept in sync manually) because main.py imports db.py/logger.py directly, and
+# those import psycopg2/dotenv at module load — `pip install -r api/requirements.txt`
+# must be sufficient on its own to start the API (e.g. on a fresh Render build).
+fastapi==0.128.3
+uvicorn==0.34.0
+psycopg2-binary==2.9.12
+python-dotenv==1.2.2
