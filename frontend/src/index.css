@@ -1,0 +1,672 @@
+/* Page chrome. Color values come in through CSS custom properties set on
+   .app from theme.ts (the single source of truth) — nothing here hardcodes
+   a color except the pre-mount body fallback. */
+
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  color-scheme: light dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  background: #f9f9f7;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #0d0d0d;
+  }
+}
+
+.app {
+  min-height: 100vh;
+  background: var(--page);
+  color: var(--ink-primary);
+}
+
+/* ---------- sticky header ---------- */
+
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  height: 56px;
+  padding: 0 28px;
+  background: transparent;
+  border-bottom: 1px solid transparent;
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease;
+}
+
+.header--solid {
+  background: color-mix(in srgb, var(--surface) 75%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border-bottom-color: var(--border);
+}
+
+.header__wordmark {
+  color: var(--ink-primary);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.header__nav {
+  display: flex;
+  gap: 24px;
+  margin-left: auto;
+}
+
+.header__link {
+  color: var(--ink-secondary);
+  text-decoration: none;
+  font-size: 13px;
+  transition: color 0.2s ease;
+}
+
+.header__link:hover {
+  color: var(--ink-primary);
+}
+
+.header__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.header__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: var(--ink-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.header__icon-btn:hover {
+  color: var(--ink-primary);
+}
+
+.header__menu-btn {
+  display: none;
+}
+
+/* Mobile slide-down panel: carries its own blurred surface so links stay
+   legible even while the bar itself is transparent over the hero. */
+.header__panel {
+  position: absolute;
+  top: 56px;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 28px 16px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+}
+
+.header__panel .header__link {
+  padding: 10px 0;
+  font-size: 15px;
+}
+
+@media (max-width: 900px) {
+  .header__nav {
+    display: none;
+  }
+
+  .header__actions {
+    margin-left: auto;
+  }
+
+  .header__menu-btn {
+    display: inline-flex;
+  }
+}
+
+@media (min-width: 901px) {
+  .header__panel {
+    display: none;
+  }
+}
+
+/* ---------- hero ---------- */
+
+.hero {
+  position: relative;
+  height: 100svh;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+}
+
+.hero__canvas {
+  position: absolute !important;
+  inset: 0;
+}
+
+.hero__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 28px;
+  pointer-events: none;
+}
+
+.hero__overlay h1 {
+  margin: 0;
+  font-size: clamp(40px, 7vw, 84px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.hero__overlay p {
+  margin: 20px 0 0;
+  max-width: 560px;
+  font-size: clamp(15px, 2vw, 19px);
+  line-height: 1.5;
+  color: var(--ink-secondary);
+}
+
+.hero__caption {
+  position: absolute;
+  left: 28px;
+  right: 28px;
+  bottom: 60px;
+  margin: 0;
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.hero__cue {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  padding: 4px;
+  color: var(--ink-muted);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero__cue svg {
+    animation: cue-pulse 2.4s ease-in-out infinite;
+  }
+}
+
+@keyframes cue-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ---------- page sections ---------- */
+
+.section__eyebrow {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.section__title {
+  margin: 10px 0 0;
+  font-size: clamp(28px, 4vw, 48px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.about {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 120px 28px;
+  scroll-margin-top: 72px;
+}
+
+.about__body {
+  margin: 20px 0 0;
+  max-width: 680px;
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--ink-secondary);
+}
+
+.pipeline {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 28px;
+  margin: 72px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pipeline__num {
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pipeline__title {
+  margin: 8px 0 6px;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.pipeline__body {
+  margin: 0;
+  color: var(--ink-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+@media (max-width: 900px) {
+  .pipeline {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+}
+
+.race-info {
+  padding-top: 24px;
+  scroll-margin-top: 72px;
+}
+
+.race-info__intro {
+  padding: 0 28px 20px;
+}
+
+/* Scroll-reveal wrappers are the grid items now, so they carry the wide
+   span and the min-width overflow guard the cards rely on. display: grid
+   stretches the card to the row height, keeping side-by-side cards equal
+   like they were as direct grid children. */
+.reveal {
+  min-width: 0;
+  display: grid;
+}
+
+.reveal--wide {
+  grid-column: 1 / -1;
+}
+
+/* ---------- filter row ---------- */
+
+.filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 16px 28px;
+}
+
+.race-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.race-selector__label {
+  color: var(--ink-secondary);
+  font-weight: 600;
+}
+
+.race-selector select {
+  font: inherit;
+  color: var(--ink-primary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.filters__meta {
+  color: var(--ink-muted);
+}
+
+.filters__note {
+  color: var(--ink-secondary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 10px;
+}
+
+/* ---------- card grid ---------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 0 28px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  min-width: 0; /* keep Recharts' ResponsiveContainer from overflowing the column */
+}
+
+.card--wide {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.card__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.card__subtitle {
+  margin: 2px 0 0;
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.card__tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.card__toggle {
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.card__toggle:hover {
+  color: var(--ink-primary);
+}
+
+.card__body {
+  transition: opacity 0.2s ease;
+}
+
+.card__state {
+  color: var(--ink-muted);
+  padding: 32px 0;
+  text-align: center;
+  margin: 0;
+}
+
+.card__state--error {
+  color: var(--ink-secondary);
+}
+
+/* ---------- legend ---------- */
+
+.legend {
+  display: flex;
+  gap: 14px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+
+.legend__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.legend__swatch--line {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.legend__swatch--rect {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+/* ---------- tooltip ---------- */
+
+.viz-tooltip {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  font-size: 12px;
+}
+
+.viz-tooltip__title {
+  color: var(--ink-muted);
+  margin-bottom: 4px;
+}
+
+.viz-tooltip__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.viz-tooltip__key {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.viz-tooltip__value {
+  font-weight: 650;
+  color: var(--ink-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.viz-tooltip__label {
+  color: var(--ink-secondary);
+}
+
+/* ---------- tire strip ---------- */
+
+.tire-strip {
+  position: relative;
+}
+
+/* The svg width comes from a JS measurement; cap it so a not-yet-measured
+   frame clips inside the card instead of bleeding into the neighbor. */
+.tire-strip svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* Keyboard focus ring for a stint segment. `outline: none` drops the default
+   box on the focusable <g> (and prevents a stray ring on mouse click); the
+   ring is redrawn only for keyboard users via :focus-visible, as a high-
+   contrast stroke on the rect so it hugs the rounded segment and reads against
+   any compound fill in both light and dark. */
+.tire-strip__seg {
+  outline: none;
+}
+
+.tire-strip__seg:focus-visible rect {
+  stroke: var(--ink-primary);
+  stroke-width: 2;
+}
+
+.tire-strip__tooltip {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* ---------- data table (the chart's accessible twin) ---------- */
+
+.table-scroll {
+  max-height: 300px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.data-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--grid);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- race control feed ---------- */
+
+.rc-feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+.rc-feed__item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--grid);
+}
+
+.rc-feed__time {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.rc-feed__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.rc-feed__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.rc-feed__message {
+  color: var(--ink-secondary);
+}
+
+/* ---------- footer ---------- */
+
+.footer {
+  margin-top: 96px;
+  padding: 48px 28px 56px;
+  border-top: 1px solid var(--border);
+  color: var(--ink-muted);
+  font-size: 12px;
+  scroll-margin-top: 72px;
+}
+
+.footer__social {
+  display: flex;
+  gap: 22px;
+  margin-bottom: 14px;
+}
+
+.footer__social a {
+  color: var(--ink-secondary);
+  text-decoration: none;
+  font-size: 13px;
+  transition: color 0.2s ease;
+}
+
+.footer__social a:hover {
+  color: var(--ink-primary);
+}
+
+.footer__credit {
+  margin: 0;
+}

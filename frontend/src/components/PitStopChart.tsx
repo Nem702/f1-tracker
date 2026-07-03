@@ -1,0 +1,159 @@
+import { useMemo } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  LabelList,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import type { PitStop } from "../api/types";
+import { useTheme } from "../hooks/useTheme";
+import { fmtSeconds } from "../format";
+import { ChartCard } from "./ChartCard";
+import { ChartTooltip } from "./ChartTooltip";
+
+interface Props {
+  pit: PitStop[];
+  hamNumber: number | null;
+  lecNumber: number | null;
+  loading: boolean;
+  error: string | null;
+}
+
+interface StopRow {
+  key: string;
+  lap: number;
+  driver: "Hamilton" | "Leclerc";
+  duration: number;
+}
+
+/** Total pit-lane time per stop (entry to exit), both drivers on one lap axis. */
+export function PitStopChart({ pit, hamNumber, lecNumber, loading, error }: Props) {
+  const theme = useTheme();
+
+  const allStops: StopRow[] = useMemo(
+    () =>
+      pit
+        // The endpoint returns every car's pit stops for the session, not
+        // just the two tracked here — without this filter every other
+        // driver's stop gets mislabeled "Leclerc" below.
+        .filter(
+          (p) =>
+            p.pit_duration !== null &&
+            (p.driver_number === hamNumber || p.driver_number === lecNumber),
+        )
+        .map((p) => ({
+          key: `L${p.lap_number}-${p.driver_number}`,
+          lap: p.lap_number,
+          driver: (p.driver_number === hamNumber ? "Hamilton" : "Leclerc") as
+            | "Hamilton"
+            | "Leclerc",
+          duration: p.pit_duration!,
+        }))
+        .sort((a, b) => a.lap - b.lap),
+    [pit, hamNumber, lecNumber],
+  );
+
+  // A car sitting out a red flag logs a 30+ minute "stop" that dwarfs every
+  // real one (a normal pit-lane transit is 20–35s). Chart only plausible
+  // stops; the outlier stays in the table and gets called out in the subtitle.
+  const stops = useMemo(
+    () => allStops.filter((s) => s.duration <= 180),
+    [allStops],
+  );
+  const outliers = allStops.length - stops.length;
+  const subtitle =
+    outliers > 0
+      ? `Pit-lane time per stop. ${outliers} red-flag stoppage${outliers > 1 ? "s" : ""} left off the chart — see the table.`
+      : "Pit-lane time per stop (entry to exit, not just the stationary time).";
+
+  const color = (driver: StopRow["driver"]) =>
+    driver === "Hamilton" ? theme.hamilton : theme.leclerc;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const renderTooltip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null;
+    const row: StopRow = payload[0].payload;
+    return (
+      <ChartTooltip
+        title={`Lap ${row.lap}`}
+        rows={[
+          {
+            color: color(row.driver),
+            value: fmtSeconds(row.duration),
+            label: `${row.driver} · pit lane total`,
+          },
+        ]}
+      />
+    );
+  };
+
+  return (
+    <ChartCard
+      title="Pit stops"
+      subtitle={subtitle}
+      legend={[
+        { label: "Hamilton", color: theme.hamilton, shape: "rect" },
+        { label: "Leclerc", color: theme.leclerc, shape: "rect" },
+      ]}
+      loading={loading}
+      error={error}
+      hasData={stops.length > 0}
+      emptyText="No pit stop data for this race."
+      table={{
+        columns: [
+          { key: "lap", label: "Lap" },
+          { key: "driver", label: "Driver" },
+          {
+            key: "duration",
+            label: "Pit lane time",
+            format: (v) => fmtSeconds(v as number),
+          },
+        ],
+        rows: allStops as unknown as Record<string, unknown>[],
+      }}
+    >
+      <ResponsiveContainer width="100%" height={240}>
+        <BarChart data={stops} margin={{ top: 20, right: 16, bottom: 4, left: 8 }}>
+          <CartesianGrid stroke={theme.grid} strokeWidth={1} vertical={false} />
+          <XAxis
+            dataKey="key"
+            tickFormatter={(_: string, i: number) => `Lap ${stops[i]?.lap ?? ""}`}
+            tickLine={false}
+            axisLine={{ stroke: theme.axis }}
+            tick={{ fill: theme.inkMuted, fontSize: 11 }}
+          />
+          <YAxis
+            tickFormatter={(v: number) => `${v}s`}
+            tickLine={false}
+            axisLine={false}
+            tick={{ fill: theme.inkMuted, fontSize: 11 }}
+            width={36}
+          />
+          <Tooltip content={renderTooltip} cursor={{ fill: theme.grid, fillOpacity: 0.4 }} />
+          <Bar
+            dataKey="duration"
+            barSize={22}
+            radius={[4, 4, 0, 0]}
+            isAnimationActive={false}
+          >
+            {/* value on the cap — few bars, so labeling each is the bar spec */}
+            <LabelList
+              dataKey="duration"
+              position="top"
+              formatter={(v) => fmtSeconds(typeof v === "number" ? v : null)}
+              style={{ fill: theme.inkSecondary, fontSize: 11 }}
+            />
+            {stops.map((row) => (
+              <Cell key={row.key} fill={color(row.driver)} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
