@@ -1,0 +1,70 @@
+import { motion, type Variants } from "framer-motion";
+
+const steps = [
+  {
+    title: "Fetch",
+    body: "A Python pipeline pulls lap-by-lap timing from the OpenF1 API on a weekly GitHub Actions schedule, with request pacing and retry/backoff built in.",
+  },
+  {
+    title: "Store",
+    body: "Every run upserts into Neon Postgres. Idempotent by design — re-fetching a race never duplicates a row.",
+  },
+  {
+    title: "Serve",
+    body: "A small read-only FastAPI layer serves what the pipeline stored. It never calls OpenF1 itself, so it's immune to rate limits.",
+  },
+  {
+    title: "Visualize",
+    body: "This page charts the result — lap times, strategy, track position, weather, and the race control feed.",
+  },
+];
+
+const list: Variants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.12 } },
+};
+
+const item: Variants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
+};
+
+export function About() {
+  return (
+    <section id="about" className="about">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-80px" }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+      >
+        <p className="section__eyebrow">About</p>
+        <h2 className="section__title">Real data, end to end.</h2>
+        <p className="about__body">
+          F1 Tracker is a personal skill-building project that follows one
+          rivalry — Lewis Hamilton and Charles Leclerc — through the 2026
+          season. Real timing data from the OpenF1 API lands in a Postgres
+          database, a small API serves it, and this page draws it. No mock
+          data anywhere in the stack: every lap, pit stop, and weather reading
+          below happened on track.
+        </p>
+      </motion.div>
+
+      <motion.ol
+        className="pipeline"
+        variants={list}
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: "-80px" }}
+      >
+        {steps.map((step, i) => (
+          <motion.li key={step.title} className="pipeline__step" variants={item}>
+            <span className="pipeline__num">{String(i + 1).padStart(2, "0")}</span>
+            <h3 className="pipeline__title">{step.title}</h3>
+            <p className="pipeline__body">{step.body}</p>
+          </motion.li>
+        ))}
+      </motion.ol>
+    </section>
+  );
+}
