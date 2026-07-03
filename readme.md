@@ -14,9 +14,14 @@ weekend, and persists it to Postgres.
 
 - **`openf1_client.py`** — transport layer. Request pacing and retry/backoff
   for talking to OpenF1 safely. Has no idea what a "lap" or "driver" is.
-- **`fetch_laps.py`** — domain layer. Which drivers/session to pull and what
-  to do with the data; imports `request_with_retry` from the client instead
-  of calling `requests` directly.
+- **`openf1_endpoints.py`** — endpoint layer. One thin wrapper per OpenF1
+  endpoint (sessions, drivers, laps, stints, pit, weather, positions, race
+  control, intervals); knows URLs and query params, makes no domain
+  decisions and does no persistence. Every wrapper goes through
+  `request_with_retry` — nothing here calls `requests` directly.
+- **`fetch_laps.py`** — domain layer. Which session to pull, which drivers
+  we care about (resolved per-session via `/drivers`, not hardcoded), and
+  what to do with the data; imports its wrappers from `openf1_endpoints.py`.
 - **`db.py`** — persistence layer. Postgres connection handling and the
   upsert functions (`upsert_race`, `upsert_driver`, `upsert_laps`). Knows
   about the schema; doesn't know anything about HTTP.
@@ -136,12 +141,23 @@ combined, and not needed at race-weekend granularity.
 Unlike a lap time, a race control message is an append-only event — it
 never gets corrected after the fact, so there's no "same row, updated" case
 the way there is for laps or stints. Simpler to insert without an
-`ON CONFLICT` clause and rely on a higher-level check (has this session's
-race control data already been pulled) than to force a synthetic key onto
-data that doesn't need one.
+`ON CONFLICT` clause and rely on a higher-level check than to force a
+synthetic key onto data that doesn't need one. The check is
+`race_control_already_fetched()` in `db.py`: `main()` calls it before
+fetching and skips the endpoint entirely if the session's messages are
+already in the table — otherwise the Thursday redundancy run would
+duplicate every row.
 
 ## Known data quirks (not bugs)
 
+- **Empty result sets arrive as 404, and entire races can be missing.**
+  OpenF1 returns `404 {"detail": "No results found."}` instead of `200 []`
+  when a query matches nothing. `request_with_retry` recognizes exactly that
+  response and returns an empty list, so "no data" flows through the pipeline
+  as zero rows instead of an exception (any other 404 still raises). And the
+  gap can be total: the 2026 Bahrain GP (session_key 11261) has a driver
+  roster on OpenF1 but no laps, stints, pit, weather, positions, or race
+  control data at all — discovered when it aborted the first season backfill.
 - Lap counts can legitimately differ between drivers in the same session — a
   DNF, retirement, or red flag means fewer laps for one driver. This needs
   intentional handling downstream (e.g. when comparing two drivers), not a
