@@ -1,3 +1,4 @@
+--schema.sql
 CREATE TABLE races (
     session_key INTEGER PRIMARY KEY,
     location TEXT,
