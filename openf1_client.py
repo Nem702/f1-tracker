@@ -29,6 +29,17 @@ def _pace_request():
     _last_request_time = time.monotonic()
 
 
+def _is_no_results(response):
+    """OpenF1 signals an empty result set as 404 {"detail": "No results found."}
+    on some queries, rather than 200 with an empty list. Entire sessions can be
+    missing (e.g. the 2026 Bahrain GP) — that's data absence, not a bad request."""
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    return isinstance(body, dict) and body.get("detail") == "No results found."
+
+
 def _compute_delay(response, attempt, base_delay):
     retry_after = response.headers.get("Retry-After")
     if retry_after:
@@ -52,6 +63,9 @@ def request_with_retry(url, params=None, max_retries=5, base_delay=1.0, timeout=
 
         except requests.exceptions.HTTPError as e:
             status = e.response.status_code
+            if status == 404 and _is_no_results(e.response):
+                logger.warning("no results for %s params=%s — treating as empty", url, params)
+                return []
             if status not in RETRYABLE_STATUS_CODES or attempt == max_retries:
                 raise
             delay = _compute_delay(e.response, attempt, base_delay)
