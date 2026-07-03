@@ -39,7 +39,7 @@ weekend, and persists it to Postgres.
       doesn't duplicate rows. Credentials in `.env`, never hardcoded.
 - [x] **part 4** — structured logging via the `logging` module (what ran,
       when, what was pulled, what failed) instead of print statements.
-- [ ] **part 5** — GitHub Actions scheduling (Monday + Thursday), migrating
+- [x] **part 5** — GitHub Actions scheduling (Monday + Thursday), migrating
       the database from local Docker Compose to a managed cloud Postgres
       instance (Neon) so a scheduled job has something to actually connect
       to, plus a schema expansion (stints, pit stops, weather, lap-by-lap
