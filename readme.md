@@ -26,6 +26,12 @@ weekend, and persists it to Postgres.
   upsert functions (`upsert_race`, `upsert_driver`, `upsert_laps`). Knows
   about the schema; doesn't know anything about HTTP.
 - **`schema.sql`** — table definitions for `races`, `drivers`, `laps`.
+- **`api/`** — read-only FastAPI layer over the same Postgres (Part 6). It
+  never calls OpenF1 itself — it only serves what the fetch pipeline already
+  persisted, so it's immune to rate limits and the live-session lockout.
+- **`frontend/`** — the Part 6 dashboard: Vite + React + TypeScript, Recharts
+  for the 2D charts, react-three-fiber for the 3D lap-time hero, Framer
+  Motion for transitions.
 
 ## Status
 
@@ -44,10 +50,11 @@ weekend, and persists it to Postgres.
       instance (Neon) so a scheduled job has something to actually connect
       to, plus a schema expansion (stints, pit stops, weather, lap-by-lap
       position, race control messages) ahead of Part 6.
-- [ ] **part 6** — minimal read-only frontend once Part 5's DB has
-      a few races in it (e.g. a small Flask + Jinja2 page, or Grafana pointed
-      at Postgres) to visualize lap time trends, tire strategy, and Hamilton
-      vs. Leclerc deltas across races.
+- [ ] **part 6** — read-only dashboard over Part 5's data: a FastAPI JSON
+      layer (`api/`) plus a React frontend (`frontend/`) with lap time
+      trends, per-lap teammate delta, tire strategy, pit stops, track
+      position, weather, and the race control feed. Built and running
+      locally; deploying it (Vercel + Render) is the remaining step.
 
 This is a skill-building project, not a finished product.
 
@@ -148,6 +155,15 @@ fetching and skips the endpoint entirely if the session's messages are
 already in the table — otherwise the Thursday redundancy run would
 duplicate every row.
 
+**Red-flag outliers are blanked from charts, never from data (Part 6).**
+A red-flag stoppage records one absurd "lap" (30+ minutes at Monaco) and one
+absurd "pit stop" (the car sitting out the stoppage), and a single such value
+flattens every real lap against the axis. The charts drop laps over 3× the
+median and stops over 180s so the actual racing story stays readable — but
+only in the chart layer: the values remain untouched in the database, the
+API response, and each chart's table view, and the chart subtitle says when
+something was left off.
+
 ## Known data quirks (not bugs)
 
 - **Empty result sets arrive as 404, and entire races can be missing.**
@@ -179,6 +195,31 @@ duplicate every row.
 docker compose up -d   # start Postgres (first time only, or after a reboot)
 py fetch_laps.py
 ```
+
+### Running the Part 6 dashboard (two terminals)
+
+API — from the repo root, so `db.py`/`logger.py` import correctly:
+
+```powershell
+.\venv\Scripts\python.exe -m pip install -r api\requirements.txt   # first time only
+py -m uvicorn api.main:app --reload
+```
+
+Frontend:
+
+```powershell
+cd frontend
+npm install        # first time only
+npm run dev
+```
+
+Then open http://localhost:5173. The frontend expects the API on
+`http://localhost:8000` (override with `VITE_API_URL`, see
+`frontend/.env.example`). The API's dependencies live in
+`api/requirements.txt`, separate from the root `requirements.txt`, so the
+scheduled GitHub Actions fetch job doesn't install a web framework it never
+uses. First load after the database has been idle can take a few seconds —
+Neon's free tier scales to zero and cold-starts on the first connection.
 
 ## Local Development Setup
 
@@ -244,5 +285,8 @@ install on Windows occupying 5432.
 - `psycopg2` + Postgres via Docker Compose — local persistence (`db.py`, `schema.sql`)
 - Neon — managed Postgres, reachable by scheduled cloud runs (Part 5)
 - GitHub Actions — scheduling (Part 5)
+- FastAPI + uvicorn — read-only JSON API over the database (Part 6, `api/`)
+- Vite + React + TypeScript — dashboard frontend (Part 6, `frontend/`)
+- Recharts (2D charts) · react-three-fiber/three.js (3D hero) · Framer Motion (transitions)
 
 ---
