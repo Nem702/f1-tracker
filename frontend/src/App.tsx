@@ -14,6 +14,7 @@ import { About } from "./components/About";
 import { Reveal } from "./components/Reveal";
 import { StatTiles } from "./components/StatTiles";
 import { RaceSelector } from "./components/RaceSelector";
+import { TeamSelector, type TeamOption } from "./components/TeamSelector";
 import { LapTimeChart } from "./components/LapTimeChart";
 import { DeltaChart } from "./components/DeltaChart";
 import { TireStrategy } from "./components/TireStrategy";
@@ -21,6 +22,31 @@ import { PitStopChart } from "./components/PitStopChart";
 import { PositionChart } from "./components/PositionChart";
 import { WeatherChart } from "./components/WeatherChart";
 import { RaceControlFeed } from "./components/RaceControlFeed";
+
+/** UI shell for the multi-team expansion (Ferrari → Mercedes → McLaren →
+ *  Red Bull): one option today, so choosing a team drives no fetches yet —
+ *  the dashboard still resolves the Hamilton/Leclerc pair below. Adding a
+ *  team later means adding an option here and wiring the pair swap. */
+const TEAMS: TeamOption[] = [
+  { id: "ferrari", name: "Ferrari", drivers: "Hamilton vs. Leclerc" },
+];
+
+/* Sidebar collapse: an explicit user choice persists (same storage pattern
+   as hooks/useTheme.ts); first visit defaults to collapsed on narrow
+   screens. Below 900px the CSS media query forces the icon rail regardless
+   of this state, and the toggle button is hidden there. */
+const SIDEBAR_KEY = "f1-tracker-sidebar";
+
+function readStoredCollapsed(): boolean {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_KEY);
+    if (raw === "collapsed") return true;
+    if (raw === "expanded") return false;
+  } catch {
+    // Storage being unavailable only loses persistence, not the toggle.
+  }
+  return window.innerWidth < 900;
+}
 
 /** Hash-synced view state — no router. Sidebar owns the view list; this
  *  just mirrors `location.hash` into it so back/forward and reload both
@@ -44,6 +70,18 @@ export default function App() {
   const drivers = useApi((_k) => api.drivers(), 0);
 
   const [selected, setSelected] = useState<number | null>(null);
+  const [teamId, setTeamId] = useState(TEAMS[0].id);
+
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredCollapsed);
+  const toggleSidebar = () => {
+    const next = !sidebarCollapsed;
+    setSidebarCollapsed(next);
+    try {
+      localStorage.setItem(SIDEBAR_KEY, next ? "collapsed" : "expanded");
+    } catch {
+      // Storage being unavailable only loses persistence, not the toggle.
+    }
+  };
 
   // Default to the most recent race once the list arrives.
   useEffect(() => {
@@ -81,10 +119,14 @@ export default function App() {
   return (
     <MotionConfig reducedMotion="user">
       <div
-        className="app-shell"
+        className={`app-shell${sidebarCollapsed ? " app-shell--collapsed" : ""}`}
         style={{ ...cssVars(theme), colorScheme: mode } as CSSProperties}
       >
-        <Sidebar view={view} />
+        <Sidebar
+          view={view}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={toggleSidebar}
+        />
 
         <div className="content">
           <ViewTransition viewKey={view}>
@@ -101,6 +143,20 @@ export default function App() {
                   lecNumber={lecNumber}
                   raceLabel={raceLabel}
                 />
+
+                <div className="overview__selectors">
+                  <TeamSelector
+                    teams={TEAMS}
+                    value={teamId}
+                    onChange={setTeamId}
+                  />
+                  <RaceSelector
+                    races={races.data ?? []}
+                    value={selected}
+                    onChange={setSelected}
+                    glass
+                  />
+                </div>
 
                 <div className="overview__row">
                   <Countdown />
