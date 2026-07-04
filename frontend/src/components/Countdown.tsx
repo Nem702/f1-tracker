@@ -29,7 +29,7 @@ function fmtLocalStart(iso: string): string {
   });
 }
 
-/** Overview's "dark emphasis card": the live next-race countdown. Renders
+/** Overview's frosted-glass card: the live next-race countdown. Renders
  *  nothing when OpenF1 has no upcoming session (or the endpoint has never
  *  had anything to cache) — the card simply doesn't exist rather than
  *  showing an empty/error state. */

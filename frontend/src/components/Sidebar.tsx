@@ -47,6 +47,25 @@ function AboutIcon() {
   );
 }
 
+function CollapseIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M13.8 7 8.8 12l5 5" />
+      <path d="M18.2 7l-5 5 5 5" />
+    </svg>
+  );
+}
+
 function SunIcon() {
   return (
     <svg
@@ -84,24 +103,37 @@ function MoonIcon() {
 
 interface Props {
   view: View;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }
 
 /** Admin-shell sidebar: wordmark, icon+label nav (active item on a `raised`
  *  pill), theme toggle pinned to the bottom. Nav is plain anchor links —
  *  App.tsx listens for `hashchange` and derives `view` from `location.hash`,
- *  so this needs no router and no click handlers of its own. The active-pill
- *  background is a flat CSS class for now; motion's layoutId morph (T3/T4)
- *  drops in without changing this markup. */
-export function Sidebar({ view }: Props) {
+ *  so this needs no router and no click handlers of its own. Collapse state
+ *  lives in App (the grid column width is on .app-shell); this just renders
+ *  the chevron and hands the click back up. */
+export function Sidebar({ view, collapsed, onToggleCollapsed }: Props) {
   const mode = useMode();
   const nextMode: Mode = mode === "dark" ? "light" : "dark";
 
   return (
     <aside className="sidebar">
-      <a className="sidebar__brand" href="#overview">
-        <span className="sidebar__brand-mark" aria-hidden="true" />
-        <span className="sidebar__brand-word">F1 Tracker</span>
-      </a>
+      <div className="sidebar__header">
+        <a className="sidebar__brand" href="#overview">
+          <span className="sidebar__brand-mark" aria-hidden="true" />
+          <span className="sidebar__brand-word">F1 Tracker</span>
+        </a>
+        <button
+          type="button"
+          className="sidebar__collapse"
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          onClick={onToggleCollapsed}
+        >
+          <CollapseIcon />
+        </button>
+      </div>
 
       <nav className="sidebar__nav" aria-label="Primary">
         {navItems.map(({ id, label, icon: Icon }) => {

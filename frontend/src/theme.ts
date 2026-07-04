@@ -31,10 +31,9 @@ export interface Theme {
   pageGradientTo: string; // light mode's far-corner cream; == page in dark
   surface: string; // opaque card/chart surface (validator surface)
   glass: string; // translucent chrome recipe (sidebar, stat tiles) — rgba
+  glassSheer: string; // barely-there sheet for cards with internal color (Countdown) — rgba
   glassBorder: string; // frosted-edge highlight for glass cards — rgba
   raised: string; // one elevation step up: icon chips, active-pill bg, hover
-  emphasis: string; // the "dark inset card" bg (Countdown) — always dark
-  onEmphasis: string; // ink for content sitting on `emphasis`
   accent: string; // primary UI accent (orange) — chrome only, never a series
   onAccent: string; // ink for text sitting on a solid `accent` fill
   shadowCard: string; // default card elevation (box-shadow value)
@@ -68,10 +67,9 @@ export const themes: Record<Mode, Theme> = {
     pageGradientTo: "#fdfbf9",
     surface: "#fffaf3",
     glass: "rgba(255, 250, 241, 0.62)",
+    glassSheer: "rgba(255, 252, 247, 0.3)",
     glassBorder: "rgba(255, 255, 255, 0.7)",
     raised: "#ffffff",
-    emphasis: "#1e1b17",
-    onEmphasis: "#ffffff",
     accent: "#eb6834",
     onAccent: "#14100a",
     shadowCard:
@@ -107,12 +105,9 @@ export const themes: Record<Mode, Theme> = {
     pageGradientTo: "#0d0d0d",
     surface: "#1a1a19",
     glass: "rgba(26, 26, 25, 0.72)",
+    glassSheer: "rgba(23, 23, 22, 0.38)",
     glassBorder: "rgba(255, 255, 255, 0.08)",
     raised: "#242422",
-    // Everything's already dark here, so the "emphasis" card is just the
-    // same raised layer — the HReazec trick only does work in light mode.
-    emphasis: "#242422",
-    onEmphasis: "#ffffff",
     accent: "#d95926",
     onAccent: "#14100a",
     shadowCard:
@@ -152,10 +147,9 @@ export function cssVars(t: Theme): Record<string, string> {
     "--page-grad-to": t.pageGradientTo,
     "--surface": t.surface,
     "--glass": t.glass,
+    "--glass-sheer": t.glassSheer,
     "--glass-border": t.glassBorder,
     "--raised": t.raised,
-    "--emphasis": t.emphasis,
-    "--on-emphasis": t.onEmphasis,
     "--accent": t.accent,
     "--on-accent": t.onAccent,
     "--shadow-card": t.shadowCard,

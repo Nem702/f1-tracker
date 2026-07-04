@@ -99,6 +99,38 @@ body {
     var(--page-grad-to);
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .app-shell {
+    transition: grid-template-columns 0.25s ease;
+  }
+}
+
+/* Manual collapse (chevron in the sidebar header): same icon-rail look the
+   <900px media query forces, but user-toggled at any width and persisted
+   (App.tsx owns the state and this class). */
+.app-shell--collapsed {
+  --sidebar-w: 84px;
+}
+
+.app-shell--collapsed .sidebar__brand-word,
+.app-shell--collapsed .sidebar__nav-label {
+  display: none;
+}
+
+.app-shell--collapsed .sidebar__header {
+  flex-direction: column;
+}
+
+.app-shell--collapsed .sidebar__brand,
+.app-shell--collapsed .sidebar__nav-item,
+.app-shell--collapsed .sidebar__theme-toggle {
+  justify-content: center;
+}
+
+.app-shell--collapsed .sidebar__collapse svg {
+  transform: rotate(180deg);
+}
+
 /* ---------- sidebar ---------- */
 
 .sidebar {
@@ -116,6 +148,13 @@ body {
   overflow-y: auto;
 }
 
+.sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .sidebar__brand {
   display: flex;
   align-items: center;
@@ -126,6 +165,33 @@ body {
   font-weight: var(--weight-heading);
   font-size: 15px;
   letter-spacing: -0.01em;
+}
+
+.sidebar__collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--ink-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.sidebar__collapse:hover {
+  color: var(--ink-primary);
+  border-color: var(--ink-muted);
+}
+
+.sidebar__collapse svg {
+  transition: transform 0.25s ease;
 }
 
 .sidebar__brand-mark {
@@ -222,16 +288,27 @@ body {
   border-color: var(--ink-muted);
 }
 
+/* Below 900px the rail is forced (an expanded 264px sidebar would crush the
+   content column), so the manual toggle hides — same rules as the
+   .app-shell--collapsed class above. */
 @media (max-width: 900px) {
   .sidebar__brand-word,
   .sidebar__nav-label {
     display: none;
   }
 
+  .sidebar__header {
+    flex-direction: column;
+  }
+
   .sidebar__brand,
   .sidebar__nav-item,
   .sidebar__theme-toggle {
     justify-content: center;
+  }
+
+  .sidebar__collapse {
+    display: none;
   }
 }
 
@@ -284,17 +361,18 @@ body {
 }
 
 /* ---------- hero banner (Overview view) ---------- */
-/* Was a full 100svh section behind a fixed header; now a contained rounded
-   banner living inside the Overview view's content flow. */
+/* Was a full 100svh section behind a fixed header, then a contained rounded
+   card; now uncontained — no surface/shadow/radius, bleeding past the
+   content column's own side padding so the ribbon sits directly on the
+   page background as the view's center feature, not a boxed-in panel. */
 
 .hero {
   position: relative;
-  height: clamp(300px, 42vw, 440px);
-  border-radius: var(--radius-lg);
+  height: clamp(360px, 48vw, 560px);
   overflow: hidden;
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
-  margin-bottom: var(--space-6);
+  /* Tight bottom margin: the team-selector pill directly below belongs to
+     the hero visually, so the big gap comes after the pill, not before. */
+  margin: 0 calc(var(--content-pad-x) * -1) var(--space-4);
 }
 
 .hero__canvas {
@@ -302,15 +380,17 @@ body {
   inset: 0;
 }
 
+/* Anchored to the top of the frame, not centered: the ribbons sway through
+   the vertical middle, so a centered block sat right on top of them. */
 .hero__overlay {
   position: absolute;
   inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   text-align: center;
-  padding: 0 var(--space-5);
+  padding: var(--space-6) var(--space-5) 0;
   pointer-events: none;
 }
 
@@ -324,7 +404,7 @@ body {
 
 .hero__overlay p {
   margin: 12px 0 0;
-  max-width: 480px;
+  max-width: 420px;
   font-size: 14px;
   line-height: 1.5;
   color: var(--ink-secondary);
@@ -340,6 +420,15 @@ body {
   color: var(--ink-muted);
   font-size: 12px;
   pointer-events: none;
+}
+
+/* Centers the team + race pills under the uncontained hero. */
+.overview__selectors {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
 }
 
 /* ---------- Overview row: countdown + stat tiles ---------- */
@@ -545,7 +634,9 @@ body {
   padding: 0 0 var(--space-4);
 }
 
-.race-selector {
+.race-selector,
+.team-selector {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -557,7 +648,35 @@ body {
   box-shadow: var(--shadow-card);
 }
 
-.race-selector__label {
+/* Replacement dropdown arrow: `appearance: none` on the select below removes
+   the OS chrome (arrow included), and a background-image chevron can't read
+   theme vars — so draw one from two borders on the wrapper instead. */
+.race-selector::after,
+.team-selector::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 19px;
+  width: 7px;
+  height: 7px;
+  border-right: 1.6px solid var(--ink-muted);
+  border-bottom: 1.6px solid var(--ink-muted);
+  transform: translateY(-65%) rotate(45deg);
+  pointer-events: none;
+}
+
+/* Pills that sit on the bare page under the hero (not in a filter row) get
+   the frosted-glass treatment instead of the opaque surface. */
+.team-selector,
+.race-selector--glass {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+  border-color: var(--glass-border);
+}
+
+.race-selector__label,
+.team-selector__label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -568,7 +687,10 @@ body {
   letter-spacing: 0.08em;
 }
 
-.race-selector select {
+.race-selector select,
+.team-selector select {
+  appearance: none;
+  -webkit-appearance: none;
   font: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -576,7 +698,8 @@ body {
   background: var(--raised);
   border: 1px solid transparent;
   border-radius: var(--radius-pill);
-  padding: 7px 14px;
+  /* extra right padding reserves room for the wrapper's ::after chevron */
+  padding: 7px 30px 7px 14px;
   cursor: pointer;
   /* flex items refuse to shrink below content width by default; on phone
      widths the long race options must clip inside the pill instead of
