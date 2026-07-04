@@ -1,20 +1,11 @@
 """
-db.py
-Postgres connection handling. Reads credentials from .env so they're
-never hardcoded in source.
+Write path for the fetch pipeline: one upsert helper per table, moved
+verbatim out of the old root db.py. Connection handling stays in
+backend/shared/db.py — the API imports that too, but nothing outside the
+pipeline should ever import this module.
 """
 
-import os
-import psycopg2
-from dotenv import load_dotenv
-
-from logger import logger
-
-load_dotenv()
-
-
-def get_connection():
-    return psycopg2.connect(os.environ["NEON_DATABASE_URL"])
+from backend.shared.logger import logger
 
 
 def upsert_race(conn, session):
@@ -265,4 +256,4 @@ def insert_race_control(conn, session_key, messages):
     logger.debug(
         "inserted %d race control messages session_key=%s (%d had untracked driver_number nulled)",
         len(messages), session_key, skipped,
-    )   
+    )

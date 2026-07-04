@@ -9,7 +9,8 @@ zero future rows (backfill only stores completed sessions), so that one
 endpoint calls OpenF1 live, through an in-process TTL cache, and degrades to
 a stale cache or {"next_session": null} instead of ever raising a 5xx.
 
-Run from the repo root:  py -m uvicorn api.main:app --reload
+Run from the repo root:  py -m uvicorn backend.api.main:app --reload --reload-dir backend
+(or just run dev.ps1, which starts this and the frontend together)
 """
 
 import os
@@ -20,9 +21,9 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg2.extras import RealDictCursor
 
-from db import get_connection
-from logger import logger
-from next_race import get_next_session
+from backend.shared.db import get_connection
+from backend.shared.logger import logger
+from backend.shared.next_race import get_next_session
 
 app = FastAPI(title="f1-tracker API", version="0.1.0")
 

@@ -1,6 +1,7 @@
-﻿venv/
+venv/
 __pycache__/
 .env
-test_neon_connection.py
-apply_schema.py
-check_tables.py
+# local one-off DB utilities, deliberately untracked
+backend/tools/test_neon_connection.py
+backend/tools/apply_schema.py
+backend/tools/check_tables.py
