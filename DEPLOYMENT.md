@@ -5,40 +5,40 @@ locally against the real Neon database (see "QA results" below). Nothing in
 `api/` or `frontend/` was modified to produce this document — any bug found
 is called out for the owning teammate to fix.
 
-## 1. Backend on Render (`api/`)
+## 1. Backend on Render (`backend/api/`)
 
 ### Service type
 Render **Web Service**, not a static site or background worker — it needs to
 stay running to serve requests.
 
-### Root/working directory: the repo root, not `api/`
-`api/main.py` does `from db import get_connection` and `from logger import
-logger` as plain top-level imports — those modules live at the repo root,
-not inside `api/`. Render's build/start commands must run with the **repo
-root as the working directory** (Render's default "Root Directory" setting
-should be left blank/`.`, not set to `api`), otherwise both imports fail at
-startup.
+### Root/working directory: the repo root, not `backend/`
+`backend/api/main.py` imports its siblings absolutely (`from
+backend.shared.db import get_connection` etc.), so the `backend` package
+must be importable from the working directory. Render's build/start
+commands must run with the **repo root as the working directory** (Render's
+default "Root Directory" setting should be left blank/`.`, not set to
+`backend`), otherwise the `backend.*` imports fail at startup.
 
 ### Build command
 ```
-pip install -r api/requirements.txt
+pip install -r backend/api/requirements.txt
 ```
-`api/requirements.txt` already duplicates `psycopg2-binary` and
+`backend/api/requirements.txt` already duplicates `psycopg2-binary` and
 `python-dotenv` alongside `fastapi`/`uvicorn` (with a comment explaining
 why), specifically so this one install command is self-sufficient — it does
-not also need the root `requirements.txt`. Confirmed by reading the file
-during this session.
+not also need the pipeline's `backend/requirements.txt`. Confirmed by
+reading the file during this session.
 
 ### Start command
 ```
-uvicorn api.main:app --host 0.0.0.0 --port $PORT
+uvicorn backend.api.main:app --host 0.0.0.0 --port $PORT
 ```
 `--host 0.0.0.0` is required — Render's health checker and edge proxy can't
 reach a server bound to `127.0.0.1`. `$PORT` is injected by Render; do not
 hardcode 8000.
 
 ### Health check
-`GET /health` exists in the current `api/main.py` (added mid-session by the
+`GET /health` exists in the current `backend/api/main.py` (added mid-session by the
 backend teammate) and deliberately does **not** touch the database — it just
 returns `{"status": "ok"}`. That's the right choice for Render's health
 check path: Neon's free tier scales to zero and cold-starts on first
@@ -55,7 +55,7 @@ API before deploying should re-verify `/health` returns 200 first.
 | Variable | Value | Notes |
 |---|---|---|
 | `NEON_DATABASE_URL` | the same Neon connection string already used by the GitHub Actions fetch job (stored there as a repo secret) | `.env` is gitignored and never committed — copy the value manually into Render's env var UI. |
-| `ALLOWED_ORIGINS` | the deployed Vercel URL(s), comma-separated, e.g. `https://f1-tracker.vercel.app` | Read by `api/main.py` (`os.environ.get("ALLOWED_ORIGINS", "")`) and appended to the CORS allow-list alongside the hardcoded `localhost:5173`/`127.0.0.1:5173` dev origins. **Without this set, the deployed frontend's API calls will fail CORS** — this is the one deploy-config step most likely to be forgotten, since it works fine locally with no env var at all. Set it to the production Vercel domain; preview-deploy subdomains are covered separately by `allow_origin_regex` (see §3) and don't need to be listed here. |
+| `ALLOWED_ORIGINS` | the deployed Vercel URL(s), comma-separated, e.g. `https://f1-tracker.vercel.app` | Read by `backend/api/main.py` (`os.environ.get("ALLOWED_ORIGINS", "")`) and appended to the CORS allow-list alongside the hardcoded `localhost:5173`/`127.0.0.1:5173` dev origins. **Without this set, the deployed frontend's API calls will fail CORS** — this is the one deploy-config step most likely to be forgotten, since it works fine locally with no env var at all. Set it to the production Vercel domain; preview-deploy subdomains are covered separately by `allow_origin_regex` (see §3) and don't need to be listed here. |
 
 No `render.yaml` exists yet. One isn't strictly required — the above build
 command / start command / health check path / env vars can all be entered
@@ -101,7 +101,7 @@ additional config.
 
 ## 3. CORS: origin matching between the two deployed domains
 
-`api/main.py`'s CORS middleware uses an exact-match allow-list plus a regex
+`backend/api/main.py`'s CORS middleware uses an exact-match allow-list plus a regex
 for Vercel preview subdomains:
 ```python
 allow_origins=_default_origins + _extra_origins,
@@ -157,7 +157,7 @@ absurdly oversized int (`99999999999999999999999`, far outside Postgres
 **No bugs found.** All 9 documented endpoints behave correctly on the happy
 path, the documented empty-data quirk, and adversarial `session_key` input.
 
-### Gaps closed mid-session (not by me — `api/main.py` was edited live by the
+### Gaps closed mid-session (not by me — `backend/api/main.py` was edited live by the
 backend teammate while this QA pass was in progress)
 1. `ALLOWED_ORIGINS` env var added for CORS — was previously hardcoded to
    only the two localhost dev origins, which would have hard-blocked the
@@ -175,5 +175,5 @@ backend teammate while this QA pass was in progress)
 - [ ] Set `ALLOWED_ORIGINS` in Render to the production Vercel URL once it's known (chicken-and-egg: deploy backend first, get its URL, set `VITE_API_URL` in Vercel, deploy frontend, get its URL, set `ALLOWED_ORIGINS` in Render, redeploy backend or just update the env var — Render redeploys automatically on env var change).
 - [ ] Set `VITE_API_URL` in Vercel to the production Render URL.
 - [ ] Verify `GET /health` returns `200 {"status":"ok"}` against a freshly-restarted server (the process running locally during this QA pass predates the `/health` addition and returned a stale `404` — not a real bug, just needs a restart to confirm).
-- [x] Preview-deployment CORS resolved: `api/main.py` now matches Vercel preview subdomains via `allow_origin_regex` (see §3), so previews can reach the live API without per-deploy config.
+- [x] Preview-deployment CORS resolved: `backend/api/main.py` now matches Vercel preview subdomains via `allow_origin_regex` (see §3), so previews can reach the live API without per-deploy config.
 - [ ] Pin the Python runtime version on Render to match CI (`3.14`, per `.github/workflows/fetch.yml`).

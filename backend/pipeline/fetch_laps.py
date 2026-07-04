@@ -1,13 +1,17 @@
 """
 Domain logic for the F1 tracker: which session to pull, which drivers we
 care about, and what to do with the data once we have it. Endpoint wrappers
-live in openf1_endpoints.py; HTTP pacing/retry lives in openf1_client.py.
+live in backend/shared/openf1_endpoints.py; HTTP pacing/retry lives in
+backend/shared/openf1_client.py; the table upserts live in store.py next
+to this file.
+
+Run from the repo root:  py -m backend.pipeline.fetch_laps
 """
 
 from datetime import datetime, timezone
 
-from logger import logger
-from openf1_endpoints import (
+from backend.shared.logger import logger
+from backend.shared.openf1_endpoints import (
     get_sessions,
     get_ferrari_teammates,
     get_laps,
@@ -17,8 +21,8 @@ from openf1_endpoints import (
     get_positions,
     get_race_control,
 )
-from db import (
-    get_connection,
+from backend.shared.db import get_connection
+from backend.pipeline.store import (
     upsert_race,
     upsert_driver,
     upsert_laps,

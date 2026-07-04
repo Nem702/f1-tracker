@@ -11,7 +11,7 @@ import random
 import time
 import requests
 
-from logger import logger
+from backend.shared.logger import logger
 
 BASE_URL = "https://api.openf1.org/v1"
 

@@ -12,26 +12,36 @@ weekend, and persists it to Postgres.
 
 ## Project structure
 
-- **`openf1_client.py`** — transport layer. Request pacing and retry/backoff
-  for talking to OpenF1 safely. Has no idea what a "lap" or "driver" is.
-- **`openf1_endpoints.py`** — endpoint layer. One thin wrapper per OpenF1
-  endpoint (sessions, drivers, laps, stints, pit, weather, positions, race
-  control, intervals); knows URLs and query params, makes no domain
-  decisions and does no persistence. Every wrapper goes through
-  `request_with_retry` — nothing here calls `requests` directly.
-- **`fetch_laps.py`** — domain layer. Which session to pull, which drivers
-  we care about (resolved per-session via `/drivers`, not hardcoded), and
-  what to do with the data; imports its wrappers from `openf1_endpoints.py`.
-- **`db.py`** — persistence layer. Postgres connection handling and the
-  upsert functions (`upsert_race`, `upsert_driver`, `upsert_laps`). Knows
-  about the schema; doesn't know anything about HTTP.
-- **`schema.sql`** — table definitions for `races`, `drivers`, `laps`.
-- **`api/`** — read-only FastAPI layer over the same Postgres (Part 6). It
+All Python lives under `backend/`, mirroring `frontend/`. Every command runs
+from the repo root (that's where `venv/` and `.env` live), using
+`py -m backend.<package>.<module>` so the `backend.*` imports resolve.
+
+- **`backend/api/`** — read-only FastAPI layer over Postgres (Part 6). It
   never calls OpenF1 itself — it only serves what the fetch pipeline already
   persisted, so it's immune to rate limits and the live-session lockout.
+- **`backend/pipeline/`** — the scheduled fetch job:
+  - `fetch_laps.py` — domain layer. Which session to pull, which drivers we
+    care about (resolved per-session via `/drivers`, not hardcoded), and
+    what to do with the data.
+  - `backfill.py` — same pipeline, run once per completed race of a season.
+  - `store.py` — the write path: one idempotent upsert per table. Knows
+    about the schema; doesn't know anything about HTTP.
+- **`backend/shared/`** — code both sides import:
+  - `openf1_client.py` — transport layer. Request pacing and retry/backoff
+    for talking to OpenF1 safely. Has no idea what a "lap" or "driver" is.
+  - `openf1_endpoints.py` — endpoint layer. One thin wrapper per OpenF1
+    endpoint; knows URLs and query params, makes no domain decisions and
+    does no persistence. Every wrapper goes through `request_with_retry` —
+    nothing here calls `requests` directly.
+  - `db.py` — Postgres connection handling (credentials from `.env`).
+  - `logger.py` — the one shared logger instance.
+  - `next_race.py` — soonest upcoming session (used by `/api/next-race`).
+- **`backend/tools/`** — local one-off DB utilities (untracked).
+- **`backend/schema.sql`** — table definitions.
 - **`frontend/`** — the Part 6 dashboard: Vite + React + TypeScript, Recharts
   for the 2D charts, react-three-fiber for the 3D lap-time hero, Framer
   Motion for transitions.
+- **`dev.ps1`** — starts API + frontend, one terminal window each.
 
 ## Status
 
@@ -150,7 +160,7 @@ never gets corrected after the fact, so there's no "same row, updated" case
 the way there is for laps or stints. Simpler to insert without an
 `ON CONFLICT` clause and rely on a higher-level check than to force a
 synthetic key onto data that doesn't need one. The check is
-`race_control_already_fetched()` in `db.py`: `main()` calls it before
+`race_control_already_fetched()` in `backend/pipeline/store.py`: `main()` calls it before
 fetching and skips the endpoint entirely if the session's messages are
 already in the table — otherwise the Thursday redundancy run would
 duplicate every row.
@@ -191,35 +201,51 @@ something was left off.
 
 ## Running it
 
-```bash
-docker compose up -d   # start Postgres (first time only, or after a reboot)
-py fetch_laps.py
-```
+### The dashboard (the thing you usually want)
 
-### Running the Part 6 dashboard (two terminals)
-
-API — from the repo root, so `db.py`/`logger.py` import correctly:
+One command, from the repo root:
 
 ```powershell
-.\venv\Scripts\python.exe -m pip install -r api\requirements.txt   # first time only
-py -m uvicorn api.main:app --reload
+.\dev.ps1
 ```
 
-Frontend:
+That opens two terminal windows — the API on http://localhost:8000 and the
+frontend on http://localhost:5173 — then open http://localhost:5173.
+
+**To restart either one:** close its window (or Ctrl+C inside it) and rerun
+`.\dev.ps1`. The API runs with `--reload`, so most backend code edits
+restart it automatically without you doing anything.
+
+The raw commands, if you'd rather run them yourself (both from the repo
+root; first-time installs commented):
+
+```powershell
+# .\venv\Scripts\python.exe -m pip install -r backend\api\requirements.txt
+.\venv\Scripts\python.exe -m uvicorn backend.api.main:app --reload --reload-dir backend
+```
 
 ```powershell
 cd frontend
-npm install        # first time only
+# npm install
 npm run dev
 ```
 
-Then open http://localhost:5173. The frontend expects the API on
-`http://localhost:8000` (override with `VITE_API_URL`, see
-`frontend/.env.example`). The API's dependencies live in
-`api/requirements.txt`, separate from the root `requirements.txt`, so the
-scheduled GitHub Actions fetch job doesn't install a web framework it never
-uses. First load after the database has been idle can take a few seconds —
-Neon's free tier scales to zero and cold-starts on the first connection.
+The frontend expects the API on `http://localhost:8000` (override with
+`VITE_API_URL`, see `frontend/.env.example`), and the API's CORS only
+allows the frontend on port 5173 — if Vite says it picked another port,
+some other dev server is already running; close it first. The API's
+dependencies live in `backend/api/requirements.txt`, separate from
+`backend/requirements.txt`, so the scheduled GitHub Actions fetch job
+doesn't install a web framework it never uses. First load after the
+database has been idle can take a few seconds — Neon's free tier scales to
+zero and cold-starts on the first connection.
+
+### The fetch pipeline (what the GitHub Actions cron runs)
+
+```powershell
+.\venv\Scripts\python.exe -m backend.pipeline.fetch_laps    # latest completed race
+.\venv\Scripts\python.exe -m backend.pipeline.backfill      # every completed race this season
+```
 
 ## Local Development Setup
 
@@ -257,7 +283,7 @@ You'll know it worked when your prompt shows `(venv)` at the start.
 3. Apply the schema (first time only):
 
 ```powershell
-   Get-Content schema.sql -Raw | docker exec -i f1_tracker_db psql -U f1user -d f1tracker
+   Get-Content backend\schema.sql -Raw | docker exec -i f1_tracker_db psql -U f1user -d f1tracker
 ```
 
 (PowerShell's `<` redirection operator is reserved/unsupported — piping
@@ -281,11 +307,11 @@ install on Windows occupying 5432.
 
 ## Stack
 
-- Python + `requests` — OpenF1 REST API client (`openf1_client.py`)
-- `psycopg2` + Postgres via Docker Compose — local persistence (`db.py`, `schema.sql`)
+- Python + `requests` — OpenF1 REST API client (`backend/shared/openf1_client.py`)
+- `psycopg2` + Postgres — persistence (`backend/pipeline/store.py`, `backend/schema.sql`)
 - Neon — managed Postgres, reachable by scheduled cloud runs (Part 5)
 - GitHub Actions — scheduling (Part 5)
-- FastAPI + uvicorn — read-only JSON API over the database (Part 6, `api/`)
+- FastAPI + uvicorn — read-only JSON API over the database (Part 6, `backend/api/`)
 - Vite + React + TypeScript — dashboard frontend (Part 6, `frontend/`)
 - Recharts (2D charts) · react-three-fiber/three.js (3D hero) · Framer Motion (transitions)
 

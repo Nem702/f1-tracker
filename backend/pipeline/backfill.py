@@ -5,9 +5,9 @@ for sessions already pulled. Subject to the free-tier live-session lockout
 like everything else; run it while no session is live.
 """
 
-from logger import logger
-from fetch_laps import get_completed_race_sessions, process_session
-from db import get_connection
+from backend.shared.logger import logger
+from backend.pipeline.fetch_laps import get_completed_race_sessions, process_session
+from backend.shared.db import get_connection
 
 
 def backfill_year(year=2026):

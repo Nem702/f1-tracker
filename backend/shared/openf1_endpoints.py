@@ -9,8 +9,8 @@ what to fetch and what to do with it lives in fetch_laps.py.
 
 from datetime import datetime, timezone
 
-from logger import logger
-from openf1_client import BASE_URL, request_with_retry
+from backend.shared.logger import logger
+from backend.shared.openf1_client import BASE_URL, request_with_retry
 
 
 def get_sessions(year: int | None = None, session_name: str | None = None,
