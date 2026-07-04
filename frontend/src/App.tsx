@@ -1,14 +1,18 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { MotionConfig, motion } from "framer-motion";
+import { useEffect, useState, type CSSProperties } from "react";
+import { MotionConfig } from "framer-motion";
 import { api } from "./api/client";
 import { useApi } from "./hooks/useApi";
 import { useMode } from "./hooks/useTheme";
 import { cssVars, themes } from "./theme";
 import { fmtDate } from "./format";
-import { Header } from "./components/Header";
+import { Sidebar } from "./components/Sidebar";
+import { normalizeHash, type View } from "./viewState";
+import { ViewTransition } from "./components/ViewTransition";
 import { Hero3D } from "./components/Hero3D";
+import { Countdown } from "./components/Countdown";
 import { About } from "./components/About";
 import { Reveal } from "./components/Reveal";
+import { StatTiles } from "./components/StatTiles";
 import { RaceSelector } from "./components/RaceSelector";
 import { LapTimeChart } from "./components/LapTimeChart";
 import { DeltaChart } from "./components/DeltaChart";
@@ -18,9 +22,23 @@ import { PositionChart } from "./components/PositionChart";
 import { WeatherChart } from "./components/WeatherChart";
 import { RaceControlFeed } from "./components/RaceControlFeed";
 
+/** Hash-synced view state — no router. Sidebar owns the view list; this
+ *  just mirrors `location.hash` into it so back/forward and reload both
+ *  land on the right view. */
+function useView(): View {
+  const [view, setView] = useState<View>(() => normalizeHash(window.location.hash));
+  useEffect(() => {
+    const onHashChange = () => setView(normalizeHash(window.location.hash));
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+  return view;
+}
+
 export default function App() {
   const mode = useMode();
   const theme = themes[mode];
+  const view = useView();
 
   const races = useApi((_k) => api.races(), 0);
   const drivers = useApi((_k) => api.drivers(), 0);
@@ -33,23 +51,6 @@ export default function App() {
       setSelected(races.data[0].session_key);
     }
   }, [races.data, selected]);
-
-  // The header is transparent over the hero and gains a blurred surface once
-  // the hero scrolls out — observed, not recomputed per scroll frame.
-  const heroRef = useRef<HTMLDivElement>(null);
-  const [pastHero, setPastHero] = useState(false);
-  useEffect(() => {
-    const el = heroRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => setPastHero(!entry.isIntersecting),
-      // Anchor links land with the hero's last 72px still on screen
-      // (scroll-margin-top), so the bar must switch before that point.
-      { rootMargin: "-96px 0px 0px 0px" },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   // Driver numbers come from the API (which resolved them per-session from
   // OpenF1) — same rule as the backend: never hardcode 44/16.
@@ -80,135 +81,162 @@ export default function App() {
   return (
     <MotionConfig reducedMotion="user">
       <div
-        className="app"
+        className="app-shell"
         style={{ ...cssVars(theme), colorScheme: mode } as CSSProperties}
       >
-        <Header mode={mode} solid={pastHero} />
+        <Sidebar view={view} />
 
-        <div ref={heroRef}>
-          <Hero3D
-            laps={laps.data ?? []}
-            hamNumber={hamNumber}
-            lecNumber={lecNumber}
-            raceLabel={raceLabel}
-          />
+        <div className="content">
+          <ViewTransition viewKey={view}>
+            {view === "overview" && (
+              <section className="view view--overview">
+                <header className="view__header">
+                  <p className="view__eyebrow">Overview</p>
+                  <h1 className="view__title">Hamilton vs. Leclerc.</h1>
+                </header>
+
+                <Hero3D
+                  laps={laps.data ?? []}
+                  hamNumber={hamNumber}
+                  lecNumber={lecNumber}
+                  raceLabel={raceLabel}
+                />
+
+                <div className="overview__row">
+                  <Countdown />
+                  <div className="overview__stats-slot">
+                    <StatTiles
+                      laps={laps.data ?? []}
+                      pit={pit.data ?? []}
+                      delta={delta.data ?? []}
+                      hamNumber={hamNumber}
+                      lecNumber={lecNumber}
+                      loading={laps.loading || pit.loading || delta.loading}
+                    />
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {view === "race-analysis" && (
+              <section className="view view--race-analysis race-info">
+                <header className="view__header">
+                  <p className="view__eyebrow">Race Analysis</p>
+                  <h1 className="view__title">Pick a race. See how it unfolded.</h1>
+                </header>
+
+                <div className="filters">
+                  <RaceSelector
+                    races={races.data ?? []}
+                    value={selected}
+                    onChange={setSelected}
+                  />
+                  {race && (
+                    <span className="filters__meta">
+                      {race.country_name} · {race.circuit_short_name}
+                    </span>
+                  )}
+                  {emptyRace && (
+                    <span className="filters__note">
+                      OpenF1 published no telemetry for this race — every panel
+                      below is empty by design, not by error.
+                    </span>
+                  )}
+                  {races.error && (
+                    <span className="filters__note">{races.error}</span>
+                  )}
+                </div>
+
+                <main className="grid">
+                  <Reveal wide>
+                    <LapTimeChart
+                      laps={laps.data ?? []}
+                      hamNumber={hamNumber}
+                      lecNumber={lecNumber}
+                      loading={laps.loading}
+                      error={laps.error}
+                    />
+                  </Reveal>
+                  <Reveal wide>
+                    <DeltaChart
+                      delta={delta.data ?? []}
+                      laps={laps.data ?? []}
+                      loading={delta.loading}
+                      error={delta.error}
+                    />
+                  </Reveal>
+                  <Reveal>
+                    <TireStrategy
+                      stints={stints.data ?? []}
+                      hamNumber={hamNumber}
+                      lecNumber={lecNumber}
+                      loading={stints.loading}
+                      error={stints.error}
+                    />
+                  </Reveal>
+                  <Reveal delay={0.08}>
+                    <PitStopChart
+                      pit={pit.data ?? []}
+                      hamNumber={hamNumber}
+                      lecNumber={lecNumber}
+                      loading={pit.loading}
+                      error={pit.error}
+                    />
+                  </Reveal>
+                  <Reveal wide>
+                    <PositionChart
+                      positions={positions.data ?? []}
+                      hamNumber={hamNumber}
+                      lecNumber={lecNumber}
+                      loading={positions.loading}
+                      error={positions.error}
+                    />
+                  </Reveal>
+                  <Reveal>
+                    <WeatherChart
+                      weather={weather.data ?? []}
+                      loading={weather.loading}
+                      error={weather.error}
+                    />
+                  </Reveal>
+                  <Reveal delay={0.08}>
+                    <RaceControlFeed
+                      raceControl={raceControl.data ?? []}
+                      loading={raceControl.loading}
+                      error={raceControl.error}
+                    />
+                  </Reveal>
+                </main>
+              </section>
+            )}
+
+            {view === "about" && (
+              <section className="view view--about">
+                <About />
+              </section>
+            )}
+          </ViewTransition>
+
+          <footer className="footer">
+            <nav className="footer__social" aria-label="Social links">
+              <a
+                href="https://github.com/Nem702/f1-tracker"
+                target="_blank"
+                rel="noreferrer"
+              >
+                GitHub
+              </a>
+              {/* TODO: replace with real URL */}
+              <a href="#">LinkedIn</a>
+              {/* TODO: replace with real URL */}
+              <a href="#">X</a>
+            </nav>
+            <p className="footer__credit">
+              Data from OpenF1, fetched weekly into Neon Postgres · a
+              skill-building project, not a finished product.
+            </p>
+          </footer>
         </div>
-
-        <About />
-
-        <section id="race-info" className="race-info">
-          <motion.div
-            className="race-info__intro"
-            initial={{ opacity: 0, y: 12 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-80px" }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-          >
-            <p className="section__eyebrow">Race Info</p>
-            <h2 className="section__title">Pick a race. See how it unfolded.</h2>
-          </motion.div>
-
-          <div className="filters">
-            <RaceSelector
-              races={races.data ?? []}
-              value={selected}
-              onChange={setSelected}
-            />
-            {race && (
-              <span className="filters__meta">
-                {race.country_name} · {race.circuit_short_name}
-              </span>
-            )}
-            {emptyRace && (
-              <span className="filters__note">
-                OpenF1 published no telemetry for this race — every panel below
-                is empty by design, not by error.
-              </span>
-            )}
-            {races.error && <span className="filters__note">{races.error}</span>}
-          </div>
-
-          <main className="grid">
-            <Reveal wide>
-              <LapTimeChart
-                laps={laps.data ?? []}
-                hamNumber={hamNumber}
-                lecNumber={lecNumber}
-                loading={laps.loading}
-                error={laps.error}
-              />
-            </Reveal>
-            <Reveal wide>
-              <DeltaChart
-                delta={delta.data ?? []}
-                laps={laps.data ?? []}
-                loading={delta.loading}
-                error={delta.error}
-              />
-            </Reveal>
-            <Reveal>
-              <TireStrategy
-                stints={stints.data ?? []}
-                hamNumber={hamNumber}
-                lecNumber={lecNumber}
-                loading={stints.loading}
-                error={stints.error}
-              />
-            </Reveal>
-            <Reveal delay={0.08}>
-              <PitStopChart
-                pit={pit.data ?? []}
-                hamNumber={hamNumber}
-                lecNumber={lecNumber}
-                loading={pit.loading}
-                error={pit.error}
-              />
-            </Reveal>
-            <Reveal wide>
-              <PositionChart
-                positions={positions.data ?? []}
-                hamNumber={hamNumber}
-                lecNumber={lecNumber}
-                loading={positions.loading}
-                error={positions.error}
-              />
-            </Reveal>
-            <Reveal>
-              <WeatherChart
-                weather={weather.data ?? []}
-                loading={weather.loading}
-                error={weather.error}
-              />
-            </Reveal>
-            <Reveal delay={0.08}>
-              <RaceControlFeed
-                raceControl={raceControl.data ?? []}
-                loading={raceControl.loading}
-                error={raceControl.error}
-              />
-            </Reveal>
-          </main>
-        </section>
-
-        <footer id="contact" className="footer">
-          <nav className="footer__social" aria-label="Social links">
-            <a
-              href="https://github.com/Nem702/f1-tracker"
-              target="_blank"
-              rel="noreferrer"
-            >
-              GitHub
-            </a>
-            {/* TODO: replace with real URL */}
-            <a href="#">LinkedIn</a>
-            {/* TODO: replace with real URL */}
-            <a href="#">X</a>
-          </nav>
-          <p className="footer__credit">
-            Data from OpenF1, fetched weekly into Neon Postgres · a
-            skill-building project, not a finished product.
-          </p>
-        </footer>
       </div>
     </MotionConfig>
   );

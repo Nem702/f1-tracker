@@ -1,7 +1,9 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import type { Stint } from "../api/types";
 import { useTheme } from "../hooks/useTheme";
 import { inkOn } from "../theme";
+import { duration, EASE, stagger } from "../motion";
 import { ChartCard, type LegendItem } from "./ChartCard";
 import { ChartTooltip } from "./ChartTooltip";
 
@@ -27,6 +29,16 @@ export function TireStrategy({ stints, hamNumber, lecNumber, loading, error }: P
   const observerRef = useRef<ResizeObserver | null>(null);
   const [width, setWidth] = useState(600);
   const [hover, setHover] = useState<{ x: number; y: number; stint: Stint } | null>(null);
+
+  // First-reveal grow-in only, same semantics as useDrawInOnce: stints re-key
+  // on a race switch, and replaying the animation on every refetch would read
+  // as churn. (useDrawInOnce itself returns Recharts props, so the ref pattern
+  // is inlined here for a hand-rolled SVG.)
+  const hasAnimated = useRef(false);
+  const shouldAnimate = stints.length > 0 && !hasAnimated.current;
+  useEffect(() => {
+    if (stints.length > 0) hasAnimated.current = true;
+  }, [stints.length]);
 
   // Measure via a callback ref, not a mount-only effect: ChartCard unmounts
   // this div for the empty/loading/table states, so observation has to follow
@@ -123,7 +135,7 @@ export function TireStrategy({ stints, hamNumber, lecNumber, loading, error }: P
                 >
                   {row.label}
                 </text>
-                {row.stints.map((stint) => {
+                {row.stints.map((stint, stintIdx) => {
                   const x = lapX(stint.lap_start!);
                   // 2px surface gap between touching segments
                   const w = Math.max(
@@ -132,6 +144,7 @@ export function TireStrategy({ stints, hamNumber, lecNumber, loading, error }: P
                   );
                   const fill = theme.compounds[stint.compound ?? ""] ?? theme.inkMuted;
                   const letter = (stint.compound ?? "?").charAt(0);
+                  const growDelay = rowIdx * stagger.base + stintIdx * stagger.tight;
                   const compoundName = stint.compound
                     ? stint.compound.charAt(0) + stint.compound.slice(1).toLowerCase()
                     : "Unknown";
@@ -161,9 +174,23 @@ export function TireStrategy({ stints, hamNumber, lecNumber, loading, error }: P
                       className="tire-strip__seg"
                       style={{ cursor: "default" }}
                     >
-                      <rect x={x} y={y} width={w} height={ROW_HEIGHT} rx={4} fill={fill} />
+                      <motion.rect
+                        x={x}
+                        y={y}
+                        width={w}
+                        height={ROW_HEIGHT}
+                        rx={4}
+                        fill={fill}
+                        initial={shouldAnimate ? { scaleX: 0 } : false}
+                        animate={{ scaleX: 1 }}
+                        transition={{ duration: duration.slower, ease: EASE, delay: growDelay }}
+                        // fill-box scopes the transform to the rect itself, so
+                        // scaleX grows each bar from its own left edge instead
+                        // of the whole SVG's origin
+                        style={{ transformBox: "fill-box", transformOrigin: "left center" }}
+                      />
                       {w >= 20 && (
-                        <text
+                        <motion.text
                           x={x + w / 2}
                           y={y + ROW_HEIGHT / 2}
                           fill={inkOn(fill)}
@@ -172,9 +199,17 @@ export function TireStrategy({ stints, hamNumber, lecNumber, loading, error }: P
                           textAnchor="middle"
                           dominantBaseline="middle"
                           pointerEvents="none"
+                          initial={shouldAnimate ? { opacity: 0 } : false}
+                          animate={{ opacity: 1 }}
+                          transition={{
+                            duration: duration.base,
+                            ease: EASE,
+                            // hold the letter until its bar has grown past it
+                            delay: growDelay + duration.base,
+                          }}
                         >
                           {letter}
-                        </text>
+                        </motion.text>
                       )}
                     </g>
                   );

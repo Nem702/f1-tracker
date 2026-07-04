@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import type { PitStop } from "../api/types";
 import { useTheme } from "../hooks/useTheme";
+import { useDrawInOnce } from "../hooks/useDrawInOnce";
 import { fmtSeconds } from "../format";
 import { ChartCard } from "./ChartCard";
 import { ChartTooltip } from "./ChartTooltip";
@@ -65,6 +66,7 @@ export function PitStopChart({ pit, hamNumber, lecNumber, loading, error }: Prop
     () => allStops.filter((s) => s.duration <= 180),
     [allStops],
   );
+  const drawIn = useDrawInOnce(stops.length > 0);
   const outliers = allStops.length - stops.length;
   const subtitle =
     outliers > 0
@@ -139,7 +141,7 @@ export function PitStopChart({ pit, hamNumber, lecNumber, loading, error }: Prop
             dataKey="duration"
             barSize={22}
             radius={[4, 4, 0, 0]}
-            isAnimationActive={false}
+            {...drawIn}
           >
             {/* value on the cap — few bars, so labeling each is the bar spec */}
             <LabelList

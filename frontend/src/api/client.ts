@@ -2,6 +2,7 @@ import type {
   DeltaRow,
   Driver,
   Lap,
+  NextRaceResponse,
   PitStop,
   PositionRow,
   Race,
@@ -33,4 +34,5 @@ export const api = {
   raceControl: (sk: number) =>
     get<RaceControlRow[]>(`/api/races/${sk}/race-control`),
   delta: (sk: number) => get<DeltaRow[]>(`/api/races/${sk}/delta`),
+  nextRace: () => get<NextRaceResponse>("/api/next-race"),
 };

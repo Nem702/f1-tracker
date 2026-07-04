@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import type { PositionRow } from "../api/types";
 import { useTheme } from "../hooks/useTheme";
+import { useDrawInOnce } from "../hooks/useDrawInOnce";
 import { fmtClock } from "../format";
 import { ChartCard } from "./ChartCard";
 import { ChartTooltip, type TooltipRow } from "./ChartTooltip";
@@ -51,6 +52,7 @@ export function PositionChart({
     }
     return [...byTime.values()].sort((a, b) => a.t - b.t);
   }, [positions, hamNumber, lecNumber]);
+  const drawIn = useDrawInOnce(data.length > 0);
 
   const maxPos = useMemo(
     () => Math.max(10, ...positions.map((p) => p.position ?? 0)),
@@ -149,7 +151,7 @@ export function PositionChart({
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4, stroke: theme.surface, strokeWidth: 2 }}
-            isAnimationActive={false}
+            {...drawIn}
           />
           <Line
             dataKey="lec"
@@ -159,7 +161,7 @@ export function PositionChart({
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4, stroke: theme.surface, strokeWidth: 2 }}
-            isAnimationActive={false}
+            {...drawIn}
           />
         </LineChart>
       </ResponsiveContainer>

@@ -1,4 +1,5 @@
-import { motion, type Variants } from "framer-motion";
+import { motion } from "framer-motion";
+import { entrance, hoverLift, staggerContainer, staggerItem } from "../motion";
 
 const steps = [
   {
@@ -19,24 +20,14 @@ const steps = [
   },
 ];
 
-const list: Variants = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.12 } },
-};
-
-const item: Variants = {
-  hidden: { opacity: 0, y: 12 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
-};
-
 export function About() {
   return (
     <section id="about" className="about">
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        whileInView={{ opacity: 1, y: 0 }}
+        variants={entrance}
+        initial="hidden"
+        whileInView="show"
         viewport={{ once: true, margin: "-80px" }}
-        transition={{ duration: 0.6, ease: "easeOut" }}
       >
         <p className="section__eyebrow">About</p>
         <h2 className="section__title">Real data, end to end.</h2>
@@ -52,13 +43,18 @@ export function About() {
 
       <motion.ol
         className="pipeline"
-        variants={list}
+        variants={staggerContainer()}
         initial="hidden"
-        whileInView="visible"
+        whileInView="show"
         viewport={{ once: true, margin: "-80px" }}
       >
         {steps.map((step, i) => (
-          <motion.li key={step.title} className="pipeline__step" variants={item}>
+          <motion.li
+            key={step.title}
+            className="pipeline__step"
+            variants={staggerItem}
+            {...hoverLift}
+          >
             <span className="pipeline__num">{String(i + 1).padStart(2, "0")}</span>
             <h3 className="pipeline__title">{step.title}</h3>
             <p className="pipeline__body">{step.body}</p>

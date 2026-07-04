@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { motion } from "framer-motion";
+import { entrance } from "../motion";
 
 interface Props {
   /** Stagger offset in seconds — cards later in a grid row enter a beat apart. */
@@ -9,17 +10,17 @@ interface Props {
   children: ReactNode;
 }
 
-/** Scroll-reveal wrapper for grid cards: fade + slight rise, played once when
- *  the card scrolls into view. Opacity/transform only; reduced motion is
- *  handled by the app-level MotionConfig. */
+/** Scroll-reveal wrapper for grid cards: fade + slight rise (the shared
+ *  `entrance` token), played once when the card scrolls into view. */
 export function Reveal({ delay = 0, wide = false, children }: Props) {
   return (
     <motion.div
       className={`reveal${wide ? " reveal--wide" : ""}`}
-      initial={{ opacity: 0, y: 8 }}
-      whileInView={{ opacity: 1, y: 0 }}
+      variants={entrance}
+      custom={delay}
+      initial="hidden"
+      whileInView="show"
       viewport={{ once: true, margin: "-40px" }}
-      transition={{ duration: 0.5, ease: "easeOut", delay }}
     >
       {children}
     </motion.div>

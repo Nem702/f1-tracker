@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { DataTable, type TableSpec } from "./DataTable";
+import { duration, EASE, hoverLift } from "../motion";
 
 export interface LegendItem {
   label: string;
@@ -19,6 +20,20 @@ interface Props {
   table?: TableSpec;
   wide?: boolean;
   children: ReactNode;
+}
+
+function SwapIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 8h13l-3.2-3.2M20 16H7l3.2 3.2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 /**
@@ -46,7 +61,8 @@ export function ChartCard({
       className={`card${wide ? " card--wide" : ""}`}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, ease: "easeOut" }}
+      transition={{ duration: duration.slow, ease: EASE }}
+      {...hoverLift}
     >
       <header className="card__header">
         <div>
@@ -71,9 +87,10 @@ export function ChartCard({
           {table && hasData && (
             <button
               type="button"
-              className="card__toggle"
+              className="btn-pill card__toggle"
               onClick={() => setView(view === "chart" ? "table" : "chart")}
             >
+              <SwapIcon />
               {view === "chart" ? "Table" : "Chart"}
             </button>
           )}

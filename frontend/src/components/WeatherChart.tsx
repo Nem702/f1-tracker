@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import type { WeatherRow } from "../api/types";
 import { useTheme } from "../hooks/useTheme";
+import { useDrawInOnce } from "../hooks/useDrawInOnce";
 import { fmtClock } from "../format";
 import { ChartCard } from "./ChartCard";
 import { ChartTooltip, type TooltipRow } from "./ChartTooltip";
@@ -46,6 +47,7 @@ export function WeatherChart({ weather, loading, error }: Props) {
         .sort((a, b) => a.t - b.t),
     [weather],
   );
+  const drawIn = useDrawInOnce(data.length > 0);
 
   const rained = useMemo(
     () => weather.some((w) => (w.rainfall ?? 0) > 0),
@@ -123,7 +125,7 @@ export function WeatherChart({ weather, loading, error }: Props) {
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4, stroke: theme.surface, strokeWidth: 2 }}
-            isAnimationActive={false}
+            {...drawIn}
           />
           <Line
             dataKey="air"
@@ -131,7 +133,7 @@ export function WeatherChart({ weather, loading, error }: Props) {
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4, stroke: theme.surface, strokeWidth: 2 }}
-            isAnimationActive={false}
+            {...drawIn}
           />
         </LineChart>
       </ResponsiveContainer>

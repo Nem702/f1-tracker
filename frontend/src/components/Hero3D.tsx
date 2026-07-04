@@ -1,10 +1,11 @@
-import { Component, useMemo, useRef, type ReactNode } from "react";
+import { Component, useMemo, useRef, type PointerEvent, type ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Line } from "@react-three/drei";
-import { motion } from "framer-motion";
+import { motion, useMotionValue, useSpring, type MotionValue } from "framer-motion";
 import type { Group } from "three";
 import type { Lap } from "../api/types";
 import { useTheme } from "../hooks/useTheme";
+import { entrance, staggerContainer, stagger } from "../motion";
 
 interface Props {
   laps: Lap[];
@@ -43,26 +44,106 @@ function decorativePoints(z: number, phase: number): Point[] {
   return pts;
 }
 
-function Ribbons({ ham, lec }: { ham: Point[]; lec: Point[] }) {
+// Reconciled (T3): pace used to read through a color ramp (lerp the crisp
+// line's own vertex colors toward white). design-system ran that through
+// the validator and it failed for real, not just as a formality — light
+// mode dropped below the 3:1 contrast floor at the brightened end, and
+// dark mode's leclerc hex already sits at the OKLCH lightness ceiling for
+// its band with ~zero headroom to brighten *at all* without leaving the
+// validated color. So pace is encoded on the glow duplicate's opacity
+// instead: the crisp line stays exactly the flat validated hex in both
+// modes (no hue/lightness shift, nothing to re-validate), and "faster lap"
+// reads as "more glow" rather than "brighter line."
+const GLOW_SEGMENTS = 12;
+const GLOW_OPACITY_MIN = 0.07;
+const GLOW_OPACITY_MAX = 0.22;
+
+/** Splits a ribbon into a handful of overlapping segments (sharing their
+ *  boundary points so there's no visible seam) so the glow duplicate can
+ *  carry a different opacity per segment — three.js's fat-line material
+ *  only exposes opacity as a single per-line uniform, not per-vertex, so a
+ *  smooth-reading ramp means multiple `<Line>`s instead of one. */
+function glowSegments(points: Point[]): { points: Point[]; opacity: number }[] {
+  if (points.length < 2) {
+    return [{ points, opacity: (GLOW_OPACITY_MIN + GLOW_OPACITY_MAX) / 2 }];
+  }
+  const ys = points.map((p) => p[1]);
+  const min = Math.min(...ys);
+  const max = Math.max(...ys);
+  const range = max - min || 1;
+  const chunkSize = Math.max(1, Math.ceil((points.length - 1) / GLOW_SEGMENTS));
+  const segments: { points: Point[]; opacity: number }[] = [];
+  for (let start = 0; start < points.length - 1; start += chunkSize) {
+    const end = Math.min(points.length - 1, start + chunkSize);
+    const slice = points.slice(start, end + 1);
+    const avgY = slice.reduce((sum, p) => sum + p[1], 0) / slice.length;
+    const t = (avgY - min) / range;
+    segments.push({ points: slice, opacity: GLOW_OPACITY_MIN + t * (GLOW_OPACITY_MAX - GLOW_OPACITY_MIN) });
+  }
+  return segments;
+}
+
+function Ribbons({
+  ham,
+  lec,
+  pointerX,
+  pointerY,
+}: {
+  ham: Point[];
+  lec: Point[];
+  pointerX: MotionValue<number>;
+  pointerY: MotionValue<number>;
+}) {
   const theme = useTheme();
   const group = useRef<Group>(null);
   const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // The full-viewport hero can be much narrower than it is tall (phones).
-  // Fit the 12-unit-wide ribbon to whatever width the camera exposes at z=0,
-  // never upscaling past its designed size.
+  // The banner panel can be much narrower than it is tall on small screens.
+  // Fit the 12-unit-wide ribbon to whatever width the camera exposes at
+  // z=0, never upscaling past its designed size.
   const { viewport } = useThree();
   const fit = Math.min(1, viewport.width / 13.5);
 
-  // Gentle oscillation, not a full spin — a wide ribbon rotated 90° would be
-  // edge-on and vanish.
+  // Gentle oscillation plus a subtle pointer-driven tilt — not a full spin
+  // (a wide ribbon rotated 90° would be edge-on and vanish), and not a
+  // scroll parallax (the hero is a fixed-size banner now, not a page you
+  // scroll past).
   useFrame((state) => {
-    if (still || !group.current) return;
-    group.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.25) * 0.28;
+    if (!group.current) return;
+    const sway = still ? 0 : Math.sin(state.clock.elapsedTime * 0.25) * 0.28;
+    const tiltY = still ? 0 : pointerX.get() * 0.18;
+    const tiltX = still ? 0 : pointerY.get() * 0.1;
+    group.current.rotation.y = sway + tiltY;
+    group.current.rotation.x = -0.3 + tiltX;
   });
+
+  const hamGlow = useMemo(() => glowSegments(ham), [ham]);
+  const lecGlow = useMemo(() => glowSegments(lec), [lec]);
 
   return (
     <group ref={group} rotation={[-0.3, 0, 0]} scale={[fit, fit, 1]}>
+      {/* Soft glow: a wider, faint duplicate beneath the crisp line, opacity
+       *  ramped per segment so the fastest laps glow more (see glowSegments). */}
+      {hamGlow.map((seg, i) => (
+        <Line
+          key={`ham-glow-${i}`}
+          points={seg.points}
+          color={theme.hamilton}
+          lineWidth={7}
+          transparent
+          opacity={seg.opacity}
+        />
+      ))}
+      {lecGlow.map((seg, i) => (
+        <Line
+          key={`lec-glow-${i}`}
+          points={seg.points}
+          color={theme.leclerc}
+          lineWidth={7}
+          transparent
+          opacity={seg.opacity}
+        />
+      ))}
       <Line points={ham} color={theme.hamilton} lineWidth={2.5} />
       <Line points={lec} color={theme.leclerc} lineWidth={2.5} />
     </group>
@@ -91,8 +172,27 @@ export function Hero3D({ laps, hamNumber, lecNumber, raceLabel }: Props) {
 
   const isRealData = laps.length > 0;
 
+  // Pointer parallax: DOM-level motion values read inside Ribbons' useFrame,
+  // so pointer movement never triggers a React re-render — only the r3f
+  // frame loop touches the group's rotation.
+  const rawPointerX = useMotionValue(0);
+  const rawPointerY = useMotionValue(0);
+  const pointerX = useSpring(rawPointerX, { stiffness: 40, damping: 20, mass: 0.6 });
+  const pointerY = useSpring(rawPointerY, { stiffness: 40, damping: 20, mass: 0.6 });
+
+  const handlePointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    rawPointerX.set(((e.clientX - rect.left) / rect.width) * 2 - 1);
+    rawPointerY.set(((e.clientY - rect.top) / rect.height) * 2 - 1);
+  };
+  const handlePointerLeave = () => {
+    rawPointerX.set(0);
+    rawPointerY.set(0);
+  };
+
   return (
-    <div className="hero">
+    <div className="hero" onPointerMove={handlePointerMove} onPointerLeave={handlePointerLeave}>
       <HeroBoundary>
         <Canvas
           className="hero__canvas"
@@ -100,57 +200,37 @@ export function Hero3D({ laps, hamNumber, lecNumber, raceLabel }: Props) {
           dpr={[1, 1.5]}
           gl={{ alpha: true, antialias: true }}
         >
-          <Ribbons ham={ham} lec={lec} />
+          <Ribbons ham={ham} lec={lec} pointerX={pointerX} pointerY={pointerY} />
         </Canvas>
       </HeroBoundary>
 
-      <div className="hero__overlay">
-        <motion.h1
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-        >
+      <motion.div
+        className="hero__overlay"
+        variants={staggerContainer(stagger.base, 0.1)}
+        initial="hidden"
+        animate="show"
+      >
+        <motion.h1 variants={entrance}>
           Hamilton vs. Leclerc,
           <br />
           lap by lap.
         </motion.h1>
-        <motion.p
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: "easeOut", delay: 0.15 }}
-        >
+        <motion.p variants={entrance}>
           Real timing data from every 2026 race weekend — pulled from OpenF1,
           stored in Postgres, charted here.
         </motion.p>
-      </div>
+      </motion.div>
 
-      <p className="hero__caption">
+      <motion.p
+        className="hero__caption"
+        variants={entrance}
+        custom={0.5}
+        initial="hidden"
+        animate="show"
+      >
         {raceLabel}
         {isRealData ? " — each ribbon is a driver's lap times" : ""}
-      </p>
-
-      <motion.a
-        className="hero__cue"
-        href="#about"
-        aria-label="Scroll to the About section"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.8, ease: "easeOut", delay: 1.1 }}
-      >
-        <svg
-          width="22"
-          height="22"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M4 9l8 8 8-8" />
-        </svg>
-      </motion.a>
+      </motion.p>
     </div>
   );
 }
