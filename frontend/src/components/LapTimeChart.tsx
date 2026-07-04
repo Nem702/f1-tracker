@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import type { Lap } from "../api/types";
 import { useTheme } from "../hooks/useTheme";
+import { useDrawInOnce } from "../hooks/useDrawInOnce";
 import { fmtLapTime } from "../format";
 import { ChartCard } from "./ChartCard";
 import { ChartTooltip, type TooltipRow } from "./ChartTooltip";
@@ -73,6 +74,7 @@ export function LapTimeChart({
     () => mergeLaps(laps, hamNumber, lecNumber),
     [laps, hamNumber, lecNumber],
   );
+  const drawIn = useDrawInOnce(merged.length > 0);
 
   // A red-flag stoppage records one absurd "lap" (30+ minutes at Monaco) that
   // flattens every real lap against the x-axis. Blank anything over 3× the
@@ -234,7 +236,7 @@ export function LapTimeChart({
             dot={pitDot("ham", theme.hamilton)}
             activeDot={{ r: 4, stroke: theme.surface, strokeWidth: 2 }}
             label={endLabel("ham", "HAM")}
-            isAnimationActive={false}
+            {...drawIn}
           />
           <Line
             dataKey="lec"
@@ -246,7 +248,7 @@ export function LapTimeChart({
             dot={pitDot("lec", theme.leclerc)}
             activeDot={{ r: 4, stroke: theme.surface, strokeWidth: 2 }}
             label={endLabel("lec", "LEC")}
-            isAnimationActive={false}
+            {...drawIn}
           />
         </LineChart>
       </ResponsiveContainer>

@@ -89,3 +89,20 @@ export interface DeltaRow {
   leclerc_duration: number;
   delta: number;
 }
+
+/** GET /api/next-race is the one endpoint backed by a live OpenF1 call
+ *  (the races table has no future rows) instead of a DB read — see that
+ *  endpoint's docstring in api/main.py. `next_session` is null when OpenF1
+ *  has nothing upcoming, or when the live call failed with no cache yet. */
+export interface NextSession {
+  session_name: string | null;
+  circuit_short_name: string | null;
+  location: string | null;
+  country_name: string | null;
+  date_start: string; // ISO 8601 with UTC offset
+}
+
+export interface NextRaceResponse {
+  next_session: NextSession | null;
+  fetched_at: string;
+}

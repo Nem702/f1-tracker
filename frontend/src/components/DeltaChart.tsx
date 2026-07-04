@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Bar, BarChart, Cell, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { DeltaRow, Lap } from "../api/types";
 import { useTheme } from "../hooks/useTheme";
+import { useDrawInOnce } from "../hooks/useDrawInOnce";
 import { fmtDelta, fmtLapTime } from "../format";
 import { ChartCard } from "./ChartCard";
 import { ChartTooltip } from "./ChartTooltip";
@@ -37,6 +38,7 @@ export function DeltaChart({ delta, laps, loading, error }: Props) {
     }
     return delta.filter((row) => !excluded.has(row.lap_number));
   }, [delta, laps]);
+  const drawIn = useDrawInOnce(racingLaps.length > 0);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const renderTooltip = ({ active, payload }: any) => {
@@ -125,7 +127,7 @@ export function DeltaChart({ delta, laps, loading, error }: Props) {
           />
           <Tooltip content={renderTooltip} cursor={{ fill: theme.grid, fillOpacity: 0.4 }} />
           <ReferenceLine y={0} stroke={theme.axis} strokeWidth={1} />
-          <Bar dataKey="delta" maxBarSize={24} isAnimationActive={false}>
+          <Bar dataKey="delta" maxBarSize={24} {...drawIn}>
             {racingLaps.map((row) => (
               <Cell
                 key={row.lap_number}

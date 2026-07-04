@@ -1,0 +1,84 @@
+/* Next-race countdown card — the "dark inset emphasis card" from the
+ * HReazec reference. --emphasis/--on-emphasis already resolve to the right
+ * look in both modes (design-system's theme.ts): a genuinely dark card in
+ * the light theme, and the same raised charcoal as the rest of the UI in
+ * the dark theme, where the HReazec trick has no work left to do — so this
+ * file no longer needs a mode-specific variant. */
+
+.countdown {
+  position: relative;
+  border-radius: var(--radius-lg);
+  padding: var(--space-5) var(--space-6);
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  background: var(--emphasis);
+  color: var(--on-emphasis);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-raised);
+}
+
+.countdown__eyebrow {
+  margin: 0 0 var(--space-1);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.countdown__title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.countdown__session {
+  margin: 0.15rem 0 var(--space-4);
+  font-size: 0.9rem;
+  opacity: 0.75;
+}
+
+.countdown__clock {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.countdown__sep {
+  padding-bottom: 0.9rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+  opacity: 0.4;
+}
+
+.countdown__unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Sizing here is inherited by DigitRoll's spans (components/DigitRoll.tsx) —
+ * that component only sets the structural guarantees (1ch frame, tabular
+ * numerals), not cosmetics. */
+.countdown__digits {
+  display: flex;
+  gap: 0.1rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.9rem;
+}
+
+.countdown__unit-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
+.countdown__local {
+  margin: var(--space-4) 0 0;
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
