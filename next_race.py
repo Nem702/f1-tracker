@@ -1,4 +1,11 @@
-# next_race.py
+"""
+next_race.py
+
+Finds the soonest upcoming F1 session from OpenF1. Runnable as a CLI
+(`python next_race.py`, prints a countdown to stdout) and importable —
+`get_next_session()` has no side effects at import time or on call, so
+api/main.py's `/api/next-race` endpoint calls it directly.
+"""
 from datetime import datetime, timezone
 from openf1_client import request_with_retry
 from logger import logger

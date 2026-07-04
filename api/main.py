@@ -4,10 +4,17 @@ frontend. Serves what the fetch pipeline has already persisted — it never
 calls OpenF1 itself, so it's immune to rate limits and the live-session
 lockout. No writes: every endpoint is a SELECT.
 
+The single documented exception is GET /api/next-race: the races table has
+zero future rows (backfill only stores completed sessions), so that one
+endpoint calls OpenF1 live, through an in-process TTL cache, and degrades to
+a stale cache or {"next_session": null} instead of ever raising a 5xx.
+
 Run from the repo root:  py -m uvicorn api.main:app --reload
 """
 
 import os
+import time
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +22,7 @@ from psycopg2.extras import RealDictCursor
 
 from db import get_connection
 from logger import logger
+from next_race import get_next_session
 
 app = FastAPI(title="f1-tracker API", version="0.1.0")
 
@@ -80,6 +88,58 @@ def ferrari_driver_numbers(conn):
     if ham is None or lec is None:
         raise HTTPException(status_code=500, detail="Ferrari drivers not found in drivers table")
     return ham, lec
+
+
+_NEXT_RACE_TTL_SECONDS = 60 * 60
+_next_race_cache = {"payload": None, "fetched_at": 0.0}
+
+
+def _utc_now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _next_race_payload(next_dt, session):
+    return {
+        "session_name": session.get("session_name"),
+        "circuit_short_name": session.get("circuit_short_name"),
+        "location": session.get("location"),
+        "country_name": session.get("country_name"),
+        "date_start": next_dt.isoformat(),
+    }
+
+
+@app.get("/api/next-race")
+def next_race():
+    """Live OpenF1 lookup, cached for _NEXT_RACE_TTL_SECONDS — see module
+    docstring. Any OpenF1 failure (including the free-tier 401 lockout while
+    a session is live) falls back to the last good cache, or to
+    {"next_session": null} if nothing has ever been cached. Never a 5xx."""
+    now = time.monotonic()
+    cached = _next_race_cache["payload"]
+    cache_age = now - _next_race_cache["fetched_at"]
+
+    if cached is not None and cache_age < _NEXT_RACE_TTL_SECONDS:
+        logger.debug("GET /api/next-race - cache hit (age %.0fs)", cache_age)
+        return cached
+
+    try:
+        result = get_next_session()
+    except Exception:
+        logger.exception("GET /api/next-race - OpenF1 fetch failed")
+        if cached is not None:
+            logger.warning("GET /api/next-race - serving stale cache after fetch error")
+            return cached
+        logger.warning("GET /api/next-race - no cache available, returning null")
+        return {"next_session": None, "fetched_at": _utc_now_iso()}
+
+    payload = {
+        "next_session": _next_race_payload(*result) if result else None,
+        "fetched_at": _utc_now_iso(),
+    }
+    _next_race_cache["payload"] = payload
+    _next_race_cache["fetched_at"] = now
+    logger.debug("GET /api/next-race - fetched fresh from OpenF1")
+    return payload
 
 
 @app.get("/api/races")
