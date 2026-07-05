@@ -11,16 +11,17 @@ import {
   YAxis,
 } from "recharts";
 import type { PitStop } from "../api/types";
+import type { DriverPair } from "../teams";
 import { useTheme } from "../hooks/useTheme";
 import { useDrawInOnce } from "../hooks/useDrawInOnce";
 import { fmtSeconds } from "../format";
 import { ChartCard } from "./ChartCard";
+import { PairLegend } from "./DriverChip";
 import { ChartTooltip } from "./ChartTooltip";
 
 interface Props {
   pit: PitStop[];
-  hamNumber: number | null;
-  lecNumber: number | null;
+  pair: DriverPair | null;
   loading: boolean;
   error: string | null;
 }
@@ -28,35 +29,40 @@ interface Props {
 interface StopRow {
   key: string;
   lap: number;
-  driver: "Hamilton" | "Leclerc";
+  driverNumber: number;
+  driver: string; // last name for the table/tooltip
   duration: number;
 }
 
 /** Total pit-lane time per stop (entry to exit), both drivers on one lap axis. */
-export function PitStopChart({ pit, hamNumber, lecNumber, loading, error }: Props) {
+export function PitStopChart({ pit, pair, loading, error }: Props) {
   const theme = useTheme();
+  const aNumber = pair?.[0].number ?? null;
+  const bNumber = pair?.[1].number ?? null;
 
   const allStops: StopRow[] = useMemo(
     () =>
       pit
-        // The endpoint returns every car's pit stops for the session, not
-        // just the two tracked here — without this filter every other
-        // driver's stop gets mislabeled "Leclerc" below.
+        // The endpoint returns every tracked car's pit stops for the
+        // session — without this filter other teams' stops would be
+        // mislabeled as the active pair below.
         .filter(
           (p) =>
             p.pit_duration !== null &&
-            (p.driver_number === hamNumber || p.driver_number === lecNumber),
+            (p.driver_number === aNumber || p.driver_number === bNumber),
         )
         .map((p) => ({
           key: `L${p.lap_number}-${p.driver_number}`,
           lap: p.lap_number,
-          driver: (p.driver_number === hamNumber ? "Hamilton" : "Leclerc") as
-            | "Hamilton"
-            | "Leclerc",
+          driverNumber: p.driver_number,
+          driver:
+            (p.driver_number === aNumber
+              ? pair?.[0].lastName
+              : pair?.[1].lastName) ?? "?",
           duration: p.pit_duration!,
         }))
         .sort((a, b) => a.lap - b.lap),
-    [pit, hamNumber, lecNumber],
+    [pit, pair, aNumber, bNumber],
   );
 
   // A car sitting out a red flag logs a 30+ minute "stop" that dwarfs every
@@ -73,8 +79,8 @@ export function PitStopChart({ pit, hamNumber, lecNumber, loading, error }: Prop
       ? `Pit-lane time per stop. ${outliers} red-flag stoppage${outliers > 1 ? "s" : ""} left off the chart — see the table.`
       : "Pit-lane time per stop (entry to exit, not just the stationary time).";
 
-  const color = (driver: StopRow["driver"]) =>
-    driver === "Hamilton" ? theme.hamilton : theme.leclerc;
+  const color = (driverNumber: number) =>
+    driverNumber === aNumber ? theme.driver1 : theme.driver2;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const renderTooltip = ({ active, payload }: any) => {
@@ -85,7 +91,7 @@ export function PitStopChart({ pit, hamNumber, lecNumber, loading, error }: Prop
         title={`Lap ${row.lap}`}
         rows={[
           {
-            color: color(row.driver),
+            color: color(row.driverNumber),
             value: fmtSeconds(row.duration),
             label: `${row.driver} · pit lane total`,
           },
@@ -98,10 +104,7 @@ export function PitStopChart({ pit, hamNumber, lecNumber, loading, error }: Prop
     <ChartCard
       title="Pit stops"
       subtitle={subtitle}
-      legend={[
-        { label: "Hamilton", color: theme.hamilton, shape: "rect" },
-        { label: "Leclerc", color: theme.leclerc, shape: "rect" },
-      ]}
+      legend={<PairLegend pair={pair} />}
       loading={loading}
       error={error}
       hasData={stops.length > 0}
@@ -151,7 +154,7 @@ export function PitStopChart({ pit, hamNumber, lecNumber, loading, error }: Prop
               style={{ fill: theme.inkSecondary, fontSize: 11 }}
             />
             {stops.map((row) => (
-              <Cell key={row.key} fill={color(row.driver)} />
+              <Cell key={row.key} fill={color(row.driverNumber)} />
             ))}
           </Bar>
         </BarChart>

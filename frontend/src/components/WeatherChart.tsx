@@ -12,7 +12,7 @@ import type { WeatherRow } from "../api/types";
 import { useTheme } from "../hooks/useTheme";
 import { useDrawInOnce } from "../hooks/useDrawInOnce";
 import { fmtClock } from "../format";
-import { ChartCard } from "./ChartCard";
+import { ChartCard, LegendList } from "./ChartCard";
 import { ChartTooltip, type TooltipRow } from "./ChartTooltip";
 
 interface Props {
@@ -76,10 +76,14 @@ export function WeatherChart({ weather, loading, error }: Props) {
     <ChartCard
       title="Weather"
       subtitle={rained ? "Rain fell during this session." : "Track and air temperature over the session."}
-      legend={[
-        { label: "Track temp", color: theme.tempTrack, shape: "line" },
-        { label: "Air temp", color: theme.tempAir, shape: "line" },
-      ]}
+      legend={
+        <LegendList
+          items={[
+            { label: "Track temp", color: theme.tempTrack, shape: "line" },
+            { label: "Air temp", color: theme.tempAir, shape: "line" },
+          ]}
+        />
+      }
       loading={loading}
       error={error}
       hasData={data.length > 0}

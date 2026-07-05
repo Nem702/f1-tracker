@@ -9,10 +9,30 @@ export interface LegendItem {
   shape: "line" | "rect"; // legend mirrors the mark: line for lines, rect for fills
 }
 
+/** Classic swatch legend for non-pair series (compounds, weather). Pair
+ *  charts use PairLegend (DriverChip.tsx) instead — same .legend list. */
+export function LegendList({ items }: { items: LegendItem[] }) {
+  if (items.length === 0) return null;
+  return (
+    <ul className="legend">
+      {items.map((item) => (
+        <li key={item.label} className="legend__item">
+          <span
+            className={`legend__swatch legend__swatch--${item.shape}`}
+            style={{ backgroundColor: item.color }}
+            aria-hidden="true"
+          />
+          {item.label}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 interface Props {
   title: string;
   subtitle?: string;
-  legend?: LegendItem[];
+  legend?: ReactNode;
   loading?: boolean;
   error?: string | null;
   hasData: boolean;
@@ -41,6 +61,11 @@ function SwapIcon() {
  * (every chart ships its accessible table twin), and the shared loading /
  * empty / error states. While a refetch runs, the previous render is held at
  * reduced opacity — no skeleton, no layout jump.
+ *
+ * Liquid-glass layering: the card itself is glass over the page aurora;
+ * headers, legends, and the toggle sit on the glass, while the data (chart
+ * or table) draws on a near-opaque inset plate so marks stay readable over
+ * the moving color underneath.
  */
 export function ChartCard({
   title,
@@ -58,7 +83,7 @@ export function ChartCard({
 
   return (
     <motion.section
-      className={`card${wide ? " card--wide" : ""}`}
+      className={`card glass${wide ? " card--wide" : ""}`}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: duration.slow, ease: EASE }}
@@ -70,20 +95,7 @@ export function ChartCard({
           {subtitle && <p className="card__subtitle">{subtitle}</p>}
         </div>
         <div className="card__tools">
-          {legend && legend.length > 0 && (
-            <ul className="legend">
-              {legend.map((item) => (
-                <li key={item.label} className="legend__item">
-                  <span
-                    className={`legend__swatch legend__swatch--${item.shape}`}
-                    style={{ backgroundColor: item.color }}
-                    aria-hidden="true"
-                  />
-                  {item.label}
-                </li>
-              ))}
-            </ul>
-          )}
+          {legend}
           {table && hasData && (
             <button
               type="button"
@@ -103,9 +115,11 @@ export function ChartCard({
         ) : !hasData && !loading ? (
           <p className="card__state">{emptyText}</p>
         ) : view === "table" && table ? (
-          <DataTable spec={table} />
+          <div className="card__plate">
+            <DataTable spec={table} />
+          </div>
         ) : (
-          children
+          <div className="card__plate">{children}</div>
         )}
       </div>
     </motion.section>

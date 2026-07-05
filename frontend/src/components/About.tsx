@@ -32,12 +32,13 @@ export function About() {
         <p className="section__eyebrow">About</p>
         <h2 className="section__title">Real data, end to end.</h2>
         <p className="about__body">
-          F1 Tracker is a personal skill-building project that follows one
-          rivalry — Lewis Hamilton and Charles Leclerc — through the 2026
-          season. Real timing data from the OpenF1 API lands in a Postgres
-          database, a small API serves it, and this page draws it. No mock
-          data anywhere in the stack: every lap, pit stop, and weather reading
-          below happened on track.
+          F1 Tracker is a personal skill-building project that follows the
+          front of the 2026 field — Ferrari, Mercedes, McLaren, and Red Bull —
+          across the season. Pick a team to compare its driver pair, or put
+          any two of the eight tracked drivers head-to-head. Real timing data
+          from the OpenF1 API lands in a Postgres database, a small API serves
+          it, and this page draws it. No mock data anywhere in the stack:
+          every lap, pit stop, and weather reading below happened on track.
         </p>
       </motion.div>
 
@@ -51,7 +52,7 @@ export function About() {
         {steps.map((step, i) => (
           <motion.li
             key={step.title}
-            className="pipeline__step"
+            className="pipeline__step glass"
             variants={staggerItem}
             {...hoverLift}
           >

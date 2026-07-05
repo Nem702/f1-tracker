@@ -15,6 +15,8 @@ export interface Race {
 export interface Driver {
   driver_number: number;
   name: string;
+  team_name: string | null;
+  name_acronym: string | null;
 }
 
 export interface Lap {
@@ -79,15 +81,6 @@ export interface RaceControlRow {
   sector: number | null;
   driver_number: number | null;
   message: string | null;
-}
-
-/** One row per lap both drivers completed with a recorded time.
- *  Positive delta = Leclerc was faster that lap (Hamilton's took longer). */
-export interface DeltaRow {
-  lap_number: number;
-  hamilton_duration: number;
-  leclerc_duration: number;
-  delta: number;
 }
 
 /** GET /api/next-race is the one endpoint backed by a live OpenF1 call

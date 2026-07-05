@@ -1,5 +1,4 @@
 import type {
-  DeltaRow,
   Driver,
   Lap,
   NextRaceResponse,
@@ -33,6 +32,5 @@ export const api = {
   weather: (sk: number) => get<WeatherRow[]>(`/api/races/${sk}/weather`),
   raceControl: (sk: number) =>
     get<RaceControlRow[]>(`/api/races/${sk}/race-control`),
-  delta: (sk: number) => get<DeltaRow[]>(`/api/races/${sk}/delta`),
   nextRace: () => get<NextRaceResponse>("/api/next-race"),
 };

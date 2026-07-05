@@ -9,70 +9,69 @@ import {
   YAxis,
 } from "recharts";
 import type { Lap } from "../api/types";
+import type { DriverPair } from "../teams";
 import { useTheme } from "../hooks/useTheme";
 import { useDrawInOnce } from "../hooks/useDrawInOnce";
 import { fmtLapTime } from "../format";
 import { ChartCard } from "./ChartCard";
+import { PairLegend } from "./DriverChip";
 import { ChartTooltip, type TooltipRow } from "./ChartTooltip";
 
 interface Props {
   laps: Lap[];
-  hamNumber: number | null;
-  lecNumber: number | null;
+  pair: DriverPair | null;
   loading: boolean;
   error: string | null;
 }
 
 interface LapPoint {
   lap: number;
-  ham: number | null;
-  lec: number | null;
-  hamPitOut: boolean;
-  lecPitOut: boolean;
+  a: number | null;
+  b: number | null;
+  aPitOut: boolean;
+  bPitOut: boolean;
 }
 
-/** Merge the flat laps list into one row per lap number. Laps without a
- *  recorded duration stay null so the line shows a gap, not an invented value. */
+/** Merge the flat laps list into one row per lap number for the active pair.
+ *  Laps without a recorded duration stay null so the line shows a gap, not
+ *  an invented value. */
 function mergeLaps(
   laps: Lap[],
-  hamNumber: number | null,
-  lecNumber: number | null,
+  aNumber: number | null,
+  bNumber: number | null,
 ): LapPoint[] {
   const byLap = new Map<number, LapPoint>();
   for (const lap of laps) {
+    if (lap.driver_number !== aNumber && lap.driver_number !== bNumber) continue;
     let point = byLap.get(lap.lap_number);
     if (!point) {
       point = {
         lap: lap.lap_number,
-        ham: null,
-        lec: null,
-        hamPitOut: false,
-        lecPitOut: false,
+        a: null,
+        b: null,
+        aPitOut: false,
+        bPitOut: false,
       };
       byLap.set(lap.lap_number, point);
     }
-    if (lap.driver_number === hamNumber) {
-      point.ham = lap.lap_duration;
-      point.hamPitOut = lap.is_pit_out_lap === true;
-    } else if (lap.driver_number === lecNumber) {
-      point.lec = lap.lap_duration;
-      point.lecPitOut = lap.is_pit_out_lap === true;
+    if (lap.driver_number === aNumber) {
+      point.a = lap.lap_duration;
+      point.aPitOut = lap.is_pit_out_lap === true;
+    } else {
+      point.b = lap.lap_duration;
+      point.bPitOut = lap.is_pit_out_lap === true;
     }
   }
   return [...byLap.values()].sort((a, b) => a.lap - b.lap);
 }
 
-export function LapTimeChart({
-  laps,
-  hamNumber,
-  lecNumber,
-  loading,
-  error,
-}: Props) {
+export function LapTimeChart({ laps, pair, loading, error }: Props) {
   const theme = useTheme();
+  const aNumber = pair?.[0].number ?? null;
+  const bNumber = pair?.[1].number ?? null;
   const merged = useMemo(
-    () => mergeLaps(laps, hamNumber, lecNumber),
-    [laps, hamNumber, lecNumber],
+    () => mergeLaps(laps, aNumber, bNumber),
+    [laps, aNumber, bNumber],
   );
   const drawIn = useDrawInOnce(merged.length > 0);
 
@@ -82,38 +81,38 @@ export function LapTimeChart({
   // keep the raw value in the table view.
   const data = useMemo(() => {
     const durations = merged
-      .flatMap((p) => [p.ham, p.lec])
+      .flatMap((p) => [p.a, p.b])
       .filter((d): d is number => d !== null)
       .sort((a, b) => a - b);
     if (durations.length === 0) return merged;
     const cutoff = durations[Math.floor(durations.length / 2)] * 3;
     return merged.map((p) => ({
       ...p,
-      ham: p.ham !== null && p.ham > cutoff ? null : p.ham,
-      lec: p.lec !== null && p.lec > cutoff ? null : p.lec,
+      a: p.a !== null && p.a > cutoff ? null : p.a,
+      b: p.b !== null && p.b > cutoff ? null : p.b,
     }));
   }, [merged]);
 
   // Index of each series' last real point, so the direct end-label sits on
-  // the line's actual end (Leclerc's line stops early on a DNF).
+  // the line's actual end (a line stops early on a DNF).
   const lastIdx = useMemo(() => {
-    let ham = -1;
-    let lec = -1;
+    let a = -1;
+    let b = -1;
     data.forEach((p, i) => {
-      if (p.ham !== null) ham = i;
-      if (p.lec !== null) lec = i;
+      if (p.a !== null) a = i;
+      if (p.b !== null) b = i;
     });
-    return { ham, lec };
+    return { a, b };
   }, [data]);
 
   // Pit-out laps get a marker (≥8px with a 2px surface ring); every other
   // point renders no dot — the 2px line carries the series.
   const pitDot =
-    (series: "ham" | "lec", color: string) =>
+    (series: "a" | "b", color: string) =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (props: any) => {
       const isPitOut =
-        series === "ham" ? props.payload?.hamPitOut : props.payload?.lecPitOut;
+        series === "a" ? props.payload?.aPitOut : props.payload?.bPitOut;
       if (!isPitOut || props.value == null) {
         return <circle key={`${series}-${props.index}`} r={0} />;
       }
@@ -130,8 +129,9 @@ export function LapTimeChart({
       );
     };
 
+  // Direct end-labels wear the driver's acronym from the API data.
   const endLabel =
-    (series: "ham" | "lec", text: string) =>
+    (series: "a" | "b", text: string) =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (props: any) => {
       if (props.index !== lastIdx[series] || props.value == null) {
@@ -153,21 +153,21 @@ export function LapTimeChart({
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const renderTooltip = ({ active, payload, label }: any) => {
-    if (!active || !payload?.length) return null;
+    if (!active || !payload?.length || !pair) return null;
     const point: LapPoint | undefined = payload[0]?.payload;
     const rows: TooltipRow[] = [];
-    if (point?.ham != null) {
+    if (point?.a != null) {
       rows.push({
-        color: theme.hamilton,
-        value: fmtLapTime(point.ham),
-        label: `Hamilton${point.hamPitOut ? " · pit out" : ""}`,
+        color: theme.driver1,
+        value: fmtLapTime(point.a),
+        label: `${pair[0].lastName}${point.aPitOut ? " · pit out" : ""}`,
       });
     }
-    if (point?.lec != null) {
+    if (point?.b != null) {
       rows.push({
-        color: theme.leclerc,
-        value: fmtLapTime(point.lec),
-        label: `Leclerc${point.lecPitOut ? " · pit out" : ""}`,
+        color: theme.driver2,
+        value: fmtLapTime(point.b),
+        label: `${pair[1].lastName}${point.bPitOut ? " · pit out" : ""}`,
       });
     }
     return <ChartTooltip title={`Lap ${label}`} rows={rows} />;
@@ -177,10 +177,7 @@ export function LapTimeChart({
     <ChartCard
       title="Lap times"
       subtitle="Dots mark pit-out laps; gaps are missing times or red-flag laps (full values in the table)."
-      legend={[
-        { label: "Hamilton", color: theme.hamilton, shape: "line" },
-        { label: "Leclerc", color: theme.leclerc, shape: "line" },
-      ]}
+      legend={<PairLegend pair={pair} />}
       loading={loading}
       error={error}
       hasData={data.length > 0}
@@ -189,13 +186,13 @@ export function LapTimeChart({
         columns: [
           { key: "lap", label: "Lap" },
           {
-            key: "ham",
-            label: "Hamilton",
+            key: "a",
+            label: pair?.[0].lastName ?? "Driver A",
             format: (v) => fmtLapTime(v as number),
           },
           {
-            key: "lec",
-            label: "Leclerc",
+            key: "b",
+            label: pair?.[1].lastName ?? "Driver B",
             format: (v) => fmtLapTime(v as number),
           },
         ],
@@ -227,27 +224,27 @@ export function LapTimeChart({
             cursor={{ stroke: theme.axis, strokeWidth: 1 }}
           />
           <Line
-            dataKey="ham"
-            stroke={theme.hamilton}
+            dataKey="a"
+            stroke={theme.driver1}
             strokeWidth={2}
             strokeLinejoin="round"
             strokeLinecap="round"
             connectNulls={false}
-            dot={pitDot("ham", theme.hamilton)}
+            dot={pitDot("a", theme.driver1)}
             activeDot={{ r: 4, stroke: theme.surface, strokeWidth: 2 }}
-            label={endLabel("ham", "HAM")}
+            label={endLabel("a", pair?.[0].acronym ?? "")}
             {...drawIn}
           />
           <Line
-            dataKey="lec"
-            stroke={theme.leclerc}
+            dataKey="b"
+            stroke={theme.driver2}
             strokeWidth={2}
             strokeLinejoin="round"
             strokeLinecap="round"
             connectNulls={false}
-            dot={pitDot("lec", theme.leclerc)}
+            dot={pitDot("b", theme.driver2)}
             activeDot={{ r: 4, stroke: theme.surface, strokeWidth: 2 }}
-            label={endLabel("lec", "LEC")}
+            label={endLabel("b", pair?.[1].acronym ?? "")}
             {...drawIn}
           />
         </LineChart>
