@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from backend.shared.logger import logger
 from backend.shared.openf1_endpoints import (
     get_sessions,
-    get_ferrari_teammates,
+    get_tracked_drivers,
     get_laps,
     get_stints,
     get_pit,
@@ -64,15 +64,16 @@ def process_session(conn, session):
     upsert_race(conn, session)
 
     # Driver numbers are resolved per-session from /drivers, not hardcoded —
-    # numbers can change between seasons, and a session that predates the
-    # teammate pairing just yields fewer entries here.
-    teammates = get_ferrari_teammates(session["session_key"])
+    # numbers can change between seasons. If a team ever fields more than two
+    # drivers across a season (mid-season swap), all of them are tracked —
+    # the frontend decides how to present them.
+    tracked = get_tracked_drivers(session["session_key"])
 
-    for acronym, record in teammates.items():
+    for record in tracked:
         number = record["driver_number"]
-        name = record.get("full_name") or acronym
+        name = record.get("full_name") or record.get("name_acronym") or str(number)
 
-        upsert_driver(conn, number, name)
+        upsert_driver(conn, number, name, record.get("team_name"), record.get("name_acronym"))
 
         laps = get_laps(session["session_key"], number)
         upsert_laps(conn, session["session_key"], number, laps)

@@ -1,7 +1,6 @@
 venv/
 __pycache__/
 .env
+.claude/
 # local one-off DB utilities, deliberately untracked
-backend/tools/test_neon_connection.py
-backend/tools/apply_schema.py
-backend/tools/check_tables.py
+backend/tools/
