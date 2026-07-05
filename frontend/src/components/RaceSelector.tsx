@@ -5,9 +5,6 @@ interface Props {
   races: Race[];
   value: number | null;
   onChange: (sessionKey: number) => void;
-  /** Frosted variant for the pill under the hero, which sits on the bare
-   *  page rather than in a filter row (see .race-selector--glass). */
-  glass?: boolean;
 }
 
 function CalendarIcon() {
@@ -21,10 +18,11 @@ function CalendarIcon() {
 
 /** The race combobox — one instance in Race Analysis's filter row, one under
  *  the hero; both drive the same `selected` state in App, so the whole app
- *  re-renders against the selected race wherever it was picked. */
-export function RaceSelector({ races, value, onChange, glass = false }: Props) {
+ *  re-renders against the selected race wherever it was picked. Every pill
+ *  is glass now (the liquid-glass pass), so the old glass variant is gone. */
+export function RaceSelector({ races, value, onChange }: Props) {
   return (
-    <label className={`race-selector${glass ? " race-selector--glass" : ""}`}>
+    <label className="race-selector glass">
       <span className="race-selector__label">
         <CalendarIcon />
         Race

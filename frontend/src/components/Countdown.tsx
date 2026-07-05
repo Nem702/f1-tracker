@@ -56,7 +56,7 @@ export function Countdown() {
   const parts = countdown ?? { days: 0, hours: 0, minutes: 0, seconds: 0 };
 
   return (
-    <div className="countdown">
+    <div className="countdown glass">
       <p className="countdown__eyebrow">Up next</p>
       <h3 className="countdown__title">
         {gpName}

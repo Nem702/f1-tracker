@@ -2,7 +2,12 @@
    .app-shell from theme.ts (the single source of truth) — nothing here
    hardcodes a color except the pre-mount body fallback. Non-color design
    tokens (type scale, radius, spacing, elevation) live here as plain
-   :root custom properties since they don't vary by mode. */
+   :root custom properties since they don't vary by mode.
+
+   Liquid-glass layering (bottom to top): the fixed page aurora (base color
+   + three drifting blobs in the active team's hues) < frosted glass
+   surfaces (ONE recipe, the .glass utility) < near-opaque chart plates
+   inside glass cards so data marks never fight the moving color. */
 
 @import "@fontsource-variable/inter/wght.css";
 
@@ -23,10 +28,14 @@
   --weight-body: 400;
   --weight-emphasis: 700; /* stat numbers, big counts */
 
-  /* ---- radius scale ---- */
+  /* ---- radius scale (glass pass: one radius per surface tier) ---- */
   --radius-sm: 10px;
   --radius-md: 16px;
-  --radius-lg: 24px;
+  --radius-tile: 18px; /* stat tiles, pipeline steps */
+  --radius-card: 20px; /* chart cards */
+  --radius-feature: 24px; /* countdown / feature cards */
+  --radius-rail: 28px; /* the sidebar rail */
+  --radius-plate: 14px; /* the opaque chart plate inside a card */
   --radius-pill: 999px;
 
   /* ---- spacing scale (4px base) ---- */
@@ -43,7 +52,11 @@
   --sidebar-w: 264px;
   --content-pad-x: 40px;
   --content-pad-y: 36px;
-  --glass-blur: 20px;
+
+  /* ---- glass ---- */
+  --glass-blur: 24px;
+  /* the retint/theme transition — background & border only, ~250ms */
+  --tint-transition: background-color 0.25s ease, border-color 0.25s ease;
 }
 
 @media (max-width: 900px) {
@@ -70,17 +83,115 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  background: #f7ece0;
+  /* pre-mount fallback — must match theme.ts's pageBase (aurora base) */
+  background: #f2ede7;
 }
 
 @media (prefers-color-scheme: dark) {
   body {
-    background: #0d0d0d;
+    background: #0a0a0c;
   }
 }
 
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* ---------- the ONE glass recipe ---------- */
+/* Every frosted surface wears this utility; per-mode values come from the
+   theme vars. Never nest more than two backdrop-filter layers (card > pill
+   is the sanctioned pair). */
+
+.glass {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    inset 0 1px 0 var(--spec),
+    var(--shadow-card);
+  transition: var(--tint-transition);
+}
+
+/* No backdrop-filter support (older Safari): frost can't sample the page,
+   so the fill goes near-opaque instead. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass {
+    background: var(--glass-opaque);
+  }
+}
+
+/* ---------- page aurora ---------- */
+/* One fixed layer behind everything; blobs wear the active theme's accent
+   and pair colors, so a team switch retints the whole page wash. Transform-
+   only drift; never per-card blobs. */
+
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--page-base);
+  transition: var(--tint-transition);
+}
+
+.aurora__blob {
+  position: absolute;
+  width: 760px;
+  height: 760px;
+  border-radius: 50%;
+  filter: blur(110px);
+  will-change: transform;
+  transition: background-color 0.25s ease, opacity 0.25s ease;
+}
+
+.aurora__blob--a {
+  top: -240px;
+  left: -180px;
+  background: var(--accent);
+  opacity: var(--aurora-a);
+  animation: aurora-drift-a 26s ease-in-out infinite alternate;
+}
+
+.aurora__blob--b {
+  top: 16%;
+  right: -260px;
+  background: var(--driver1);
+  opacity: var(--aurora-b);
+  animation: aurora-drift-b 30s ease-in-out infinite alternate;
+}
+
+.aurora__blob--c {
+  bottom: -280px;
+  left: 28%;
+  background: var(--driver2);
+  opacity: var(--aurora-c);
+  animation: aurora-drift-c 34s ease-in-out infinite alternate;
+}
+
+@keyframes aurora-drift-a {
+  to {
+    transform: translate3d(150px, 110px, 0) scale(1.08);
+  }
+}
+
+@keyframes aurora-drift-b {
+  to {
+    transform: translate3d(-130px, 140px, 0) scale(0.94);
+  }
+}
+
+@keyframes aurora-drift-c {
+  to {
+    transform: translate3d(140px, -120px, 0) scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora__blob {
+    animation: none;
+  }
 }
 
 /* ---------- app shell: sidebar + content ---------- */
@@ -91,12 +202,7 @@ body {
   grid-template-columns: var(--sidebar-w) 1fr;
   align-items: start;
   color: var(--ink-primary);
-  /* Light mode: warm peach glow top-left fading into cream. Dark mode's
-     gradient stops are both --page, so this degenerates to a flat fill —
-     one rule serves both themes off the same two tokens. */
-  background:
-    radial-gradient(1100px circle at 4% -12%, var(--page-grad-from), transparent 60%),
-    var(--page-grad-to);
+  /* the fixed .aurora child paints the page background */
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -131,20 +237,19 @@ body {
   transform: rotate(180deg);
 }
 
-/* ---------- sidebar ---------- */
+/* ---------- sidebar: floating glass rail ---------- */
 
 .sidebar {
   position: sticky;
-  top: 0;
-  height: 100vh;
+  top: 16px;
+  z-index: 2;
+  height: calc(100vh - 32px);
+  margin: 16px 0 16px 16px;
+  border-radius: var(--radius-rail);
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
   padding: var(--space-5) var(--space-3);
-  background: var(--glass);
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  backdrop-filter: blur(var(--glass-blur));
-  border-right: 1px solid var(--glass-border);
   overflow-y: auto;
 }
 
@@ -199,7 +304,8 @@ body {
   width: 22px;
   height: 22px;
   border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, var(--accent), var(--lec));
+  background: linear-gradient(135deg, var(--accent), var(--driver2));
+  transition: var(--tint-transition);
 }
 
 .sidebar__nav {
@@ -231,19 +337,25 @@ body {
 }
 
 .sidebar__nav-item--active .sidebar__nav-icon {
-  color: var(--accent);
+  color: var(--accent-ink);
+  transition: color 0.25s ease;
 }
 
 /* The active-pill itself: framer-motion gives this a shared `layoutId`
    (see src/motion.ts) so it morphs between nav items instead of popping;
-   sits behind the icon/label via z-index, not DOM order. */
+   sits behind the icon/label via z-index, not DOM order. A glass pill —
+   translucent chip fill + frosted border + specular inset — but NO
+   backdrop-filter of its own: it sits on the already-frosted rail, and
+   card > pill is the deepest sanctioned nesting. */
 .sidebar__nav-pill {
   position: absolute;
   inset: 0;
   z-index: 0;
   border-radius: var(--radius-pill);
-  background: var(--raised);
-  box-shadow: var(--shadow-card);
+  background: var(--glass2);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 var(--spec);
+  transition: var(--tint-transition);
 }
 
 .sidebar__nav-icon,
@@ -315,6 +427,8 @@ body {
 /* ---------- content area ---------- */
 
 .content {
+  position: relative;
+  z-index: 1;
   min-width: 0;
   padding: var(--content-pad-y) var(--content-pad-x) var(--space-8);
 }
@@ -361,17 +475,16 @@ body {
 }
 
 /* ---------- hero banner (Overview view) ---------- */
-/* Was a full 100svh section behind a fixed header, then a contained rounded
-   card; now uncontained — no surface/shadow/radius, bleeding past the
-   content column's own side padding so the ribbon sits directly on the
-   page background as the view's center feature, not a boxed-in panel. */
+/* Uncontained — no surface/shadow/radius, bleeding past the content
+   column's own side padding so the ribbons float directly on the page
+   aurora as the view's center feature, not a boxed-in panel. */
 
 .hero {
   position: relative;
   height: clamp(360px, 48vw, 560px);
   overflow: hidden;
-  /* Tight bottom margin: the team-selector pill directly below belongs to
-     the hero visually, so the big gap comes after the pill, not before. */
+  /* Tight bottom margin: the team switcher directly below belongs to the
+     hero visually, so the big gap comes after it, not before. */
   margin: 0 calc(var(--content-pad-x) * -1) var(--space-4);
 }
 
@@ -422,13 +535,142 @@ body {
   pointer-events: none;
 }
 
-/* Centers the team + race pills under the uncontained hero. */
+/* Centers the team switcher + race pill under the uncontained hero. */
 .overview__selectors {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+  align-items: flex-start;
   gap: var(--space-3);
   margin-bottom: var(--space-6);
+}
+
+/* ---------- team switcher ---------- */
+
+.team-switcher {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* The radiogroup row: horizontal scroll instead of wrapping below 900px —
+   chips keep their shape and the page never overflows sideways. */
+.team-switcher__chips {
+  display: flex;
+  gap: var(--space-2);
+  max-width: 100%;
+  overflow-x: auto;
+  /* room for the active chip's glow so overflow:auto doesn't clip it;
+     the negative margin gives the padding back to the layout */
+  padding: 10px;
+  margin: -6px;
+  scrollbar-width: none;
+}
+
+.team-switcher__chips::-webkit-scrollbar {
+  display: none;
+}
+
+.team-chip {
+  /* the team's own swatch color; teams override inline, the H2H chip and
+     any glow fall back to the active accent */
+  --chip-color: var(--accent);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  row-gap: 1px;
+  align-items: center;
+  flex-shrink: 0;
+  text-align: left;
+  padding: 8px 16px 8px 12px;
+  border-radius: var(--radius-md);
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.team-chip__swatch {
+  grid-row: 1 / span 2;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--chip-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--chip-color) 20%, transparent);
+  transition: var(--tint-transition);
+}
+
+.team-chip__swatch--h2h {
+  width: auto;
+  height: auto;
+  background: transparent;
+  box-shadow: none;
+  display: inline-flex;
+  color: var(--ink-secondary);
+}
+
+.team-chip__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  line-height: 1.2;
+}
+
+.team-chip__duo {
+  grid-column: 2;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-secondary);
+}
+
+/* Active chip: brighter inner fill + a team-color glow. */
+.team-chip--active {
+  background: var(--glass2);
+  border-color: color-mix(in srgb, var(--chip-color) 45%, var(--glass-border));
+  box-shadow:
+    inset 0 1px 0 var(--spec),
+    0 0 0 1px color-mix(in srgb, var(--chip-color) 30%, transparent),
+    0 8px 26px -10px color-mix(in srgb, var(--chip-color) 60%, transparent);
+}
+
+.team-switcher__h2h {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+  max-width: 100%;
+}
+
+/* ---------- driver chip (the one place driver identity renders) ---------- */
+
+.driver-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.driver-chip__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.driver-chip__acr {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--ink-primary);
+}
+
+.driver-chip__name,
+.driver-chip__suffix {
+  color: var(--ink-secondary);
 }
 
 /* ---------- Overview row: countdown + stat tiles ---------- */
@@ -450,7 +692,7 @@ body {
   min-width: 0;
 }
 
-/* ---------- stat tiles (foundation for the components team) ---------- */
+/* ---------- stat tiles ---------- */
 
 .stat-row {
   display: grid;
@@ -465,10 +707,7 @@ body {
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-4);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-card);
+  border-radius: var(--radius-tile);
 }
 
 .stat-tile__icon {
@@ -478,8 +717,9 @@ body {
   width: 38px;
   height: 38px;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
-  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent-ink);
+  transition: var(--tint-transition), color 0.25s ease;
 }
 
 .stat-tile__corner {
@@ -513,12 +753,13 @@ body {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--ink-secondary);
-  background: var(--raised);
-  border: 1px solid var(--border);
+  background: var(--glass2);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-pill);
   padding: 7px 16px;
   cursor: pointer;
   transition:
+    var(--tint-transition),
     color 0.2s ease,
     box-shadow 0.2s ease;
 }
@@ -557,14 +798,11 @@ body {
   list-style: none;
 }
 
-/* Each step reads as its own card — the reference language's small tile
-   recipe (surface + border + radius + shadow), same family as .stat-tile. */
+/* Each step reads as its own card — glass tile tier, same family as
+   .stat-tile (the .glass class on the element carries the surface). */
 .pipeline__step {
   padding: var(--space-5);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-card);
+  border-radius: var(--radius-tile);
 }
 
 .pipeline__num {
@@ -574,11 +812,12 @@ body {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
-  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent-ink);
   font-size: 12.5px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  transition: var(--tint-transition), color 0.25s ease;
 }
 
 .pipeline__title {
@@ -634,25 +873,22 @@ body {
   padding: 0 0 var(--space-4);
 }
 
-.race-selector,
-.team-selector {
+/* The frosted pill shell around a <select> (the .glass class on the element
+   carries the surface; this adds the pill shape). */
+.race-selector {
   position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   max-width: 100%;
   padding: 6px 6px 6px var(--space-4);
-  background: var(--surface);
-  border: 1px solid var(--border);
   border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-card);
 }
 
 /* Replacement dropdown arrow: `appearance: none` on the select below removes
    the OS chrome (arrow included), and a background-image chevron can't read
    theme vars — so draw one from two borders on the wrapper instead. */
-.race-selector::after,
-.team-selector::after {
+.race-selector::after {
   content: "";
   position: absolute;
   top: 50%;
@@ -665,18 +901,7 @@ body {
   pointer-events: none;
 }
 
-/* Pills that sit on the bare page under the hero (not in a filter row) get
-   the frosted-glass treatment instead of the opaque surface. */
-.team-selector,
-.race-selector--glass {
-  background: var(--glass);
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  backdrop-filter: blur(var(--glass-blur));
-  border-color: var(--glass-border);
-}
-
-.race-selector__label,
-.team-selector__label {
+.race-selector__label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -687,16 +912,15 @@ body {
   letter-spacing: 0.08em;
 }
 
-.race-selector select,
-.team-selector select {
+.race-selector select {
   appearance: none;
   -webkit-appearance: none;
   font: inherit;
   font-size: 13px;
   font-weight: 600;
   color: var(--ink-primary);
-  background: var(--raised);
-  border: 1px solid transparent;
+  background: var(--glass2);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-pill);
   /* extra right padding reserves room for the wrapper's ::after chevron */
   padding: 7px 30px 7px 14px;
@@ -705,6 +929,7 @@ body {
      widths the long race options must clip inside the pill instead of
      pushing the page sideways */
   min-width: 0;
+  transition: var(--tint-transition);
 }
 
 .filters__meta {
@@ -713,8 +938,8 @@ body {
 
 .filters__note {
   color: var(--ink-secondary);
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--glass2);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-pill);
   padding: 5px 12px;
 }
@@ -727,24 +952,12 @@ body {
   gap: var(--space-4);
 }
 
+/* Chart card: glass shell (the .glass class carries the surface); the data
+   itself draws on the opaque .card__plate below. */
 .card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-card);
+  border-radius: var(--radius-card);
   padding: var(--space-4) var(--space-4);
   min-width: 0; /* keep Recharts' ResponsiveContainer from overflowing the column */
-}
-
-/* Non-chart chrome card: translucent + blurred in light mode (HReazec glass),
-   a softly layered charcoal panel in dark mode (Grapho) — same two tokens
-   power both, see theme.ts. Chart-bearing cards stay on the opaque `.card`
-   recipe above so canvases always have a flat backdrop to render on. */
-.card--glass {
-  background: var(--glass);
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  backdrop-filter: blur(var(--glass-blur));
-  border-color: var(--glass-border);
 }
 
 .card--wide {
@@ -792,8 +1005,8 @@ body {
   max-width: 100%;
 }
 
-/* Compact modifier over .btn-pill (index.css foundations, above) — same
-   pill recipe, sized down to sit inline with the card title row. */
+/* Compact modifier over .btn-pill (foundations above) — same pill recipe,
+   sized down to sit inline with the card title row. */
 .card__toggle {
   padding: 5px 12px;
   font-size: 11.5px;
@@ -805,6 +1018,17 @@ body {
 
 .card__body {
   transition: opacity 0.2s ease;
+}
+
+/* The near-opaque inset plate the chart marks draw on: headers/legends sit
+   on the glass, data sits here so marks stay readable over the drifting
+   aurora underneath. */
+.card__plate {
+  background: var(--plate);
+  border: 1px solid var(--plate-border);
+  border-radius: var(--radius-plate);
+  padding: 10px;
+  transition: var(--tint-transition);
 }
 
 .card__state {
@@ -851,14 +1075,26 @@ body {
 }
 
 /* ---------- tooltip ---------- */
+/* Glass with a slightly stronger frost than the cards — it floats over the
+   opaque plate (one level of nesting under the card, within budget). */
 
 .viz-tooltip {
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(32px) saturate(160%);
+  backdrop-filter: blur(32px) saturate(160%);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   padding: 10px 12px;
-  box-shadow: var(--shadow-raised);
+  box-shadow:
+    inset 0 1px 0 var(--spec),
+    var(--shadow-raised);
   font-size: 12px;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .viz-tooltip {
+    background: var(--glass-opaque);
+  }
 }
 
 .viz-tooltip__title {
@@ -902,6 +1138,17 @@ body {
   max-width: 100%;
 }
 
+/* Driver row labels: HTML DriverChips overlaid on the SVG's left gutter so
+   identity renders through the same component as every legend. */
+.tire-strip__label {
+  position: absolute;
+  left: 0;
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  pointer-events: none;
+}
+
 /* Keyboard focus ring for a stint segment. `outline: none` drops the default
    box on the focusable <g> (and prevents a stray ring on mouse click); the
    ring is redrawn only for keyboard users via :focus-visible, as a high-
@@ -937,7 +1184,7 @@ body {
   max-height: 300px;
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
 }
 
 .data-table {
@@ -1007,7 +1254,7 @@ body {
   white-space: nowrap;
   flex-shrink: 0;
   padding: 2px 9px;
-  background: var(--raised);
+  background: var(--glass2);
   border-radius: var(--radius-pill);
 }
 
@@ -1045,10 +1292,11 @@ body {
   font-size: 12.5px;
   font-weight: 600;
   padding: 6px 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--glass2);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-pill);
   transition:
+    var(--tint-transition),
     color 0.2s ease,
     box-shadow 0.2s ease;
 }
@@ -1067,6 +1315,6 @@ body {
 a:focus-visible,
 button:focus-visible,
 select:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
 }
