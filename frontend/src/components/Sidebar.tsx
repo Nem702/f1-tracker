@@ -118,7 +118,7 @@ export function Sidebar({ view, collapsed, onToggleCollapsed }: Props) {
   const nextMode: Mode = mode === "dark" ? "light" : "dark";
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar glass">
       <div className="sidebar__header">
         <a className="sidebar__brand" href="#overview">
           <span className="sidebar__brand-mark" aria-hidden="true" />

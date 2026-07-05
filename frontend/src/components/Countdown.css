@@ -1,113 +1,17 @@
-/* Next-race countdown card — plain surface at rest, semi-transparent glass
- * over a vivid aurora on hover. Layer order, per the uiverse references the
- * user picked (slimy-pug-17, curly-moth-56, loud-crab-37): the COLOR sits
- * inside the card at near-full strength (::before corner glows in the app's
- * three identity hues), and the "glass" on top is a genuinely sheer sheet
- * (--glass-sheer, ~30% alpha) plus a specular sheen (::after) and a bottom
- * rim-light. Both decorative layers and the sheer fill fade in on :hover;
- * at rest the card matches the other opaque cards. Every color derives from
- * theme tokens via color-mix — nothing new to validate; the mix percentages
- * below are the loudness dials. */
+/* Next-race countdown card — always-glass now (the .glass class on the
+ * element carries the ONE shared recipe). Its old plain-at-rest/hover-glass
+ * behavior and the internal aurora/sheen pseudo-layers are gone: the page
+ * aurora behind the frost does that job for every card (guardrail: never
+ * per-card blobs). Only the feature-tier radius and the countdown's own
+ * typography live here. */
 
 .countdown {
   position: relative;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-feature);
   padding: var(--space-5) var(--space-6);
   overflow: hidden;
   font-variant-numeric: tabular-nums;
-  background: var(--surface);
-  /* no-op while the fill is opaque; frosts the page once :hover goes sheer */
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
   color: var(--ink-primary);
-  border: 1px solid var(--glass-border);
-  box-shadow:
-    inset 0 1px 0 var(--glass-border),
-    inset 0 -18px 32px -14px color-mix(in srgb, var(--glass-border) 70%, transparent),
-    var(--shadow-card);
-  transition: background-color 0.45s ease;
-}
-
-.countdown:hover {
-  background: var(--glass-sheer);
-}
-
-/* Aurora layer, oversized so the drift never exposes an edge. */
-.countdown::before {
-  content: "";
-  position: absolute;
-  inset: -25%;
-  z-index: 0;
-  background:
-    radial-gradient(
-      38% 48% at 16% 18%,
-      color-mix(in srgb, var(--accent) 65%, transparent),
-      transparent 70%
-    ),
-    radial-gradient(
-      44% 54% at 90% 10%,
-      color-mix(in srgb, var(--lec) 50%, transparent),
-      transparent 72%
-    ),
-    radial-gradient(
-      50% 58% at 72% 96%,
-      color-mix(in srgb, var(--ham) 45%, transparent),
-      transparent 72%
-    );
-  filter: blur(36px);
-  animation: countdown-aurora 18s ease-in-out infinite alternate;
-  opacity: 0;
-  transition: opacity 0.45s ease;
-  pointer-events: none;
-}
-
-/* Specular sheen + top wash: --glass-border is a per-mode white rgba, so
- * this lands bright on light glass and whisper-faint on dark glass. */
-.countdown::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  background:
-    linear-gradient(
-      115deg,
-      color-mix(in srgb, var(--glass-border) 55%, transparent),
-      transparent 45%
-    ),
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--glass-border) 25%, transparent),
-      transparent 60%
-    );
-  opacity: 0;
-  transition: opacity 0.45s ease;
-  pointer-events: none;
-}
-
-.countdown:hover::before,
-.countdown:hover::after {
-  opacity: 1;
-}
-
-/* Content sits above the aurora/sheen layers. */
-.countdown > * {
-  position: relative;
-  z-index: 1;
-}
-
-@keyframes countdown-aurora {
-  from {
-    transform: translate3d(-5%, -4%, 0) rotate(0deg) scale(1);
-  }
-  to {
-    transform: translate3d(5%, 4%, 0) rotate(12deg) scale(1.06);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .countdown::before {
-    animation: none;
-  }
 }
 
 .countdown__eyebrow {
@@ -116,7 +20,8 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-ink);
+  transition: color 0.25s ease;
 }
 
 .countdown__title {
