@@ -37,18 +37,21 @@ def upsert_race(conn, session):
     logger.debug("upserted race session_key=%s (%s)", session["session_key"], session.get("location"))
 
 
-def upsert_driver(conn, driver_number, name):
+def upsert_driver(conn, driver_number, name, team_name, name_acronym):
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO drivers (driver_number, name)
-            VALUES (%s, %s)
-            ON CONFLICT (driver_number) DO UPDATE SET name = EXCLUDED.name
+            INSERT INTO drivers (driver_number, name, team_name, name_acronym)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (driver_number) DO UPDATE SET
+                name = EXCLUDED.name,
+                team_name = EXCLUDED.team_name,
+                name_acronym = EXCLUDED.name_acronym
             """,
-            (driver_number, name),
+            (driver_number, name, team_name, name_acronym),
         )
     conn.commit()
-    logger.debug("upserted driver #%d (%s)", driver_number, name)
+    logger.debug("upserted driver #%d (%s, %s)", driver_number, name, team_name)
 
 
 def upsert_laps(conn, session_key, driver_number, laps):

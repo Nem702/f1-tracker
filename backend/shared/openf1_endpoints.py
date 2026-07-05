@@ -35,25 +35,31 @@ def get_drivers(session_key: int) -> list[dict]:
     return data or []
 
 
-def get_ferrari_teammates(session_key: int) -> dict[str, dict]:
-    """Resolve Hamilton and Leclerc's driver records for a session, keyed "HAM"/"LEC"."""
-    targets = {"HAM": "hamilton", "LEC": "leclerc"}
+# Teams whose full driver lineup we persist. Matched as case-insensitive
+# substrings of the roster's team_name, which absorbs season-to-season naming
+# drift ("Red Bull Racing", "Scuderia Ferrari", plain "Mercedes", ...).
+TRACKED_TEAMS = ("ferrari", "mercedes", "mclaren", "red bull")
+
+
+def get_tracked_drivers(session_key: int) -> list[dict]:
+    """All roster records for drivers on a tracked team in this session.
+
+    Returns the full records — downstream needs driver_number, full_name,
+    name_acronym and team_name."""
     drivers = get_drivers(session_key)
 
-    teammates = {}
-    for acronym, last_name in targets.items():
-        for d in drivers:
-            full_name = (d.get("full_name") or "").lower()
-            record_last = (d.get("last_name") or "").lower()
-            if last_name == record_last or last_name in full_name:
-                teammates[acronym] = d
-                break
-        else:
-            logger.warning(
-                "%s not found among %d drivers for session_key=%s — omitting",
-                acronym, len(drivers), session_key,
-            )
-    return teammates
+    tracked = []
+    for d in drivers:
+        team = (d.get("team_name") or "").lower()
+        if any(t in team for t in TRACKED_TEAMS):
+            tracked.append(d)
+
+    if not tracked:
+        logger.warning(
+            "no tracked-team drivers among %d roster records for session_key=%s",
+            len(drivers), session_key,
+        )
+    return tracked
 
 
 def get_laps(session_key: int, driver_number: int | None = None) -> list[dict]:
@@ -128,7 +134,7 @@ def get_intervals(session_key: int, driver_number: int | None = None) -> list[di
 
 if __name__ == "__main__":
     # Smoke test, not a test suite: latest completed race, resolve the
-    # teammates, print each driver's lap count.
+    # tracked drivers, print each driver's lap count.
     now = datetime.now(timezone.utc)
 
     races = get_sessions(year=now.year, session_name="Race")
@@ -146,7 +152,7 @@ if __name__ == "__main__":
     latest = max(completed, key=lambda r: r["date_start"])
     print(f"Latest completed race: {latest['location']} ({latest['date_start']}) — session_key={latest['session_key']}")
 
-    teammates = get_ferrari_teammates(latest["session_key"])
-    for acronym, record in teammates.items():
+    tracked = get_tracked_drivers(latest["session_key"])
+    for record in tracked:
         laps = get_laps(latest["session_key"], record["driver_number"])
         print(f"{record['full_name']} (#{record['driver_number']}) — {len(laps)} laps")

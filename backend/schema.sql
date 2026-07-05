@@ -11,7 +11,9 @@ CREATE TABLE races (
 
 CREATE TABLE drivers (
     driver_number INTEGER PRIMARY KEY,
-    name TEXT NOT NULL
+    name TEXT NOT NULL,
+    team_name TEXT,
+    name_acronym TEXT
 );
 
 CREATE TABLE laps (
