@@ -1,43 +1,197 @@
-// Single source of truth for every color in the app. All hexes come from the
-// dataviz reference palette (or, for the new UI-chrome slots below, its
-// documented slot-8 orange) and were re-run through the six-checks validator
-// against this redesign's new surfaces:
-//   - driver pair (blue/red) + accent (orange), as one categorical set,
-//     against both new surfaces: light (surface #fffaf3) worst adjacent
-//     ΔE 16.2 · dark (surface #1a1a19) worst adjacent ΔE 26.3 — both clear
-//     the 12.0 target with room, including the red↔orange pair (the one
-//     CVD risk this redesign added, since red and orange sit close for
-//     protan/deutan viewers).
-//   - compound scale: "hard" is deliberately gray (that's the real tire
-//     color), which fails the chroma floor by design — the in-segment
-//     compound letter, legend, tooltip, and table view carry identity so
-//     color is never alone. Compounds/flags are unchanged from Part 6 and
-//     were re-run for contrast against the new light surface (still pass;
-//     MEDIUM's sub-3:1 WARN and the flag WARNs are the same pre-existing,
-//     documented exceptions — status colors are never validated as a
-//     categorical set, see the dataviz skill's scope note).
-// The same blue/red pair doubles as the diverging poles of the delta chart,
-// so "blue = Hamilton, red = Leclerc" holds everywhere. Color follows the
-// entity — it never changes with filtering or rank. Accent (orange) is a UI
-// identity, never a data identity: it never appears as a chart series color,
-// so it can't be confused with a driver.
+// Single source of truth for every color in the app: base tokens per mode,
+// plus a validated palette per TEAM (the whole site retints to the selected
+// pair — accent, aurora blobs, chart driver colors). All palettes were run
+// through the dataviz six-checks validator against this redesign's opaque
+// chart-plate surfaces — light rgba(255,253,249,.72) flattened over the
+// #f2ede7 page base = #FBF9F4, dark rgba(18,18,20,.6) over #0a0a0c = #0F0F11:
+//   - per-team driver1↔driver2, worst of protan/deutan ΔE (target ≥ 12):
+//       ferrari  light 12.6 · dark 15.3  (dark seeds re-snapped: rosso
+//         L .66→.55, giallo L .80→.67 — the seed gold sat above the dark
+//         lightness band and equal-lightness rosso/giallo fell to ΔE 8.5)
+//       mercedes light 27.0 · dark 26.2  (ANT "silver" seeds failed the
+//         chroma floor — C .035/.027 reads gray — so slot 2 is a steel blue
+//         at C = .10, hue held; dark teal re-snapped into the L band)
+//       mclaren  light 96.6 · dark 89.4  (dark seeds re-snapped into band)
+//       redbull  light 71.6 · dark 61.9  (seeds passed unchanged)
+//   - head-to-head cross-team combos (--pairs all over the 8 driver colors,
+//     both modes): one collision — ferrari slot 2 (giallo) ↔ mclaren slot 1
+//     (papaya), ΔE 2.3 light / 1.5 dark — resolved via CVD_COLLISIONS below
+//     (the yielding driver takes their team's other slot; both directions
+//     re-validated ≥ 12). ANT↔PIA sits in the legal 8–12 floor band
+//     (18.5 light / 11.8 dark) — every chart carries legend + acronym
+//     end-labels + tooltip + table, the mandated secondary encoding.
+//   - WCAG AA via the validator's contrast(): onAccent-on-accent ≥ 4.5 for
+//     every team+mode (worst: redbull dark 4.96); accentInk (the text/icon
+//     variant of the accent) ≥ 4.5 on glass-over-base (#F7F4F1 / #131316) —
+//     light mercedes/mclaren/neutral accents fail even 3:1 there, so their
+//     accentInk is a darkened same-hue step (#007e74, #b25701, #c44502);
+//     light inkMuted darkened #898781 → #716e67 (3.28 → 4.64 on glass).
+//   - compounds/flags/temp colors unchanged from Part 6 (fixed semantic
+//     scales; MEDIUM's sub-3:1 WARN and the flag WARNs are the same
+//     pre-existing, documented exceptions).
+// The active pair's two colors double as the delta chart's diverging poles,
+// so "slot color = driver" holds everywhere. Color follows the entity — a
+// driver keeps their slot color across every chart and mode; only the
+// documented collision fallback ever reassigns one, and it does so
+// consistently in both modes. Accent is a UI identity, never a data
+// identity: it never appears as a chart series color.
+
+import type { DriverRef, TeamSlug } from "./teams";
 
 export type Mode = "light" | "dark";
 
-export interface Theme {
-  // ---- layer stack (page < surface < raised) ----
-  page: string; // flat page-plane fallback (pre-hydration bg, dark mode's page)
-  pageGradientFrom: string; // light mode's warm corner glow; == page in dark
-  pageGradientTo: string; // light mode's far-corner cream; == page in dark
-  surface: string; // opaque card/chart surface (validator surface)
-  glass: string; // translucent chrome recipe (sidebar, stat tiles) — rgba
-  glassSheer: string; // barely-there sheet for cards with internal color (Countdown) — rgba
-  glassBorder: string; // frosted-edge highlight for glass cards — rgba
-  raised: string; // one elevation step up: icon chips, active-pill bg, hover
-  accent: string; // primary UI accent (orange) — chrome only, never a series
+// ---- team palettes (validated — see header) --------------------------------
+
+interface TeamColors {
+  accent: string; // vivid brand accent: fills, glow, aurora, swatches
+  accentInk: string; // text/icon-safe accent (≥ 4.5:1 on glass)
   onAccent: string; // ink for text sitting on a solid `accent` fill
-  shadowCard: string; // default card elevation (box-shadow value)
-  shadowRaised: string; // stronger elevation: hover / raised / emphasis
+  drivers: [string, string]; // color slots 0/1 — chart series identity
+}
+
+const TEAM_PALETTES: Record<Mode, Record<TeamSlug, TeamColors>> = {
+  light: {
+    ferrari: {
+      accent: "#dc0500",
+      accentInk: "#dc0500",
+      onAccent: "#ffffff",
+      drivers: ["#dc0500", "#c78a1e"],
+    },
+    mercedes: {
+      accent: "#00a89b",
+      accentInk: "#007e74",
+      onAccent: "#14100a",
+      drivers: ["#00a89b", "#16799d"],
+    },
+    mclaren: {
+      accent: "#f07800",
+      accentInk: "#b25701",
+      onAccent: "#14100a",
+      drivers: ["#f07800", "#1f9ed8"],
+    },
+    redbull: {
+      accent: "#2a5cb8",
+      accentInk: "#2a5cb8",
+      onAccent: "#ffffff",
+      drivers: ["#2a5cb8", "#d64545"],
+    },
+  },
+  dark: {
+    ferrari: {
+      accent: "#ff4438",
+      accentInk: "#ff4438",
+      onAccent: "#14100a",
+      drivers: ["#d60009", "#bf8b00"],
+    },
+    mercedes: {
+      accent: "#00d2be",
+      accentInk: "#00d2be",
+      onAccent: "#14100a",
+      drivers: ["#0ca999", "#1980a1"],
+    },
+    mclaren: {
+      accent: "#ff9633",
+      accentInk: "#ff9633",
+      onAccent: "#14100a",
+      drivers: ["#d67603", "#0296c6"],
+    },
+    redbull: {
+      accent: "#4d82d8",
+      accentInk: "#4d82d8",
+      onAccent: "#14100a",
+      drivers: ["#4d82d8", "#e66767"],
+    },
+  },
+};
+
+/** Chrome for a mixed head-to-head pair (no team owns the page) and the
+ *  last-resort driver color if a collision survives the slot swap. */
+const NEUTRAL: Record<
+  Mode,
+  { accent: string; accentInk: string; onAccent: string; driver: string }
+> = {
+  light: { accent: "#eb6834", accentInk: "#c44502", onAccent: "#14100a", driver: "#2a78d6" },
+  dark: { accent: "#d95926", accentInk: "#d95926", onAccent: "#14100a", driver: "#3987e5" },
+};
+
+// ---- head-to-head color resolution ------------------------------------------
+
+/** A driver's color identity, resolvable in either mode (colors differ per
+ *  mode, so the tint carries slots, not hexes). */
+export type SlotRef = { team: TeamSlug; slot: 0 | 1 } | "neutral";
+
+/** What the theme needs to know about the active pair: which team chrome to
+ *  wear (null = neutral) and which two slot colors the pair renders in. */
+export interface Tint {
+  teamSlug: TeamSlug | null;
+  a: SlotRef;
+  b: SlotRef;
+}
+
+export const DEFAULT_TINT: Tint = {
+  teamSlug: "ferrari",
+  a: { team: "ferrari", slot: 0 },
+  b: { team: "ferrari", slot: 1 },
+};
+
+/** Precomputed from the validator's all-pairs run (union of both modes,
+ *  worst of protan/deutan < 8): the only cross-team slot pair below the CVD
+ *  floor is Ferrari giallo ↔ McLaren papaya. No runtime color math — a pair
+ *  is either in this table or it isn't. */
+const CVD_COLLISIONS = new Set(["ferrari1|mclaren0"]);
+
+function collides(a: { team: TeamSlug; slot: 0 | 1 }, b: { team: TeamSlug; slot: 0 | 1 }): boolean {
+  const ka = `${a.team}${a.slot}`;
+  const kb = `${b.team}${b.slot}`;
+  return CVD_COLLISIONS.has(ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`);
+}
+
+/** Resolve the pair's color identity. Driver A always keeps their own slot
+ *  color; if the cross-team pair is in the collision table, driver B renders
+ *  in their team's OTHER slot; if that still collides, neutral fallback.
+ *  (Two same-team drivers sharing a slot — a mid-season third driver in
+ *  H2H — also bumps B to the other slot.) */
+export function tintForPair(a: DriverRef | null, b: DriverRef | null): Tint {
+  if (!a || !b) return DEFAULT_TINT;
+  const slotA = { team: a.teamSlug, slot: a.slot };
+  let slotB: SlotRef = { team: b.teamSlug, slot: b.slot };
+  const sameTeam = a.teamSlug === b.teamSlug;
+  if (sameTeam) {
+    if (a.slot === b.slot) slotB = { team: b.teamSlug, slot: b.slot === 0 ? 1 : 0 };
+  } else if (collides(slotA, slotB)) {
+    const alt = { team: b.teamSlug, slot: (b.slot === 0 ? 1 : 0) as 0 | 1 };
+    slotB = collides(slotA, alt) ? "neutral" : alt;
+  }
+  return { teamSlug: sameTeam ? a.teamSlug : null, a: slotA, b: slotB };
+}
+
+function resolveSlot(mode: Mode, ref: SlotRef): string {
+  return ref === "neutral"
+    ? NEUTRAL[mode].driver
+    : TEAM_PALETTES[mode][ref.team].drivers[ref.slot];
+}
+
+// ---- theme ------------------------------------------------------------------
+
+export interface Theme {
+  // ---- layer stack (aurora base < glass < plate) ----
+  pageBase: string; // aurora base / body pre-mount fallback
+  surface: string; // the chart plate flattened to an opaque hex (validator surface; mark rings, sticky table headers)
+  plate: string; // near-opaque inset plate the chart marks draw on — rgba
+  plateBorder: string; // hairline ring around the plate
+  glass: string; // the ONE glass fill — rgba
+  glass2: string; // inner chip fill on glass (active pills, selects) — rgba
+  glassBorder: string; // frosted-edge highlight — rgba
+  glassOpaque: string; // @supports fallback when backdrop-filter is missing
+  spec: string; // specular inset top-edge highlight — rgba
+  shadowCard: string; // glass drop shadow
+  shadowRaised: string; // stronger elevation: tooltips, hover
+  accent: string; // team accent — chrome fills/glow only, never a series
+  accentInk: string; // accent as TEXT or icon color (AA on glass)
+  onAccent: string; // ink for text sitting on a solid `accent` fill
+  auroraA: string; // per-mode blob opacities (decorative, validator-exempt)
+  auroraB: string;
+  auroraC: string;
 
   // ---- ink & chart chrome ----
   inkPrimary: string;
@@ -45,11 +199,11 @@ export interface Theme {
   inkMuted: string; // axis labels, captions
   grid: string; // hairline gridlines
   axis: string; // baseline / zero line
-  border: string; // hairline card ring
+  border: string; // hairline ring on non-glass fragments
 
   // ---- data identity (never themed away) ----
-  hamilton: string; // categorical slot 1 (blue)
-  leclerc: string; // categorical slot 6 (red) — also the warm diverging pole
+  driver1: string; // the active pair's slot-0 color (pair[0])
+  driver2: string; // the active pair's slot-1 color (pair[1])
   tempTrack: string; // sequential blue, dark step (related-measure pair…)
   tempAir: string; // …and its light step: one hue, two shades
   compounds: Record<string, string>; // Pirelli convention, palette-snapped
@@ -59,31 +213,33 @@ export interface Theme {
   flagCritical: string;
 }
 
-export const themes: Record<Mode, Theme> = {
+type BaseTokens = Omit<
+  Theme,
+  "accent" | "accentInk" | "onAccent" | "driver1" | "driver2"
+>;
+
+const base: Record<Mode, BaseTokens> = {
   light: {
-    // HReazec: warm cream/peach gradient page, glass cards, navy-black ink.
-    page: "#f7ece0",
-    pageGradientFrom: "#fbe6d0",
-    pageGradientTo: "#fdfbf9",
-    surface: "#fffaf3",
-    glass: "rgba(255, 250, 241, 0.62)",
-    glassSheer: "rgba(255, 252, 247, 0.3)",
-    glassBorder: "rgba(255, 255, 255, 0.7)",
-    raised: "#ffffff",
-    accent: "#eb6834",
-    onAccent: "#14100a",
-    shadowCard:
-      "0 1px 2px rgba(120, 72, 24, 0.06), 0 24px 48px -28px rgba(120, 72, 24, 0.28)",
-    shadowRaised:
-      "0 2px 4px rgba(120, 72, 24, 0.08), 0 30px 60px -24px rgba(120, 72, 24, 0.32)",
+    pageBase: "#f2ede7",
+    surface: "#fbf9f4",
+    plate: "rgba(255, 253, 249, 0.72)",
+    plateBorder: "rgba(23, 25, 34, 0.08)",
+    glass: "rgba(255, 255, 255, 0.40)",
+    glass2: "rgba(255, 255, 255, 0.58)",
+    glassBorder: "rgba(255, 255, 255, 0.62)",
+    glassOpaque: "rgba(255, 255, 255, 0.85)",
+    spec: "rgba(255, 255, 255, 0.8)",
+    shadowCard: "0 24px 48px -28px rgba(80, 50, 20, 0.35)",
+    shadowRaised: "0 30px 60px -24px rgba(80, 50, 20, 0.4)",
+    auroraA: "0.42",
+    auroraB: "0.38",
+    auroraC: "0.34",
     inkPrimary: "#171922",
     inkSecondary: "#585b66",
-    inkMuted: "#898781",
+    inkMuted: "#716e67",
     grid: "#ece4d8",
     axis: "#d2c9ba",
     border: "rgba(23, 25, 34, 0.09)",
-    hamilton: "#2a78d6",
-    leclerc: "#e34948",
     tempTrack: "#2a78d6",
     tempAir: "#86b6ef",
     compounds: {
@@ -99,29 +255,26 @@ export const themes: Record<Mode, Theme> = {
     flagCritical: "#d03b3b",
   },
   dark: {
-    // Grapho: charcoal layer stack (page < surface < raised), orange accent.
-    page: "#0d0d0d",
-    pageGradientFrom: "#0d0d0d",
-    pageGradientTo: "#0d0d0d",
-    surface: "#1a1a19",
-    glass: "rgba(26, 26, 25, 0.72)",
-    glassSheer: "rgba(23, 23, 22, 0.38)",
-    glassBorder: "rgba(255, 255, 255, 0.08)",
-    raised: "#242422",
-    accent: "#d95926",
-    onAccent: "#14100a",
-    shadowCard:
-      "inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 12px 28px -20px rgba(0, 0, 0, 0.65)",
-    shadowRaised:
-      "inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 18px 40px -18px rgba(0, 0, 0, 0.75)",
+    pageBase: "#0a0a0c",
+    surface: "#0f0f11",
+    plate: "rgba(18, 18, 20, 0.6)",
+    plateBorder: "rgba(255, 255, 255, 0.07)",
+    glass: "rgba(30, 30, 34, 0.44)",
+    glass2: "rgba(255, 255, 255, 0.09)",
+    glassBorder: "rgba(255, 255, 255, 0.14)",
+    glassOpaque: "rgba(26, 26, 30, 0.85)",
+    spec: "rgba(255, 255, 255, 0.14)",
+    shadowCard: "0 24px 48px -20px rgba(0, 0, 0, 0.65)",
+    shadowRaised: "0 30px 56px -18px rgba(0, 0, 0, 0.75)",
+    auroraA: "0.20",
+    auroraB: "0.18",
+    auroraC: "0.16",
     inkPrimary: "#ffffff",
     inkSecondary: "#c3c2b7",
     inkMuted: "#898781",
     grid: "#2c2c2a",
     axis: "#383835",
     border: "rgba(255, 255, 255, 0.10)",
-    hamilton: "#3987e5",
-    leclerc: "#e66767",
     tempTrack: "#3987e5",
     tempAir: "#86b6ef",
     compounds: {
@@ -138,30 +291,67 @@ export const themes: Record<Mode, Theme> = {
   },
 };
 
+const themeCache = new Map<string, Theme>();
+
+const slotKey = (ref: SlotRef) =>
+  ref === "neutral" ? "neutral" : `${ref.team}${ref.slot}`;
+
+/** The one theme factory: base tokens for the mode + the active tint's
+ *  chrome and pair colors. Cached per (mode, tint) so useSyncExternalStore
+ *  consumers get a stable snapshot object. */
+export function getTheme(mode: Mode, tint: Tint): Theme {
+  const key = `${mode}|${tint.teamSlug ?? "neutral"}|${slotKey(tint.a)}|${slotKey(tint.b)}`;
+  const cached = themeCache.get(key);
+  if (cached) return cached;
+
+  const chrome = tint.teamSlug ? TEAM_PALETTES[mode][tint.teamSlug] : NEUTRAL[mode];
+  const theme: Theme = {
+    ...base[mode],
+    accent: chrome.accent,
+    accentInk: chrome.accentInk,
+    onAccent: chrome.onAccent,
+    driver1: resolveSlot(mode, tint.a),
+    driver2: resolveSlot(mode, tint.b),
+  };
+  themeCache.set(key, theme);
+  return theme;
+}
+
+/** The team accent swatch for a chip/legend that must show a team's color
+ *  regardless of which team is active (the switcher's four chips). */
+export function teamSwatch(mode: Mode, slug: TeamSlug): string {
+  return TEAM_PALETTES[mode][slug].accent;
+}
+
 /** Expose the theme as CSS custom properties so index.css styles the page
  *  chrome from the same values the charts read in JS — one source, no drift. */
 export function cssVars(t: Theme): Record<string, string> {
   return {
-    "--page": t.page,
-    "--page-grad-from": t.pageGradientFrom,
-    "--page-grad-to": t.pageGradientTo,
+    "--page-base": t.pageBase,
     "--surface": t.surface,
+    "--plate": t.plate,
+    "--plate-border": t.plateBorder,
     "--glass": t.glass,
-    "--glass-sheer": t.glassSheer,
+    "--glass2": t.glass2,
     "--glass-border": t.glassBorder,
-    "--raised": t.raised,
-    "--accent": t.accent,
-    "--on-accent": t.onAccent,
+    "--glass-opaque": t.glassOpaque,
+    "--spec": t.spec,
     "--shadow-card": t.shadowCard,
     "--shadow-raised": t.shadowRaised,
+    "--accent": t.accent,
+    "--accent-ink": t.accentInk,
+    "--on-accent": t.onAccent,
+    "--aurora-a": t.auroraA,
+    "--aurora-b": t.auroraB,
+    "--aurora-c": t.auroraC,
     "--ink-primary": t.inkPrimary,
     "--ink-secondary": t.inkSecondary,
     "--ink-muted": t.inkMuted,
     "--grid": t.grid,
     "--axis": t.axis,
     "--border": t.border,
-    "--ham": t.hamilton,
-    "--lec": t.leclerc,
+    "--driver1": t.driver1,
+    "--driver2": t.driver2,
   };
 }
 

@@ -1,12 +1,23 @@
 import { useSyncExternalStore } from "react";
-import { themes, type Mode, type Theme } from "../theme";
+import {
+  DEFAULT_TINT,
+  getTheme,
+  type Mode,
+  type Theme,
+  type Tint,
+} from "../theme";
 
 /* Mode resolution: an explicit user choice (persisted in localStorage) wins;
    until one exists, follow the OS preference live — exactly the old behavior.
    This is a module-level store read via useSyncExternalStore rather than
    context because every chart calls useTheme() directly, including Ribbons
    inside the r3f <Canvas>, where React context doesn't cross the reconciler
-   boundary. */
+   boundary.
+
+   The store also carries the active TINT (team chrome + the pair's two color
+   slots, derived from the selected pair in App via theme.ts's tintForPair) —
+   same reasoning: the ribbons and every chart re-render with the new pair
+   colors through one subscription, no context needed. */
 
 const STORAGE_KEY = "f1-tracker-mode";
 
@@ -20,6 +31,7 @@ function readStoredMode(): Mode | null {
 }
 
 let override: Mode | null = readStoredMode();
+let tint: Tint = DEFAULT_TINT;
 
 const osQuery = window.matchMedia("(prefers-color-scheme: dark)");
 const listeners = new Set<() => void>();
@@ -37,7 +49,7 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-function getSnapshot(): Mode {
+function getMode(): Mode {
   return override ?? (osQuery.matches ? "dark" : "light");
 }
 
@@ -52,10 +64,19 @@ export function setMode(next: Mode): void {
   notify();
 }
 
+/** App pushes the tint derived from the selected pair (tintForPair). The
+ *  pair itself is persisted by App (f1-tracker-pair) — nothing to store
+ *  here. getTheme memoizes per (mode, tint), so an unchanged tint resolves
+ *  to the same snapshot object and re-renders skip. */
+export function setTint(next: Tint): void {
+  tint = next;
+  notify();
+}
+
 export function useMode(): Mode {
-  return useSyncExternalStore(subscribe, getSnapshot);
+  return useSyncExternalStore(subscribe, getMode);
 }
 
 export function useTheme(): Theme {
-  return themes[useMode()];
+  return useSyncExternalStore(subscribe, () => getTheme(getMode(), tint));
 }
