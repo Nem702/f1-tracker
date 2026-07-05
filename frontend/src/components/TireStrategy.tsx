@@ -1,29 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import type { Stint } from "../api/types";
+import type { DriverPair, DriverRef } from "../teams";
 import { useTheme } from "../hooks/useTheme";
 import { inkOn } from "../theme";
 import { duration, EASE, stagger } from "../motion";
-import { ChartCard, type LegendItem } from "./ChartCard";
+import { ChartCard, LegendList, type LegendItem } from "./ChartCard";
+import { DriverChip } from "./DriverChip";
 import { ChartTooltip } from "./ChartTooltip";
 
 interface Props {
   stints: Stint[];
-  hamNumber: number | null;
-  lecNumber: number | null;
+  pair: DriverPair | null;
   loading: boolean;
   error: string | null;
 }
 
 const ROW_HEIGHT = 26;
 const ROW_GAP = 16;
-const GUTTER = 52; // left space for the driver labels
+const GUTTER = 64; // left space for the driver chips (dot + acronym)
 const AXIS_BAND = 22; // bottom space for lap ticks — inside the SVG height
 
 /** Compound colors follow the real-world Pirelli convention (a fixed semantic
  *  scale, like status colors) — so identity never rides on color alone: each
  *  segment carries its compound letter when it fits, plus legend + tooltip. */
-export function TireStrategy({ stints, hamNumber, lecNumber, loading, error }: Props) {
+export function TireStrategy({ stints, pair, loading, error }: Props) {
   const theme = useTheme();
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const observerRef = useRef<ResizeObserver | null>(null);
@@ -61,19 +62,31 @@ export function TireStrategy({ stints, hamNumber, lecNumber, loading, error }: P
       stints
         .filter((s) => s.driver_number === n && s.lap_start !== null && s.lap_end !== null)
         .sort((a, b) => a.stint_number - b.stint_number);
-    return [
-      { label: "HAM", stints: forDriver(hamNumber) },
-      { label: "LEC", stints: forDriver(lecNumber) },
-    ];
-  }, [stints, hamNumber, lecNumber]);
+    if (!pair) return [];
+    return pair.map((driver, slot) => ({
+      driver,
+      color: slot === 0 ? theme.driver1 : theme.driver2,
+      stints: forDriver(driver.number),
+    }));
+  }, [stints, pair, theme]);
+
+  // Chart + table cover the active pair only — the endpoint carries every
+  // tracked driver since the four-team expansion.
+  const pairStints = useMemo(
+    () =>
+      stints.filter((s) =>
+        pair?.some((driver) => driver.number === s.driver_number),
+      ),
+    [stints, pair],
+  );
 
   const totalLaps = useMemo(
-    () => Math.max(1, ...stints.map((s) => s.lap_end ?? 0)),
-    [stints],
+    () => Math.max(1, ...pairStints.map((s) => s.lap_end ?? 0)),
+    [pairStints],
   );
 
   const legend: LegendItem[] = useMemo(() => {
-    const present = [...new Set(stints.map((s) => s.compound).filter(Boolean))] as string[];
+    const present = [...new Set(pairStints.map((s) => s.compound).filter(Boolean))] as string[];
     // fixed display order regardless of what order stints arrive in
     const order = ["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"];
     return present
@@ -83,11 +96,15 @@ export function TireStrategy({ stints, hamNumber, lecNumber, loading, error }: P
         color: theme.compounds[c] ?? theme.inkMuted,
         shape: "rect" as const,
       }));
-  }, [stints, theme]);
+  }, [pairStints, theme]);
+
+  const driverName = (n: number): string =>
+    pair?.find((d) => d.number === n)?.lastName ?? "?";
 
   const plotWidth = Math.max(50, width - GUTTER - 8);
   const lapX = (lap: number) => GUTTER + ((lap - 1) / totalLaps) * plotWidth;
-  const height = rows.length * ROW_HEIGHT + (rows.length - 1) * ROW_GAP + AXIS_BAND;
+  const rowCount = Math.max(1, rows.length);
+  const height = rowCount * ROW_HEIGHT + (rowCount - 1) * ROW_GAP + AXIS_BAND;
 
   const tickStep = totalLaps > 45 ? 10 : 5;
   const ticks = [];
@@ -97,17 +114,17 @@ export function TireStrategy({ stints, hamNumber, lecNumber, loading, error }: P
     <ChartCard
       title="Tire strategy"
       subtitle="One bar per stint; hover for compound, laps, and tyre age."
-      legend={legend}
+      legend={<LegendList items={legend} />}
       loading={loading}
       error={error}
-      hasData={stints.length > 0}
+      hasData={pairStints.length > 0}
       emptyText="No stint data for this race."
       table={{
         columns: [
           {
             key: "driver_number",
             label: "Driver",
-            format: (v) => (v === hamNumber ? "Hamilton" : "Leclerc"),
+            format: (v) => driverName(v as number),
           },
           { key: "stint_number", label: "Stint" },
           { key: "compound", label: "Compound" },
@@ -115,26 +132,15 @@ export function TireStrategy({ stints, hamNumber, lecNumber, loading, error }: P
           { key: "lap_end", label: "To lap" },
           { key: "tyre_age_at_start", label: "Tyre age at fit" },
         ],
-        rows: stints as unknown as Record<string, unknown>[],
+        rows: pairStints as unknown as Record<string, unknown>[],
       }}
     >
       <div ref={attachWrap} className="tire-strip">
         <svg width={width} height={height} role="group" aria-label="Tire strategy by stint">
           {rows.map((row, rowIdx) => {
             const y = rowIdx * (ROW_HEIGHT + ROW_GAP);
-            const driverName = row.label === "HAM" ? "Hamilton" : "Leclerc";
             return (
-              <g key={row.label}>
-                <text
-                  x={0}
-                  y={y + ROW_HEIGHT / 2}
-                  fill={theme.inkSecondary}
-                  fontSize={12}
-                  fontWeight={600}
-                  dominantBaseline="middle"
-                >
-                  {row.label}
-                </text>
+              <g key={row.driver.number}>
                 {row.stints.map((stint, stintIdx) => {
                   const x = lapX(stint.lap_start!);
                   // 2px surface gap between touching segments
@@ -149,7 +155,7 @@ export function TireStrategy({ stints, hamNumber, lecNumber, loading, error }: P
                     ? stint.compound.charAt(0) + stint.compound.slice(1).toLowerCase()
                     : "Unknown";
                   const segLabel =
-                    `${driverName}, ${compoundName} tyre, ` +
+                    `${row.driver.lastName}, ${compoundName} tyre, ` +
                     `laps ${stint.lap_start} to ${stint.lap_end}, ` +
                     `${stint.tyre_age_at_start ?? 0} lap tyre age at fit`;
                   return (
@@ -230,6 +236,16 @@ export function TireStrategy({ stints, hamNumber, lecNumber, loading, error }: P
             </text>
           ))}
         </svg>
+        {/* Row labels overlay the SVG gutter as HTML so driver identity
+            renders through the same DriverChip as every legend. */}
+        {rows.map((row, rowIdx) => (
+          <RowLabel
+            key={row.driver.number}
+            driver={row.driver}
+            color={row.color}
+            top={rowIdx * (ROW_HEIGHT + ROW_GAP)}
+          />
+        ))}
         {hover && (
           <div
             className="tire-strip__tooltip"
@@ -254,5 +270,21 @@ export function TireStrategy({ stints, hamNumber, lecNumber, loading, error }: P
         )}
       </div>
     </ChartCard>
+  );
+}
+
+function RowLabel({
+  driver,
+  color,
+  top,
+}: {
+  driver: DriverRef;
+  color: string;
+  top: number;
+}) {
+  return (
+    <div className="tire-strip__label" style={{ top, height: ROW_HEIGHT }}>
+      <DriverChip driver={driver} color={color} compact />
+    </div>
   );
 }

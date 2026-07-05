@@ -4,13 +4,13 @@ import { Line } from "@react-three/drei";
 import { motion, useMotionValue, useSpring, type MotionValue } from "framer-motion";
 import type { Group } from "three";
 import type { Lap } from "../api/types";
+import type { DriverPair } from "../teams";
 import { useTheme } from "../hooks/useTheme";
 import { entrance, staggerContainer, stagger } from "../motion";
 
 interface Props {
   laps: Lap[];
-  hamNumber: number | null;
-  lecNumber: number | null;
+  pair: DriverPair | null;
   raceLabel: string;
 }
 
@@ -48,8 +48,8 @@ function decorativePoints(z: number, phase: number): Point[] {
 // line's own vertex colors toward white). design-system ran that through
 // the validator and it failed for real, not just as a formality — light
 // mode dropped below the 3:1 contrast floor at the brightened end, and
-// dark mode's leclerc hex already sits at the OKLCH lightness ceiling for
-// its band with ~zero headroom to brighten *at all* without leaving the
+// dark mode's warm hex already sat at the OKLCH lightness ceiling for its
+// band with ~zero headroom to brighten *at all* without leaving the
 // validated color. So pace is encoded on the glow duplicate's opacity
 // instead: the crisp line stays exactly the flat validated hex in both
 // modes (no hue/lightness shift, nothing to re-validate), and "faster lap"
@@ -84,16 +84,19 @@ function glowSegments(points: Point[]): { points: Point[]; opacity: number }[] {
 }
 
 function Ribbons({
-  ham,
-  lec,
+  a,
+  b,
   pointerX,
   pointerY,
 }: {
-  ham: Point[];
-  lec: Point[];
+  a: Point[];
+  b: Point[];
   pointerX: MotionValue<number>;
   pointerY: MotionValue<number>;
 }) {
+  // three.js materials need real color values (they can't read CSS vars) —
+  // useTheme() works inside the Canvas because it's a module store, and the
+  // driver slots retint with the selected pair like everything else.
   const theme = useTheme();
   const group = useRef<Group>(null);
   const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -117,35 +120,35 @@ function Ribbons({
     group.current.rotation.x = -0.3 + tiltX;
   });
 
-  const hamGlow = useMemo(() => glowSegments(ham), [ham]);
-  const lecGlow = useMemo(() => glowSegments(lec), [lec]);
+  const aGlow = useMemo(() => glowSegments(a), [a]);
+  const bGlow = useMemo(() => glowSegments(b), [b]);
 
   return (
     <group ref={group} rotation={[-0.3, 0, 0]} scale={[fit, fit, 1]}>
       {/* Soft glow: a wider, faint duplicate beneath the crisp line, opacity
        *  ramped per segment so the fastest laps glow more (see glowSegments). */}
-      {hamGlow.map((seg, i) => (
+      {aGlow.map((seg, i) => (
         <Line
-          key={`ham-glow-${i}`}
+          key={`a-glow-${i}`}
           points={seg.points}
-          color={theme.hamilton}
+          color={theme.driver1}
           lineWidth={7}
           transparent
           opacity={seg.opacity}
         />
       ))}
-      {lecGlow.map((seg, i) => (
+      {bGlow.map((seg, i) => (
         <Line
-          key={`lec-glow-${i}`}
+          key={`b-glow-${i}`}
           points={seg.points}
-          color={theme.leclerc}
+          color={theme.driver2}
           lineWidth={7}
           transparent
           opacity={seg.opacity}
         />
       ))}
-      <Line points={ham} color={theme.hamilton} lineWidth={2.5} />
-      <Line points={lec} color={theme.leclerc} lineWidth={2.5} />
+      <Line points={a} color={theme.driver1} lineWidth={2.5} />
+      <Line points={b} color={theme.driver2} lineWidth={2.5} />
     </group>
   );
 }
@@ -162,13 +165,13 @@ class HeroBoundary extends Component<{ children: ReactNode }, { failed: boolean 
   }
 }
 
-export function Hero3D({ laps, hamNumber, lecNumber, raceLabel }: Props) {
-  const { ham, lec } = useMemo(() => {
-    const h = ribbonPoints(laps, hamNumber, 0.4);
-    const l = ribbonPoints(laps, lecNumber, -0.4);
-    if (h.length && l.length) return { ham: h, lec: l };
-    return { ham: decorativePoints(0.4, 0), lec: decorativePoints(-0.4, 2.1) };
-  }, [laps, hamNumber, lecNumber]);
+export function Hero3D({ laps, pair, raceLabel }: Props) {
+  const { a, b } = useMemo(() => {
+    const ra = ribbonPoints(laps, pair?.[0].number ?? null, 0.4);
+    const rb = ribbonPoints(laps, pair?.[1].number ?? null, -0.4);
+    if (ra.length && rb.length) return { a: ra, b: rb };
+    return { a: decorativePoints(0.4, 0), b: decorativePoints(-0.4, 2.1) };
+  }, [laps, pair]);
 
   const isRealData = laps.length > 0;
 
@@ -200,7 +203,7 @@ export function Hero3D({ laps, hamNumber, lecNumber, raceLabel }: Props) {
           dpr={[1, 1.5]}
           gl={{ alpha: true, antialias: true }}
         >
-          <Ribbons ham={ham} lec={lec} pointerX={pointerX} pointerY={pointerY} />
+          <Ribbons a={a} b={b} pointerX={pointerX} pointerY={pointerY} />
         </Canvas>
       </HeroBoundary>
 
@@ -211,7 +214,7 @@ export function Hero3D({ laps, hamNumber, lecNumber, raceLabel }: Props) {
         animate="show"
       >
         <motion.h1 variants={entrance}>
-          Hamilton vs. Leclerc,
+          {pair ? `${pair[0].lastName} vs. ${pair[1].lastName},` : "Two drivers,"}
           <br />
           lap by lap.
         </motion.h1>

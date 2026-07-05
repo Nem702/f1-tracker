@@ -9,54 +9,64 @@ import {
   YAxis,
 } from "recharts";
 import type { PositionRow } from "../api/types";
+import type { DriverPair } from "../teams";
 import { useTheme } from "../hooks/useTheme";
 import { useDrawInOnce } from "../hooks/useDrawInOnce";
 import { fmtClock } from "../format";
 import { ChartCard } from "./ChartCard";
+import { PairLegend } from "./DriverChip";
 import { ChartTooltip, type TooltipRow } from "./ChartTooltip";
 
 interface Props {
   positions: PositionRow[];
-  hamNumber: number | null;
-  lecNumber: number | null;
+  pair: DriverPair | null;
   loading: boolean;
   error: string | null;
 }
 
 interface PosPoint {
   t: number; // epoch ms — positions are timestamped events, not per-lap
-  ham: number | null;
-  lec: number | null;
+  a: number | null;
+  b: number | null;
 }
 
-export function PositionChart({
-  positions,
-  hamNumber,
-  lecNumber,
-  loading,
-  error,
-}: Props) {
+export function PositionChart({ positions, pair, loading, error }: Props) {
   const theme = useTheme();
+  const aNumber = pair?.[0].number ?? null;
+  const bNumber = pair?.[1].number ?? null;
+  const aName = pair?.[0].lastName ?? "Driver A";
+  const bName = pair?.[1].lastName ?? "Driver B";
 
   const data: PosPoint[] = useMemo(() => {
     const byTime = new Map<number, PosPoint>();
     for (const row of positions) {
+      if (row.driver_number !== aNumber && row.driver_number !== bNumber) continue;
       const t = new Date(row.date).getTime();
       let point = byTime.get(t);
       if (!point) {
-        point = { t, ham: null, lec: null };
+        point = { t, a: null, b: null };
         byTime.set(t, point);
       }
-      if (row.driver_number === hamNumber) point.ham = row.position;
-      else if (row.driver_number === lecNumber) point.lec = row.position;
+      if (row.driver_number === aNumber) point.a = row.position;
+      else point.b = row.position;
     }
     return [...byTime.values()].sort((a, b) => a.t - b.t);
-  }, [positions, hamNumber, lecNumber]);
+  }, [positions, aNumber, bNumber]);
   const drawIn = useDrawInOnce(data.length > 0);
 
+  // The table mirrors the chart: only the active pair's rows (the endpoint
+  // carries every tracked driver since the four-team expansion).
+  const pairRows = useMemo(
+    () =>
+      positions.filter(
+        (p) => p.driver_number === aNumber || p.driver_number === bNumber,
+      ),
+    [positions, aNumber, bNumber],
+  );
+
   const maxPos = useMemo(
-    () => Math.max(10, ...positions.map((p) => p.position ?? 0)),
-    [positions],
+    () => Math.max(10, ...pairRows.map((p) => p.position ?? 0)),
+    [pairRows],
   );
 
   // Recharts' auto ticks skip P1 on a reversed axis; pin them so the top
@@ -77,9 +87,9 @@ export function PositionChart({
     for (const entry of payload) {
       if (entry.value == null) continue;
       rows.push({
-        color: entry.dataKey === "ham" ? theme.hamilton : theme.leclerc,
+        color: entry.dataKey === "a" ? theme.driver1 : theme.driver2,
         value: `P${entry.value}`,
-        label: entry.dataKey === "ham" ? "Hamilton" : "Leclerc",
+        label: entry.dataKey === "a" ? aName : bName,
       });
     }
     return (
@@ -91,10 +101,7 @@ export function PositionChart({
     <ChartCard
       title="Track position"
       subtitle="Position changes over the race — P1 at the top."
-      legend={[
-        { label: "Hamilton", color: theme.hamilton, shape: "line" },
-        { label: "Leclerc", color: theme.leclerc, shape: "line" },
-      ]}
+      legend={<PairLegend pair={pair} />}
       loading={loading}
       error={error}
       hasData={data.length > 0}
@@ -106,11 +113,11 @@ export function PositionChart({
           {
             key: "driver_number",
             label: "Driver",
-            format: (v) => (v === hamNumber ? "Hamilton" : "Leclerc"),
+            format: (v) => (v === aNumber ? aName : bName),
           },
           { key: "position", label: "Position", format: (v) => `P${v as number}` },
         ],
-        rows: positions as unknown as Record<string, unknown>[],
+        rows: pairRows as unknown as Record<string, unknown>[],
       }}
     >
       <ResponsiveContainer width="100%" height={240}>
@@ -144,20 +151,20 @@ export function PositionChart({
           {/* stepAfter + connectNulls: a position holds until the next change,
               so interpolating diagonals would misstate the data */}
           <Line
-            dataKey="ham"
+            dataKey="a"
             type="stepAfter"
             connectNulls
-            stroke={theme.hamilton}
+            stroke={theme.driver1}
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4, stroke: theme.surface, strokeWidth: 2 }}
             {...drawIn}
           />
           <Line
-            dataKey="lec"
+            dataKey="b"
             type="stepAfter"
             connectNulls
-            stroke={theme.leclerc}
+            stroke={theme.driver2}
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4, stroke: theme.surface, strokeWidth: 2 }}

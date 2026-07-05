@@ -1,6 +1,8 @@
 import { type ReactNode, useMemo } from "react";
 import { motion } from "framer-motion";
-import type { DeltaRow, Lap, PitStop } from "../api/types";
+import type { Lap, PitStop } from "../api/types";
+import type { DriverPair } from "../teams";
+import type { PairDelta } from "../lib/delta";
 import { fmtLapTime } from "../format";
 import { hoverLift, staggerContainer, staggerItem } from "../motion";
 import { CountUp } from "./CountUp";
@@ -8,18 +10,10 @@ import { CountUp } from "./CountUp";
 interface Props {
   laps: Lap[];
   pit: PitStop[];
-  delta: DeltaRow[];
-  hamNumber: number | null;
-  lecNumber: number | null;
+  /** Client-derived pair delta (lib/delta.ts) — pit in/out laps already excluded. */
+  delta: PairDelta[];
+  pair: DriverPair | null;
   loading: boolean;
-}
-
-function isTracked(
-  driverNumber: number,
-  hamNumber: number | null,
-  lecNumber: number | null,
-): boolean {
-  return driverNumber === hamNumber || driverNumber === lecNumber;
 }
 
 function StopwatchIcon() {
@@ -95,7 +89,7 @@ interface TileProps {
 
 function StatTile({ icon, label, value }: TileProps) {
   return (
-    <motion.div className="stat-tile" variants={staggerItem} {...hoverLift}>
+    <motion.div className="stat-tile glass" variants={staggerItem} {...hoverLift}>
       <span className="stat-tile__icon">{icon}</span>
       <span className="stat-tile__corner">
         <CornerArrow />
@@ -111,58 +105,57 @@ function StatTile({ icon, label, value }: TileProps) {
  *  own. Every value falls back to an em dash rather than a misleading 0 when
  *  the race has nothing to compute from yet (no race selected, or an
  *  empty-telemetry race like Sakhir/Jeddah). */
-export function StatTiles({ laps, pit, delta, hamNumber, lecNumber, loading }: Props) {
+export function StatTiles({ laps, pit, delta, pair, loading }: Props) {
+  const aNumber = pair?.[0].number ?? null;
+  const bNumber = pair?.[1].number ?? null;
+  const isTracked = (n: number) => n === aNumber || n === bNumber;
+  const sameTeam = pair !== null && pair[0].teamSlug === pair[1].teamSlug;
+
   const fastestLap = useMemo(() => {
     let best: { driver: number; duration: number } | null = null;
     for (const lap of laps) {
       if (lap.lap_duration == null) continue;
-      if (!isTracked(lap.driver_number, hamNumber, lecNumber)) continue;
+      if (lap.driver_number !== aNumber && lap.driver_number !== bNumber) continue;
       if (!best || lap.lap_duration < best.duration) {
         best = { driver: lap.driver_number, duration: lap.lap_duration };
       }
     }
     return best;
-  }, [laps, hamNumber, lecNumber]);
+  }, [laps, aNumber, bNumber]);
 
   const fastestDriverName =
-    fastestLap === null
+    fastestLap === null || pair === null
       ? null
-      : fastestLap.driver === hamNumber
-        ? "Hamilton"
-        : "Leclerc";
+      : fastestLap.driver === aNumber
+        ? pair[0].lastName
+        : pair[1].lastName;
 
   const lapsCompleted = useMemo(() => {
     let max = 0;
     for (const lap of laps) {
-      if (!isTracked(lap.driver_number, hamNumber, lecNumber)) continue;
+      if (!isTracked(lap.driver_number)) continue;
       if (lap.lap_number > max) max = lap.lap_number;
     }
     return max;
-  }, [laps, hamNumber, lecNumber]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [laps, aNumber, bNumber]);
 
   const pitStopCount = useMemo(
     () =>
-      pit.filter(
-        (p) => p.pit_duration !== null && isTracked(p.driver_number, hamNumber, lecNumber),
-      ).length,
-    [pit, hamNumber, lecNumber],
+      pit.filter((p) => p.pit_duration !== null && isTracked(p.driver_number))
+        .length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pit, aNumber, bNumber],
   );
 
-  // Same pit in/out exclusion DeltaChart applies — a pit cycle's ±20s swing
-  // would swamp the racing-pace story this tile summarizes.
+  // deriveDelta already applied the pair's pit in/out exclusion — a pit
+  // cycle's ±20s swing would swamp the racing-pace story this tile
+  // summarizes — so the mean is over racing laps only.
   const avgGap = useMemo(() => {
-    const excluded = new Set<number>();
-    for (const lap of laps) {
-      if (lap.is_pit_out_lap) {
-        excluded.add(lap.lap_number);
-        excluded.add(lap.lap_number - 1);
-      }
-    }
-    const racing = delta.filter((d) => !excluded.has(d.lap_number));
-    if (racing.length === 0) return null;
-    const sum = racing.reduce((acc, d) => acc + Math.abs(d.delta), 0);
-    return sum / racing.length;
-  }, [delta, laps]);
+    if (delta.length === 0) return null;
+    const sum = delta.reduce((acc, d) => acc + Math.abs(d.delta), 0);
+    return sum / delta.length;
+  }, [delta]);
 
   return (
     <motion.div
@@ -206,7 +199,7 @@ export function StatTiles({ laps, pit, delta, hamNumber, lecNumber, loading }: P
       />
       <StatTile
         icon={<GapIcon />}
-        label="Avg. teammate gap"
+        label={sameTeam ? "Avg. teammate gap" : "Avg. pair gap"}
         value={
           avgGap !== null ? (
             <CountUp

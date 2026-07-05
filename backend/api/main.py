@@ -80,17 +80,6 @@ def require_race(conn, session_key):
         raise HTTPException(status_code=404, detail=f"Unknown session_key {session_key}")
 
 
-def ferrari_driver_numbers(conn):
-    """Resolve Hamilton/Leclerc numbers from the drivers table — the DB mirror
-    of the per-session /drivers resolution; numbers are never hardcoded."""
-    rows = query(conn, "SELECT driver_number, name FROM drivers")
-    ham = next((r["driver_number"] for r in rows if "hamilton" in r["name"].lower()), None)
-    lec = next((r["driver_number"] for r in rows if "leclerc" in r["name"].lower()), None)
-    if ham is None or lec is None:
-        raise HTTPException(status_code=500, detail="Ferrari drivers not found in drivers table")
-    return ham, lec
-
-
 _NEXT_RACE_TTL_SECONDS = 60 * 60
 _next_race_cache = {"payload": None, "fetched_at": 0.0}
 
@@ -218,30 +207,4 @@ def race_control(session_key: int, conn=Depends(get_db)):
         conn,
         "SELECT * FROM race_control WHERE session_key = %s ORDER BY date",
         (session_key,),
-    )
-
-
-@app.get("/api/races/{session_key}/delta")
-def delta(session_key: int, conn=Depends(get_db)):
-    """Per-lap teammate delta, only for laps both drivers completed with a
-    recorded time. Positive delta = Leclerc was faster that lap (Hamilton's
-    lap took longer)."""
-    logger.debug("GET /api/races/%s/delta", session_key)
-    require_race(conn, session_key)
-    ham, lec = ferrari_driver_numbers(conn)
-    return query(
-        conn,
-        """
-        SELECT h.lap_number,
-               h.lap_duration AS hamilton_duration,
-               l.lap_duration AS leclerc_duration,
-               h.lap_duration - l.lap_duration AS delta
-        FROM laps h
-        JOIN laps l ON l.session_key = h.session_key AND l.lap_number = h.lap_number
-        WHERE h.session_key = %s
-          AND h.driver_number = %s AND l.driver_number = %s
-          AND h.lap_duration IS NOT NULL AND l.lap_duration IS NOT NULL
-        ORDER BY h.lap_number
-        """,
-        (session_key, ham, lec),
     )

@@ -1,20 +1,23 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { MotionConfig } from "framer-motion";
 import { api } from "./api/client";
 import { useApi } from "./hooks/useApi";
-import { useMode } from "./hooks/useTheme";
-import { cssVars, themes } from "./theme";
+import { setTint, useMode, useTheme } from "./hooks/useTheme";
+import { cssVars, tintForPair } from "./theme";
+import { buildRosters, findDriver, pairTeamSlug, type DriverPair } from "./teams";
+import { deriveDelta } from "./lib/delta";
 import { fmtDate } from "./format";
 import { Sidebar } from "./components/Sidebar";
 import { normalizeHash, type View } from "./viewState";
 import { ViewTransition } from "./components/ViewTransition";
+import { AuroraBackground } from "./components/AuroraBackground";
 import { Hero3D } from "./components/Hero3D";
 import { Countdown } from "./components/Countdown";
 import { About } from "./components/About";
 import { Reveal } from "./components/Reveal";
 import { StatTiles } from "./components/StatTiles";
 import { RaceSelector } from "./components/RaceSelector";
-import { TeamSelector, type TeamOption } from "./components/TeamSelector";
+import { TeamSwitcher } from "./components/TeamSwitcher";
 import { LapTimeChart } from "./components/LapTimeChart";
 import { DeltaChart } from "./components/DeltaChart";
 import { TireStrategy } from "./components/TireStrategy";
@@ -22,14 +25,6 @@ import { PitStopChart } from "./components/PitStopChart";
 import { PositionChart } from "./components/PositionChart";
 import { WeatherChart } from "./components/WeatherChart";
 import { RaceControlFeed } from "./components/RaceControlFeed";
-
-/** UI shell for the multi-team expansion (Ferrari → Mercedes → McLaren →
- *  Red Bull): one option today, so choosing a team drives no fetches yet —
- *  the dashboard still resolves the Hamilton/Leclerc pair below. Adding a
- *  team later means adding an option here and wiring the pair swap. */
-const TEAMS: TeamOption[] = [
-  { id: "ferrari", name: "Ferrari", drivers: "Hamilton vs. Leclerc" },
-];
 
 /* Sidebar collapse: an explicit user choice persists (same storage pattern
    as hooks/useTheme.ts); first visit defaults to collapsed on narrow
@@ -48,6 +43,30 @@ function readStoredCollapsed(): boolean {
   return window.innerWidth < 900;
 }
 
+/* The selected pair persists as two driver numbers. They're validated
+   against the fetched roster on every resolve (a stale number from a past
+   season falls back to the Ferrari duo), so a bad stored value can never
+   brick the dashboard. */
+const PAIR_KEY = "f1-tracker-pair";
+
+function readStoredPair(): [number, number] | null {
+  try {
+    const raw = localStorage.getItem(PAIR_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === 2 &&
+      parsed.every((n) => typeof n === "number")
+    ) {
+      return [parsed[0], parsed[1]];
+    }
+  } catch {
+    // Unparseable storage just means the default pair.
+  }
+  return null;
+}
+
 /** Hash-synced view state — no router. Sidebar owns the view list; this
  *  just mirrors `location.hash` into it so back/forward and reload both
  *  land on the right view. */
@@ -63,14 +82,12 @@ function useView(): View {
 
 export default function App() {
   const mode = useMode();
-  const theme = themes[mode];
   const view = useView();
 
   const races = useApi((_k) => api.races(), 0);
   const drivers = useApi((_k) => api.drivers(), 0);
 
   const [selected, setSelected] = useState<number | null>(null);
-  const [teamId, setTeamId] = useState(TEAMS[0].id);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredCollapsed);
   const toggleSidebar = () => {
@@ -90,22 +107,65 @@ export default function App() {
     }
   }, [races.data, selected]);
 
-  // Driver numbers come from the API (which resolved them per-session from
-  // OpenF1) — same rule as the backend: never hardcode 44/16.
-  const hamNumber =
-    drivers.data?.find((d) => d.name.toLowerCase().includes("hamilton"))
-      ?.driver_number ?? null;
-  const lecNumber =
-    drivers.data?.find((d) => d.name.toLowerCase().includes("leclerc"))
-      ?.driver_number ?? null;
+  // ---- pair model -----------------------------------------------------------
+  // Rosters come from the API (which resolved drivers per-session from
+  // OpenF1) — same rule as the backend: numbers are never hardcoded.
+  const rosters = useMemo(() => buildRosters(drivers.data ?? []), [drivers.data]);
+
+  const [pairNumbers, setPairNumbers] = useState<[number, number] | null>(
+    readStoredPair,
+  );
+  const setPair = (a: number, b: number) => {
+    setPairNumbers([a, b]);
+    try {
+      localStorage.setItem(PAIR_KEY, JSON.stringify([a, b]));
+    } catch {
+      // Storage being unavailable only loses persistence, not the switch.
+    }
+  };
+
+  const pair: DriverPair | null = useMemo(() => {
+    if (rosters.length === 0) return null;
+    if (pairNumbers) {
+      const a = findDriver(rosters, pairNumbers[0]);
+      const b = findDriver(rosters, pairNumbers[1]);
+      if (a && b && a.number !== b.number) return [a, b];
+    }
+    const ferrari = rosters.find((r) => r.slug === "ferrari") ?? rosters[0];
+    return ferrari.duo;
+  }, [rosters, pairNumbers]);
+
+  // Push the pair's tint (team chrome + slot colors) into the theme store so
+  // every useTheme() consumer — charts, ribbons, CSS vars — retints together.
+  const tint = useMemo(
+    () => tintForPair(pair?.[0] ?? null, pair?.[1] ?? null),
+    [pair],
+  );
+  useEffect(() => {
+    setTint(tint);
+  }, [tint]);
+  const theme = useTheme();
+  const teamSlug = pairTeamSlug(pair);
 
   const laps = useApi(api.laps, selected);
-  const delta = useApi(api.delta, selected);
   const stints = useApi(api.stints, selected);
   const pit = useApi(api.pit, selected);
   const positions = useApi(api.positions, selected);
   const weather = useApi(api.weather, selected);
   const raceControl = useApi(api.raceControl, selected);
+
+  // Client-side teammate delta (the old /api/delta was only a join-and-
+  // subtract over rows already in `laps`) — a pair switch recomputes it
+  // instantly, no refetch.
+  const deltaRows = useMemo(
+    () =>
+      deriveDelta(
+        laps.data ?? [],
+        pair?.[0].number ?? null,
+        pair?.[1].number ?? null,
+      ),
+    [laps.data, pair],
+  );
 
   const race = races.data?.find((r) => r.session_key === selected) ?? null;
   const raceLabel = race
@@ -120,8 +180,10 @@ export default function App() {
     <MotionConfig reducedMotion="user">
       <div
         className={`app-shell${sidebarCollapsed ? " app-shell--collapsed" : ""}`}
+        data-team={teamSlug ?? undefined}
         style={{ ...cssVars(theme), colorScheme: mode } as CSSProperties}
       >
+        <AuroraBackground />
         <Sidebar
           view={view}
           collapsed={sidebarCollapsed}
@@ -134,27 +196,25 @@ export default function App() {
               <section className="view view--overview">
                 <header className="view__header">
                   <p className="view__eyebrow">Overview</p>
-                  <h1 className="view__title">Hamilton vs. Leclerc.</h1>
+                  <h1 className="view__title">
+                    {pair ? `${pair[0].lastName} vs. ${pair[1].lastName}.` : "Head to head."}
+                  </h1>
                 </header>
 
-                <Hero3D
-                  laps={laps.data ?? []}
-                  hamNumber={hamNumber}
-                  lecNumber={lecNumber}
-                  raceLabel={raceLabel}
-                />
+                <Hero3D laps={laps.data ?? []} pair={pair} raceLabel={raceLabel} />
 
                 <div className="overview__selectors">
-                  <TeamSelector
-                    teams={TEAMS}
-                    value={teamId}
-                    onChange={setTeamId}
-                  />
+                  {rosters.length > 0 && pair && (
+                    <TeamSwitcher
+                      rosters={rosters}
+                      pair={pair}
+                      onSelectPair={setPair}
+                    />
+                  )}
                   <RaceSelector
                     races={races.data ?? []}
                     value={selected}
                     onChange={setSelected}
-                    glass
                   />
                 </div>
 
@@ -164,10 +224,9 @@ export default function App() {
                     <StatTiles
                       laps={laps.data ?? []}
                       pit={pit.data ?? []}
-                      delta={delta.data ?? []}
-                      hamNumber={hamNumber}
-                      lecNumber={lecNumber}
-                      loading={laps.loading || pit.loading || delta.loading}
+                      delta={deltaRows}
+                      pair={pair}
+                      loading={laps.loading || pit.loading}
                     />
                   </div>
                 </div>
@@ -207,25 +266,23 @@ export default function App() {
                   <Reveal wide>
                     <LapTimeChart
                       laps={laps.data ?? []}
-                      hamNumber={hamNumber}
-                      lecNumber={lecNumber}
+                      pair={pair}
                       loading={laps.loading}
                       error={laps.error}
                     />
                   </Reveal>
                   <Reveal wide>
                     <DeltaChart
-                      delta={delta.data ?? []}
-                      laps={laps.data ?? []}
-                      loading={delta.loading}
-                      error={delta.error}
+                      rows={deltaRows}
+                      pair={pair}
+                      loading={laps.loading}
+                      error={laps.error}
                     />
                   </Reveal>
                   <Reveal>
                     <TireStrategy
                       stints={stints.data ?? []}
-                      hamNumber={hamNumber}
-                      lecNumber={lecNumber}
+                      pair={pair}
                       loading={stints.loading}
                       error={stints.error}
                     />
@@ -233,8 +290,7 @@ export default function App() {
                   <Reveal delay={0.08}>
                     <PitStopChart
                       pit={pit.data ?? []}
-                      hamNumber={hamNumber}
-                      lecNumber={lecNumber}
+                      pair={pair}
                       loading={pit.loading}
                       error={pit.error}
                     />
@@ -242,8 +298,7 @@ export default function App() {
                   <Reveal wide>
                     <PositionChart
                       positions={positions.data ?? []}
-                      hamNumber={hamNumber}
-                      lecNumber={lecNumber}
+                      pair={pair}
                       loading={positions.loading}
                       error={positions.error}
                     />
