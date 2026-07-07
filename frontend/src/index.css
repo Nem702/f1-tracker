@@ -9,8 +9,6 @@
    surfaces (ONE recipe, the .glass utility) < near-opaque chart plates
    inside glass cards so data marks never fight the moving color. */
 
-@import "@fontsource-variable/inter/wght.css";
-
 * {
   box-sizing: border-box;
 }
@@ -54,7 +52,9 @@
   --content-pad-y: 36px;
 
   /* ---- glass ---- */
-  --glass-blur: 24px;
+  /* backdrop-filter cost scales with the blur radius — 16px reads nearly
+     as frosty as 24px did but scrolls visibly smoother. */
+  --glass-blur: 16px;
   /* the retint/theme transition — background & border only, ~250ms */
   --tint-transition: background-color 0.25s ease, border-color 0.25s ease;
 }
@@ -84,7 +84,7 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   /* pre-mount fallback — must match theme.ts's pageBase (aurora base) */
-  background: #f2ede7;
+  background: #ececec;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -123,8 +123,11 @@ body {
 
 /* ---------- page aurora ---------- */
 /* One fixed layer behind everything; blobs wear the active theme's accent
-   and pair colors, so a team switch retints the whole page wash. Transform-
-   only drift; never per-card blobs. */
+   and pair colors, so a team switch retints the whole page wash. The wash
+   is STATIC: anything animating beneath a backdrop-filter surface forces
+   every glass element above it to re-blur every frame, forever — the old
+   infinite drift was the site-wide sluggishness bug. Only the 250ms retint
+   crossfade animates. Never per-card blobs. */
 
 .aurora {
   position: fixed;
@@ -136,62 +139,49 @@ body {
   transition: var(--tint-transition);
 }
 
+/* Pre-blurred look without filter: a solid themed fill (so the retint
+   transition still crossfades background-color) shaped by a static radial
+   alpha mask instead of filter: blur(110px). */
 .aurora__blob {
   position: absolute;
-  width: 760px;
-  height: 760px;
-  border-radius: 50%;
-  filter: blur(110px);
-  will-change: transform;
+  width: 920px;
+  height: 920px;
+  -webkit-mask-image: radial-gradient(
+    closest-side,
+    rgb(0 0 0) 42%,
+    rgb(0 0 0 / 0.7) 60%,
+    rgb(0 0 0 / 0.3) 78%,
+    transparent 98%
+  );
+  mask-image: radial-gradient(
+    closest-side,
+    rgb(0 0 0) 42%,
+    rgb(0 0 0 / 0.7) 60%,
+    rgb(0 0 0 / 0.3) 78%,
+    transparent 98%
+  );
   transition: background-color 0.25s ease, opacity 0.25s ease;
 }
 
 .aurora__blob--a {
-  top: -240px;
-  left: -180px;
+  top: -320px;
+  left: -260px;
   background: var(--accent);
   opacity: var(--aurora-a);
-  animation: aurora-drift-a 26s ease-in-out infinite alternate;
 }
 
 .aurora__blob--b {
   top: 16%;
-  right: -260px;
+  right: -340px;
   background: var(--driver1);
   opacity: var(--aurora-b);
-  animation: aurora-drift-b 30s ease-in-out infinite alternate;
 }
 
 .aurora__blob--c {
-  bottom: -280px;
+  bottom: -360px;
   left: 28%;
   background: var(--driver2);
   opacity: var(--aurora-c);
-  animation: aurora-drift-c 34s ease-in-out infinite alternate;
-}
-
-@keyframes aurora-drift-a {
-  to {
-    transform: translate3d(150px, 110px, 0) scale(1.08);
-  }
-}
-
-@keyframes aurora-drift-b {
-  to {
-    transform: translate3d(-130px, 140px, 0) scale(0.94);
-  }
-}
-
-@keyframes aurora-drift-c {
-  to {
-    transform: translate3d(140px, -120px, 0) scale(1.06);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .aurora__blob {
-    animation: none;
-  }
 }
 
 /* ---------- app shell: sidebar + content ---------- */
@@ -483,7 +473,7 @@ body {
   position: relative;
   height: clamp(360px, 48vw, 560px);
   overflow: hidden;
-  /* Tight bottom margin: the team switcher directly below belongs to the
+  /* Tight bottom margin: the race selector directly below belongs to the
      hero visually, so the big gap comes after it, not before. */
   margin: 0 calc(var(--content-pad-x) * -1) var(--space-4);
 }
@@ -523,19 +513,25 @@ body {
   color: var(--ink-secondary);
 }
 
-.hero__caption {
-  position: absolute;
-  left: var(--space-5);
-  right: var(--space-5);
-  bottom: 40px;
-  margin: 0;
-  text-align: center;
-  color: var(--ink-muted);
-  font-size: 12px;
-  pointer-events: none;
+/* Everything below the uncontained hero is capped to a comfortable width and
+   centered: the hero's ribbon chart caps its own rendered size (Hero3D's
+   `fit` calc), so it never actually fills an ultrawide monitor, but every
+   card/grid below it otherwise would — this keeps the whole section reading
+   as one column roughly as wide as the chart above, not edge to edge. */
+.overview__body {
+  max-width: 1100px;
+  margin: 0 auto;
 }
 
-/* Centers the team switcher + race pill under the uncontained hero. */
+/* The race selector takes the hero's old caption slot — a real, functional
+   picker instead of a plain "race name — each ribbon is..." text label. */
+.overview__race-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-4);
+}
+
+/* Centers the team switcher under the race selector, its own row. */
 .overview__selectors {
   display: flex;
   flex-wrap: wrap;
@@ -563,10 +559,25 @@ body {
   gap: var(--space-2);
   max-width: 100%;
   overflow-x: auto;
-  /* room for the active chip's glow so overflow:auto doesn't clip it;
-     the negative margin gives the padding back to the layout */
-  padding: 10px;
-  margin: -6px;
+  /* Site-wide box-sizing is border-box (index.css's `* {}` rule), which
+     makes max-width and padding compete for the same budget: the padding
+     added below (room for the active chip's glow) would otherwise get
+     carved out of the 100% available to the chips themselves, pushing them
+     into unwanted scrolling on any viewport where they're borderline (this
+     bit us twice — first via bigger padding, then again once the page grid
+     narrowed under a max-width wrapper). Overriding to content-box here
+     means the padding is added on top of the 100% instead of subtracted
+     from it, so the chips always get the full available width and only the
+     glow's clearance grows/shrinks — confirmed via devtools by toggling the
+     site-wide rule off, but that fix scoped to just this element instead of
+     every padded box on the page. */
+  box-sizing: content-box;
+  /* more room on Y than X: the glow's blur falloff reaches further on the
+     bottom, where the box-shadow's 8px y-offset pushes it out further. The
+     negative margin gives the padding back to the layout, net +4px on
+     every side same as before. */
+  padding: 32px 10px 48px;
+  margin: -28px -6px -44px;
   scrollbar-width: none;
 }
 
@@ -673,11 +684,18 @@ body {
   color: var(--ink-secondary);
 }
 
-/* ---------- Overview row: countdown + stat tiles ---------- */
+/* ---------- Overview row: the selected-race summary vs. the countdown ---------- */
+/* Two unrelated things side by side: everything about the CURRENTLY
+   SELECTED race (insight + its stat grid) grouped together in their own
+   column on the left — the stat grid nests directly under the insight it
+   summarizes instead of spanning under the countdown too — and the
+   countdown (always the UPCOMING race) on the right. Same height
+   (align-items: stretch) so the two read as one paired row, not two
+   independently-sized blocks. */
 
 .overview__row {
   display: grid;
-  grid-template-columns: minmax(280px, 380px) 1fr;
+  grid-template-columns: 1fr minmax(280px, 380px);
   gap: var(--space-5);
   align-items: stretch;
 }
@@ -688,17 +706,66 @@ body {
   }
 }
 
-.overview__stats-slot {
+.overview__summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
   min-width: 0;
+}
+
+/* The insight card: parallel to .countdown (same radius tier, same eyebrow
+   treatment) but labeled with the SELECTED race rather than "Up next" — the
+   two cards must read as different time frames at a glance. Glow (ring +
+   soft blur, appended to .glass's own inset-spec + shadow-card layers) uses
+   var(--accent) — exactly the color the active team chip (or the neutral
+   Head-to-Head chip) glows with. Scoped to just this one headline card —
+   glowing every stat tile too (6 glowing surfaces in one row) read as too
+   much, so .stat-tile stays plain .glass. */
+.overview__insight {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-feature);
+  box-shadow:
+    inset 0 1px 0 var(--spec),
+    var(--shadow-card),
+    0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent),
+    0 8px 26px -10px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.overview__insight-eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  transition: color 0.25s ease;
+}
+
+.overview__insight-text {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--ink-primary);
 }
 
 /* ---------- stat tiles ---------- */
 
 .stat-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: var(--space-4);
-  height: 100%;
+}
+
+@media (max-width: 900px) {
+  .stat-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .stat-tile {
@@ -720,13 +787,6 @@ body {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--accent-ink);
   transition: var(--tint-transition), color 0.25s ease;
-}
-
-.stat-tile__corner {
-  position: absolute;
-  top: var(--space-4);
-  right: var(--space-4);
-  color: var(--ink-muted);
 }
 
 .stat-tile__value {
@@ -873,9 +933,13 @@ body {
   padding: 0 0 var(--space-4);
 }
 
-/* The frosted pill shell around a <select> (the .glass class on the element
-   carries the surface; this adds the pill shape). */
-.race-selector {
+/* ---------- glass select (GlassSelect.tsx) ---------- */
+/* The frosted pill shell around the custom dropdown (the .glass class on
+   the element carries the surface; this adds the pill shape). Replaced the
+   native <select>s: the OS popup ignored the theme (white menu under the
+   dark theme's near-white ink) and never matched the glass look. */
+
+.glass-select {
   position: relative;
   display: flex;
   align-items: center;
@@ -885,10 +949,16 @@ body {
   border-radius: var(--radius-pill);
 }
 
-/* Replacement dropdown arrow: `appearance: none` on the select below removes
-   the OS chrome (arrow included), and a background-image chevron can't read
-   theme vars — so draw one from two borders on the wrapper instead. */
-.race-selector::after {
+/* The popup must paint over the glass cards that FOLLOW the pill in DOM
+   order — the .glass backdrop-filter makes every card its own stacking
+   context, and z-index: auto siblings stack by DOM order. */
+.glass-select--open {
+  z-index: 10;
+}
+
+/* Dropdown chevron: a background-image can't read theme vars, so draw one
+   from two borders on the wrapper instead; flips while the popup is open. */
+.glass-select::after {
   content: "";
   position: absolute;
   top: 50%;
@@ -899,9 +969,14 @@ body {
   border-bottom: 1.6px solid var(--ink-muted);
   transform: translateY(-65%) rotate(45deg);
   pointer-events: none;
+  transition: transform 0.2s ease;
 }
 
-.race-selector__label {
+.glass-select--open::after {
+  transform: translateY(-25%) rotate(225deg);
+}
+
+.glass-select__label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -910,14 +985,15 @@ body {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  white-space: nowrap;
 }
 
-.race-selector select {
+.glass-select__trigger {
   appearance: none;
-  -webkit-appearance: none;
   font: inherit;
   font-size: 13px;
   font-weight: 600;
+  text-align: left;
   color: var(--ink-primary);
   background: var(--glass2);
   border: 1px solid var(--glass-border);
@@ -926,10 +1002,100 @@ body {
   padding: 7px 30px 7px 14px;
   cursor: pointer;
   /* flex items refuse to shrink below content width by default; on phone
-     widths the long race options must clip inside the pill instead of
+     widths the long race labels must clip inside the pill instead of
      pushing the page sideways */
   min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   transition: var(--tint-transition);
+}
+
+.glass-select__trigger:disabled {
+  color: var(--ink-muted);
+  cursor: default;
+}
+
+/* The floating options panel: raised above the page, one nesting level like
+   the tooltip. Unlike a resting card it floats over arbitrary content —
+   cards, countdown digits, bold stat numbers — so it wears its own near-solid
+   fill (--glass-menu, not the shared --glass-opaque fallback token: that one
+   is a decorative @supports fallback, not tuned for an interactive menu's
+   legibility needs) plus a stronger blur than the standard .glass recipe. */
+.glass-select__popup {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 10;
+  background: var(--glass-menu);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  min-width: 100%;
+  width: max-content;
+  max-width: min(340px, calc(100vw - 2 * var(--content-pad-x)));
+  max-height: 320px;
+  overflow-y: auto;
+  border-radius: var(--radius-md);
+  box-shadow:
+    inset 0 1px 0 var(--spec),
+    var(--shadow-raised);
+  transform-origin: top;
+}
+
+.glass-select__listbox {
+  padding: 6px;
+  outline: none;
+}
+
+.glass-select__group {
+  padding: 8px 10px 3px;
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.glass-select__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--ink-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.glass-select__option--active {
+  background: var(--glass2);
+  color: var(--ink-primary);
+}
+
+.glass-select__option--selected {
+  color: var(--ink-primary);
+}
+
+.glass-select__option--disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Fixed-width check slot keeps option labels aligned whether or not the
+   check renders. */
+.glass-select__check {
+  display: inline-flex;
+  width: 14px;
+  flex-shrink: 0;
+  color: var(--accent-ink);
+}
+
+.glass-select__option-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .filters__meta {
@@ -952,12 +1118,28 @@ body {
   gap: var(--space-4);
 }
 
-/* Chart card: glass shell (the .glass class carries the surface); the data
-   itself draws on the opaque .card__plate below. */
+/* Chart card: a solid (non-blurred) shell — see .card--solid below for why
+   this doesn't wear the shared .glass recipe. The data itself draws on the
+   opaque .card__plate further inside. */
 .card {
   border-radius: var(--radius-card);
   padding: var(--space-4) var(--space-4);
   min-width: 0; /* keep Recharts' ResponsiveContainer from overflowing the column */
+}
+
+/* Same border/shadow/retint language as .glass, minus backdrop-filter:
+   Race Analysis stacks 6-7 of these over the scrolling page, and profiling
+   showed that's what was costing scroll frames (re-blurring the moving
+   aurora under every card, every frame) — not a GPU/JS bottleneck anywhere
+   else. A solid fill keeps the same visual family without the per-frame
+   compositing cost. */
+.card--solid {
+  background: var(--card-solid);
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    inset 0 1px 0 var(--spec),
+    var(--shadow-card);
+  transition: var(--tint-transition);
 }
 
 .card--wide {
@@ -1080,8 +1262,8 @@ body {
 
 .viz-tooltip {
   background: var(--glass);
-  -webkit-backdrop-filter: blur(32px) saturate(160%);
-  backdrop-filter: blur(32px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   padding: 10px 12px;
@@ -1313,8 +1495,7 @@ body {
 /* ---------- focus-visible baseline ---------- */
 
 a:focus-visible,
-button:focus-visible,
-select:focus-visible {
+button:focus-visible {
   outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
 }

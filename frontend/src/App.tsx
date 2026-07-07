@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from "react";
 import { MotionConfig } from "framer-motion";
 import { api } from "./api/client";
 import { useApi } from "./hooks/useApi";
@@ -11,20 +11,25 @@ import { Sidebar } from "./components/Sidebar";
 import { normalizeHash, type View } from "./viewState";
 import { ViewTransition } from "./components/ViewTransition";
 import { AuroraBackground } from "./components/AuroraBackground";
-import { Hero3D } from "./components/Hero3D";
 import { Countdown } from "./components/Countdown";
 import { About } from "./components/About";
 import { Reveal } from "./components/Reveal";
 import { StatTiles } from "./components/StatTiles";
 import { RaceSelector } from "./components/RaceSelector";
 import { TeamSwitcher } from "./components/TeamSwitcher";
-import { LapTimeChart } from "./components/LapTimeChart";
-import { DeltaChart } from "./components/DeltaChart";
-import { TireStrategy } from "./components/TireStrategy";
-import { PitStopChart } from "./components/PitStopChart";
-import { PositionChart } from "./components/PositionChart";
-import { WeatherChart } from "./components/WeatherChart";
-import { RaceControlFeed } from "./components/RaceControlFeed";
+
+// Each of these clusters (three.js/r3f/drei for Hero3D, recharts for the
+// race-analysis charts) is only ever rendered behind one `view === "..."`
+// gate below — lazy-loading keeps them out of the initial bundle for the
+// views that don't need them.
+const Hero3D = lazy(() => import("./components/Hero3D").then((m) => ({ default: m.Hero3D })));
+const LapTimeChart = lazy(() => import("./components/LapTimeChart").then((m) => ({ default: m.LapTimeChart })));
+const DeltaChart = lazy(() => import("./components/DeltaChart").then((m) => ({ default: m.DeltaChart })));
+const TireStrategy = lazy(() => import("./components/TireStrategy").then((m) => ({ default: m.TireStrategy })));
+const PitStopChart = lazy(() => import("./components/PitStopChart").then((m) => ({ default: m.PitStopChart })));
+const PositionChart = lazy(() => import("./components/PositionChart").then((m) => ({ default: m.PositionChart })));
+const WeatherChart = lazy(() => import("./components/WeatherChart").then((m) => ({ default: m.WeatherChart })));
+const RaceControlFeed = lazy(() => import("./components/RaceControlFeed").then((m) => ({ default: m.RaceControlFeed })));
 
 /* Sidebar collapse: an explicit user choice persists (same storage pattern
    as hooks/useTheme.ts); first visit defaults to collapsed on narrow
@@ -196,38 +201,44 @@ export default function App() {
               <section className="view view--overview">
                 <header className="view__header">
                   <p className="view__eyebrow">Overview</p>
-                  <h1 className="view__title">
-                    {pair ? `${pair[0].lastName} vs. ${pair[1].lastName}.` : "Head to head."}
-                  </h1>
+                  <h1 className="view__title">Pick a pair. Follow the gap.</h1>
                 </header>
 
-                <Hero3D laps={laps.data ?? []} pair={pair} raceLabel={raceLabel} />
+                <Suspense fallback={null}>
+                  <Hero3D laps={laps.data ?? []} pair={pair} />
+                </Suspense>
 
-                <div className="overview__selectors">
-                  {rosters.length > 0 && pair && (
-                    <TeamSwitcher
-                      rosters={rosters}
-                      pair={pair}
-                      onSelectPair={setPair}
+                <div className="overview__body">
+                  <div className="overview__race-row">
+                    <RaceSelector
+                      races={races.data ?? []}
+                      value={selected}
+                      onChange={setSelected}
                     />
-                  )}
-                  <RaceSelector
-                    races={races.data ?? []}
-                    value={selected}
-                    onChange={setSelected}
-                  />
-                </div>
+                  </div>
 
-                <div className="overview__row">
-                  <Countdown />
-                  <div className="overview__stats-slot">
-                    <StatTiles
-                      laps={laps.data ?? []}
-                      pit={pit.data ?? []}
-                      delta={deltaRows}
-                      pair={pair}
-                      loading={laps.loading || pit.loading}
-                    />
+                  <div className="overview__selectors">
+                    {rosters.length > 0 && pair && (
+                      <TeamSwitcher
+                        rosters={rosters}
+                        pair={pair}
+                        onSelectPair={setPair}
+                      />
+                    )}
+                  </div>
+
+                  <div className="overview__row">
+                    <div className="overview__summary">
+                      <StatTiles
+                        laps={laps.data ?? []}
+                        pit={pit.data ?? []}
+                        delta={deltaRows}
+                        pair={pair}
+                        loading={laps.loading || pit.loading}
+                        raceLabel={raceLabel}
+                      />
+                    </div>
+                    <Countdown />
                   </div>
                 </div>
               </section>
@@ -262,62 +273,64 @@ export default function App() {
                   )}
                 </div>
 
-                <main className="grid">
-                  <Reveal wide>
-                    <LapTimeChart
-                      laps={laps.data ?? []}
-                      pair={pair}
-                      loading={laps.loading}
-                      error={laps.error}
-                    />
-                  </Reveal>
-                  <Reveal wide>
-                    <DeltaChart
-                      rows={deltaRows}
-                      pair={pair}
-                      loading={laps.loading}
-                      error={laps.error}
-                    />
-                  </Reveal>
-                  <Reveal>
-                    <TireStrategy
-                      stints={stints.data ?? []}
-                      pair={pair}
-                      loading={stints.loading}
-                      error={stints.error}
-                    />
-                  </Reveal>
-                  <Reveal delay={0.08}>
-                    <PitStopChart
-                      pit={pit.data ?? []}
-                      pair={pair}
-                      loading={pit.loading}
-                      error={pit.error}
-                    />
-                  </Reveal>
-                  <Reveal wide>
-                    <PositionChart
-                      positions={positions.data ?? []}
-                      pair={pair}
-                      loading={positions.loading}
-                      error={positions.error}
-                    />
-                  </Reveal>
-                  <Reveal>
-                    <WeatherChart
-                      weather={weather.data ?? []}
-                      loading={weather.loading}
-                      error={weather.error}
-                    />
-                  </Reveal>
-                  <Reveal delay={0.08}>
-                    <RaceControlFeed
-                      raceControl={raceControl.data ?? []}
-                      loading={raceControl.loading}
-                      error={raceControl.error}
-                    />
-                  </Reveal>
-                </main>
+                <Suspense fallback={null}>
+                  <main className="grid">
+                    <Reveal wide>
+                      <LapTimeChart
+                        laps={laps.data ?? []}
+                        pair={pair}
+                        loading={laps.loading}
+                        error={laps.error}
+                      />
+                    </Reveal>
+                    <Reveal wide>
+                      <DeltaChart
+                        rows={deltaRows}
+                        pair={pair}
+                        loading={laps.loading}
+                        error={laps.error}
+                      />
+                    </Reveal>
+                    <Reveal>
+                      <TireStrategy
+                        stints={stints.data ?? []}
+                        pair={pair}
+                        loading={stints.loading}
+                        error={stints.error}
+                      />
+                    </Reveal>
+                    <Reveal delay={0.08}>
+                      <PitStopChart
+                        pit={pit.data ?? []}
+                        pair={pair}
+                        loading={pit.loading}
+                        error={pit.error}
+                      />
+                    </Reveal>
+                    <Reveal wide>
+                      <PositionChart
+                        positions={positions.data ?? []}
+                        pair={pair}
+                        loading={positions.loading}
+                        error={positions.error}
+                      />
+                    </Reveal>
+                    <Reveal>
+                      <WeatherChart
+                        weather={weather.data ?? []}
+                        loading={weather.loading}
+                        error={weather.error}
+                      />
+                    </Reveal>
+                    <Reveal delay={0.08}>
+                      <RaceControlFeed
+                        raceControl={raceControl.data ?? []}
+                        loading={raceControl.loading}
+                        error={raceControl.error}
+                      />
+                    </Reveal>
+                  </main>
+                </Suspense>
               </section>
             )}
 

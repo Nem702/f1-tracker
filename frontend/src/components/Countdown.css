@@ -5,13 +5,26 @@
  * per-card blobs). Only the feature-tier radius and the countdown's own
  * typography live here. */
 
+/* Glow is fixed red — #d03b3b, the same red theme.ts's flagCritical uses
+ * for RACE CONTROL's red-flag events (RaceControlFeed.tsx) — deliberately
+ * NOT var(--accent)/team-tinted like the summary card's glow: the countdown
+ * is about the upcoming race, unrelated to whichever team/pair is selected,
+ * so it needs its own constant identity rather than retinting with them.
+ * Otherwise mirrors .team-chip--active's exact recipe (brighter fill,
+ * tinted border, ring + soft glow) applied to this single glass layer. */
 .countdown {
   position: relative;
+  background: var(--glass2);
+  border-color: color-mix(in srgb, #d03b3b 45%, var(--glass-border));
   border-radius: var(--radius-feature);
   padding: var(--space-5) var(--space-6);
   overflow: hidden;
   font-variant-numeric: tabular-nums;
   color: var(--ink-primary);
+  box-shadow:
+    inset 0 1px 0 var(--spec),
+    0 0 0 1px color-mix(in srgb, #d03b3b 30%, transparent),
+    0 8px 26px -10px color-mix(in srgb, #d03b3b 60%, transparent);
 }
 
 .countdown__eyebrow {

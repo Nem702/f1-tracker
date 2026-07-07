@@ -11,7 +11,6 @@ import { entrance, staggerContainer, stagger } from "../motion";
 interface Props {
   laps: Lap[];
   pair: DriverPair | null;
-  raceLabel: string;
 }
 
 type Point = [number, number, number];
@@ -112,7 +111,7 @@ function Ribbons({
   // scroll parallax (the hero is a fixed-size banner now, not a page you
   // scroll past).
   useFrame((state) => {
-    if (!group.current) return;
+    if (!group.current || document.hidden) return;
     const sway = still ? 0 : Math.sin(state.clock.elapsedTime * 0.25) * 0.28;
     const tiltY = still ? 0 : pointerX.get() * 0.18;
     const tiltX = still ? 0 : pointerY.get() * 0.1;
@@ -165,15 +164,13 @@ class HeroBoundary extends Component<{ children: ReactNode }, { failed: boolean 
   }
 }
 
-export function Hero3D({ laps, pair, raceLabel }: Props) {
+export function Hero3D({ laps, pair }: Props) {
   const { a, b } = useMemo(() => {
     const ra = ribbonPoints(laps, pair?.[0].number ?? null, 0.4);
     const rb = ribbonPoints(laps, pair?.[1].number ?? null, -0.4);
     if (ra.length && rb.length) return { a: ra, b: rb };
     return { a: decorativePoints(0.4, 0), b: decorativePoints(-0.4, 2.1) };
   }, [laps, pair]);
-
-  const isRealData = laps.length > 0;
 
   // Pointer parallax: DOM-level motion values read inside Ribbons' useFrame,
   // so pointer movement never triggers a React re-render — only the r3f
@@ -219,21 +216,10 @@ export function Hero3D({ laps, pair, raceLabel }: Props) {
           lap by lap.
         </motion.h1>
         <motion.p variants={entrance}>
-          Real timing data from every 2026 race weekend — pulled from OpenF1,
-          stored in Postgres, charted here.
+          Real lap-by-lap data from every 2026 race weekend — who's quicker,
+          and by how much.
         </motion.p>
       </motion.div>
-
-      <motion.p
-        className="hero__caption"
-        variants={entrance}
-        custom={0.5}
-        initial="hidden"
-        animate="show"
-      >
-        {raceLabel}
-        {isRealData ? " — each ribbon is a driver's lap times" : ""}
-      </motion.p>
     </div>
   );
 }

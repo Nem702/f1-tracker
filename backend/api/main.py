@@ -6,19 +6,23 @@ lockout. No writes: every endpoint is a SELECT.
 
 The single documented exception is GET /api/next-race: the races table has
 zero future rows (backfill only stores completed sessions), so that one
-endpoint calls OpenF1 live, through an in-process TTL cache, and degrades to
-a stale cache or {"next_session": null} instead of ever raising a 5xx.
+endpoint calls OpenF1 live, through a TTL cache (persisted to disk so
+restarts during a race-weekend 401 lockout keep the fallback), and degrades
+to a stale cache or {"next_session": null} instead of ever raising a 5xx.
 
 Run from the repo root:  py -m uvicorn backend.api.main:app --reload --reload-dir backend
 (or just run dev.ps1, which starts this and the frontend together)
 """
 
+import json
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from psycopg2.extras import RealDictCursor
 
 from backend.shared.db import get_connection
@@ -44,6 +48,7 @@ app.add_middleware(
     allow_methods=["GET"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 
 @app.get("/health")
@@ -80,12 +85,71 @@ def require_race(conn, session_key):
         raise HTTPException(status_code=404, detail=f"Unknown session_key {session_key}")
 
 
+def _cache_immutable(response: Response):
+    """Per-session telemetry never changes once backfilled, so the browser
+    can cache it indefinitely without any invalidation logic."""
+    response.headers["Cache-Control"] = "public, max-age=3600"
+
+
 _NEXT_RACE_TTL_SECONDS = 60 * 60
 _next_race_cache = {"payload": None, "fetched_at": 0.0}
+
+# The last good payload also persists to disk: during a race weekend OpenF1
+# 401s every unauthenticated request, so a process that starts mid-weekend
+# (uvicorn --reload on every save, a Render restart) has an empty in-process
+# cache and would serve null for the whole weekend. Loading the file gives
+# the stale-fallback tier back; fetched_at stays 0.0 so the first request
+# still tries a fresh fetch and only falls back to the loaded payload if
+# that fails.
+_NEXT_RACE_CACHE_FILE = Path(__file__).resolve().parents[1] / ".next_race_cache.json"
+
+
+def _load_next_race_cache():
+    try:
+        payload = json.loads(_NEXT_RACE_CACHE_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return
+    except Exception:
+        logger.exception("next-race cache file unreadable - ignoring it")
+        return
+    if isinstance(payload, dict) and "next_session" in payload:
+        _next_race_cache["payload"] = payload
+
+
+def _save_next_race_cache(payload):
+    try:
+        _NEXT_RACE_CACHE_FILE.write_text(json.dumps(payload), encoding="utf-8")
+    except Exception:
+        logger.exception("next-race cache file unwritable - continuing without persistence")
+
+
+_load_next_race_cache()
 
 
 def _utc_now_iso():
     return datetime.now(timezone.utc).isoformat()
+
+
+def _session_passed(payload):
+    """True when the payload names a session whose start time has passed —
+    refetch (or, failing that, hide the card) instead of serving a countdown
+    frozen at 00:00:00. A malformed entry counts as passed: never worth
+    serving. A null next_session is NOT passed — it's a valid 'nothing
+    upcoming' answer that the TTL window may serve as-is."""
+    session = payload.get("next_session")
+    if session is None:
+        return False
+    try:
+        starts = datetime.fromisoformat(session["date_start"])
+    except (KeyError, TypeError, ValueError):
+        return True
+    return starts <= datetime.now(timezone.utc)
+
+
+def _usable_fallback(payload):
+    """A stale payload only helps the frontend if it still names a future
+    session — a cached null would render the same hidden card as no cache."""
+    return payload.get("next_session") is not None and not _session_passed(payload)
 
 
 def _next_race_payload(next_dt, session):
@@ -108,7 +172,14 @@ def next_race():
     cached = _next_race_cache["payload"]
     cache_age = now - _next_race_cache["fetched_at"]
 
-    if cached is not None and cache_age < _NEXT_RACE_TTL_SECONDS:
+    # A cached session whose start has passed bypasses the TTL: the moment a
+    # session begins, the *next* one is the right answer (the frontend
+    # refetches exactly once when its countdown hits zero and expects this).
+    if (
+        cached is not None
+        and cache_age < _NEXT_RACE_TTL_SECONDS
+        and not _session_passed(cached)
+    ):
         logger.debug("GET /api/next-race - cache hit (age %.0fs)", cache_age)
         return cached
 
@@ -116,10 +187,10 @@ def next_race():
         result = get_next_session()
     except Exception:
         logger.exception("GET /api/next-race - OpenF1 fetch failed")
-        if cached is not None:
+        if cached is not None and _usable_fallback(cached):
             logger.warning("GET /api/next-race - serving stale cache after fetch error")
             return cached
-        logger.warning("GET /api/next-race - no cache available, returning null")
+        logger.warning("GET /api/next-race - no usable cache, returning null")
         return {"next_session": None, "fetched_at": _utc_now_iso()}
 
     payload = {
@@ -128,6 +199,7 @@ def next_race():
     }
     _next_race_cache["payload"] = payload
     _next_race_cache["fetched_at"] = now
+    _save_next_race_cache(payload)
     logger.debug("GET /api/next-race - fetched fresh from OpenF1")
     return payload
 
@@ -145,9 +217,10 @@ def drivers(conn=Depends(get_db)):
 
 
 @app.get("/api/races/{session_key}/laps")
-def laps(session_key: int, conn=Depends(get_db)):
+def laps(session_key: int, response: Response, conn=Depends(get_db)):
     logger.debug("GET /api/races/%s/laps", session_key)
     require_race(conn, session_key)
+    _cache_immutable(response)
     return query(
         conn,
         "SELECT * FROM laps WHERE session_key = %s ORDER BY driver_number, lap_number",
@@ -156,9 +229,10 @@ def laps(session_key: int, conn=Depends(get_db)):
 
 
 @app.get("/api/races/{session_key}/stints")
-def stints(session_key: int, conn=Depends(get_db)):
+def stints(session_key: int, response: Response, conn=Depends(get_db)):
     logger.debug("GET /api/races/%s/stints", session_key)
     require_race(conn, session_key)
+    _cache_immutable(response)
     return query(
         conn,
         "SELECT * FROM stints WHERE session_key = %s ORDER BY driver_number, stint_number",
@@ -167,9 +241,10 @@ def stints(session_key: int, conn=Depends(get_db)):
 
 
 @app.get("/api/races/{session_key}/pit")
-def pit(session_key: int, conn=Depends(get_db)):
+def pit(session_key: int, response: Response, conn=Depends(get_db)):
     logger.debug("GET /api/races/%s/pit", session_key)
     require_race(conn, session_key)
+    _cache_immutable(response)
     return query(
         conn,
         "SELECT * FROM pit WHERE session_key = %s ORDER BY driver_number, lap_number",
@@ -178,9 +253,10 @@ def pit(session_key: int, conn=Depends(get_db)):
 
 
 @app.get("/api/races/{session_key}/positions")
-def positions(session_key: int, conn=Depends(get_db)):
+def positions(session_key: int, response: Response, conn=Depends(get_db)):
     logger.debug("GET /api/races/%s/positions", session_key)
     require_race(conn, session_key)
+    _cache_immutable(response)
     return query(
         conn,
         "SELECT * FROM positions WHERE session_key = %s ORDER BY driver_number, date",
@@ -189,9 +265,10 @@ def positions(session_key: int, conn=Depends(get_db)):
 
 
 @app.get("/api/races/{session_key}/weather")
-def weather(session_key: int, conn=Depends(get_db)):
+def weather(session_key: int, response: Response, conn=Depends(get_db)):
     logger.debug("GET /api/races/%s/weather", session_key)
     require_race(conn, session_key)
+    _cache_immutable(response)
     return query(
         conn,
         "SELECT * FROM weather WHERE session_key = %s ORDER BY date",
@@ -200,9 +277,10 @@ def weather(session_key: int, conn=Depends(get_db)):
 
 
 @app.get("/api/races/{session_key}/race-control")
-def race_control(session_key: int, conn=Depends(get_db)):
+def race_control(session_key: int, response: Response, conn=Depends(get_db)):
     logger.debug("GET /api/races/%s/race-control", session_key)
     require_race(conn, session_key)
+    _cache_immutable(response)
     return query(
         conn,
         "SELECT * FROM race_control WHERE session_key = %s ORDER BY date",

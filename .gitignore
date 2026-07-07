@@ -4,3 +4,5 @@ __pycache__/
 .claude/
 # local one-off DB utilities, deliberately untracked
 backend/tools/
+# /api/next-race disk cache (runtime artifact)
+backend/.next_race_cache.json

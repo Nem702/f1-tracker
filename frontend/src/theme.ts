@@ -3,7 +3,9 @@
 // pair — accent, aurora blobs, chart driver colors). All palettes were run
 // through the dataviz six-checks validator against this redesign's opaque
 // chart-plate surfaces — light rgba(255,253,249,.72) flattened over the
-// #f2ede7 page base = #FBF9F4, dark rgba(18,18,20,.6) over #0a0a0c = #0F0F11:
+// #ececec page base = #FAF8F5, dark rgba(18,18,20,.6) over #0a0a0c = #0F0F11
+// (page base was re-tinted from a warm #f2ede7 to this neutral gray after the
+// fact — lightness held constant, so none of the checks below shifted):
 //   - per-team driver1↔driver2, worst of protan/deutan ΔE (target ≥ 12):
 //       ferrari  light 12.6 · dark 15.3  (dark seeds re-snapped: rosso
 //         L .66→.55, giallo L .80→.67 — the seed gold sat above the dark
@@ -183,6 +185,8 @@ export interface Theme {
   glass2: string; // inner chip fill on glass (active pills, selects) — rgba
   glassBorder: string; // frosted-edge highlight — rgba
   glassOpaque: string; // @supports fallback when backdrop-filter is missing
+  cardSolid: string; // Race Analysis chart cards' non-blurred fill (see .card--solid) — its own tier, not the @supports fallback: a cool silver-gray in light mode reads better solid than glassOpaque's near-white did
+  glassMenu: string; // fully opaque fill for floating interactive menus (GlassSelect popup) — its own tier, not the @supports fallback; legibility over arbitrary content wins over the glass look here
   spec: string; // specular inset top-edge highlight — rgba
   shadowCard: string; // glass drop shadow
   shadowRaised: string; // stronger elevation: tooltips, hover
@@ -220,14 +224,16 @@ type BaseTokens = Omit<
 
 const base: Record<Mode, BaseTokens> = {
   light: {
-    pageBase: "#f2ede7",
-    surface: "#fbf9f4",
-    plate: "rgba(255, 253, 249, 0.72)",
+    pageBase: "#ececec",
+    surface: "#faf8f5",
+    plate: "rgba(240, 240, 242, 0.80)",
     plateBorder: "rgba(23, 25, 34, 0.08)",
     glass: "rgba(255, 255, 255, 0.40)",
     glass2: "rgba(255, 255, 255, 0.58)",
     glassBorder: "rgba(255, 255, 255, 0.62)",
     glassOpaque: "rgba(255, 255, 255, 0.85)",
+    cardSolid: "rgba(224, 226, 230, 0.94)",
+    glassMenu: "rgba(255, 255, 255, 1)",
     spec: "rgba(255, 255, 255, 0.8)",
     shadowCard: "0 24px 48px -28px rgba(80, 50, 20, 0.35)",
     shadowRaised: "0 30px 60px -24px rgba(80, 50, 20, 0.4)",
@@ -263,6 +269,8 @@ const base: Record<Mode, BaseTokens> = {
     glass2: "rgba(255, 255, 255, 0.09)",
     glassBorder: "rgba(255, 255, 255, 0.14)",
     glassOpaque: "rgba(26, 26, 30, 0.85)",
+    cardSolid: "rgba(26, 26, 30, 0.85)",
+    glassMenu: "rgba(26, 26, 30, 1)",
     spec: "rgba(255, 255, 255, 0.14)",
     shadowCard: "0 24px 48px -20px rgba(0, 0, 0, 0.65)",
     shadowRaised: "0 30px 56px -18px rgba(0, 0, 0, 0.75)",
@@ -335,6 +343,8 @@ export function cssVars(t: Theme): Record<string, string> {
     "--glass2": t.glass2,
     "--glass-border": t.glassBorder,
     "--glass-opaque": t.glassOpaque,
+    "--card-solid": t.cardSolid,
+    "--glass-menu": t.glassMenu,
     "--spec": t.spec,
     "--shadow-card": t.shadowCard,
     "--shadow-raised": t.shadowRaised,
