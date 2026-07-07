@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "framer-motion";
-import type { Transition, Variants, TargetAndTransition } from "framer-motion";
+import type { Transition, Variants } from "framer-motion";
 
 /* ---------------------------------------------------------------------------
  * Motion tokens — the single source every animation in the app draws from.
@@ -81,20 +81,6 @@ export const viewTransition: Variants = {
     y: -8,
     transition: { duration: duration.fast, ease: EASE_EXIT },
   },
-};
-
-/* ---------------------------------------------------------------------------
- * Hover-lift: spread onto any motion.div card, e.g. `<motion.div {...hoverLift}>`.
- * Transform-only (y) — no shadow or color here. A hover shadow is a plain
- * CSS `transition: box-shadow` in index.css, not framer-motion's job.
- * ------------------------------------------------------------------------- */
-
-export const hoverLift: {
-  whileHover: TargetAndTransition;
-  whileTap: TargetAndTransition;
-} = {
-  whileHover: { y: -4, transition: { duration: duration.fast, ease: EASE } },
-  whileTap: { y: -1, transition: { duration: duration.instant, ease: EASE_EXIT } },
 };
 
 /* ---------------------------------------------------------------------------

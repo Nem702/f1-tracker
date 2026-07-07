@@ -2,6 +2,7 @@ import { useRef, useState, type CSSProperties, type KeyboardEvent } from "react"
 import type { DriverPair, TeamRoster } from "../teams";
 import { useMode } from "../hooks/useTheme";
 import { teamSwatch } from "../theme";
+import { GlassSelect } from "./GlassSelect";
 
 interface Props {
   rosters: TeamRoster[];
@@ -118,33 +119,25 @@ export function TeamSwitcher({ rosters, pair, onSelectPair }: Props) {
       {active === "h2h" && pair && (
         <div className="team-switcher__h2h">
           {([0, 1] as const).map((side) => (
-            <label key={side} className="race-selector team-switcher__select">
-              <span className="race-selector__label">
-                Driver {side === 0 ? "A" : "B"}
-              </span>
-              <select
-                value={pair[side].number}
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  if (side === 0) onSelectPair(n, pair[1].number);
-                  else onSelectPair(pair[0].number, n);
-                }}
-              >
-                {rosters.map((roster) => (
-                  <optgroup key={roster.slug} label={roster.name}>
-                    {roster.drivers.map((d) => (
-                      <option
-                        key={d.number}
-                        value={d.number}
-                        disabled={d.number === pair[side === 0 ? 1 : 0].number}
-                      >
-                        {d.acronym} · {d.lastName}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
+            <GlassSelect
+              key={side}
+              ariaLabel={`Driver ${side === 0 ? "A" : "B"}`}
+              label={`Driver ${side === 0 ? "A" : "B"}`}
+              groups={rosters.map((roster) => ({
+                label: roster.name,
+                options: roster.drivers.map((d) => ({
+                  value: d.number,
+                  label: `${d.acronym} · ${d.lastName}`,
+                  // the other slot's pick — a pair of one driver is no pair
+                  disabled: d.number === pair[side === 0 ? 1 : 0].number,
+                })),
+              }))}
+              value={pair[side].number}
+              onChange={(n) => {
+                if (side === 0) onSelectPair(n, pair[1].number);
+                else onSelectPair(pair[0].number, n);
+              }}
+            />
           ))}
         </div>
       )}

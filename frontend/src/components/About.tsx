@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { entrance, hoverLift, staggerContainer, staggerItem } from "../motion";
+import { entrance, staggerContainer, staggerItem } from "../motion";
 
 const steps = [
   {
@@ -54,7 +54,6 @@ export function About() {
             key={step.title}
             className="pipeline__step glass"
             variants={staggerItem}
-            {...hoverLift}
           >
             <span className="pipeline__num">{String(i + 1).padStart(2, "0")}</span>
             <h3 className="pipeline__title">{step.title}</h3>
