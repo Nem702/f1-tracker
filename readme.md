@@ -6,9 +6,11 @@ storage, and CI scheduling — using real F1 lap timing data.
 
 ## What it does
 
-Pulls lap-by-lap timing data for two drivers (Hamilton #44, Leclerc #16) from
-the [OpenF1 API](https://openf1.org/) for the most recently completed race
-weekend, and persists it to Postgres.
+Pulls lap-by-lap timing data for every driver across four teams (Ferrari,
+Mercedes, McLaren, Red Bull) from the [OpenF1 API](https://openf1.org/) for
+each completed race weekend, persists it to Postgres, and serves it through
+a read-only dashboard for head-to-head comparison between any two drivers on
+the tracked teams.
 
 ## Project structure
 
@@ -38,9 +40,12 @@ from the repo root (that's where `venv/` and `.env` live), using
   - `next_race.py` — soonest upcoming session (used by `/api/next-race`).
 - **`backend/tools/`** — local one-off DB utilities (untracked).
 - **`backend/schema.sql`** — table definitions.
-- **`frontend/`** — the Part 6 dashboard: Vite + React + TypeScript, Recharts
-  for the 2D charts, react-three-fiber for the 3D lap-time hero, Framer
-  Motion for transitions.
+- **`frontend/`** — the Part 6 dashboard: a sidebar-shell layout (Overview /
+  Race Analysis / About, hash-synced, no router) built with Vite + React +
+  TypeScript. Recharts for the 2D charts, react-three-fiber for the 3D
+  lap-time hero, Framer Motion for transitions. A team switcher picks any
+  head-to-head pair across the four tracked teams; `theme.ts` retints the
+  whole page — charts included — to the selected pair's validated colors.
 - **`dev.ps1`** — starts API + frontend, one terminal window each.
 
 ## Status
@@ -63,8 +68,12 @@ from the repo root (that's where `venv/` and `.env` live), using
 - [ ] **part 6** — read-only dashboard over Part 5's data: a FastAPI JSON
       layer (`api/`) plus a React frontend (`frontend/`) with lap time
       trends, per-lap teammate delta, tire strategy, pit stops, track
-      position, weather, and the race control feed. Built and running
-      locally; deploying it (Vercel + Render) is the remaining step.
+      position, weather, and the race control feed. Since the initial build:
+      a full visual redesign (sidebar shell, "liquid glass" surfaces), a
+      4-team head-to-head pair switcher with validated per-team palettes,
+      and a performance pass (route-scoped code-splitting, gzip/cache
+      headers, a scroll-jank fix). Built and running locally; deploying it
+      (Vercel + Render) is the remaining step.
 
 This is a skill-building project, not a finished product.
 
@@ -173,6 +182,75 @@ median and stops over 180s so the actual racing story stays readable — but
 only in the chart layer: the values remain untouched in the database, the
 API response, and each chart's table view, and the chart subtitle says when
 something was left off.
+
+**4-team pair model instead of a fixed Hamilton/Leclerc comparison.**
+The pipeline expanded to track every driver across four teams (Ferrari,
+Mercedes, McLaren, Red Bull) instead of two hardcoded drivers, and the
+frontend gained a team switcher so any two drivers on a tracked team can be
+compared head-to-head. Each team's accent and driver-slot colors are run
+through a contrast validator rather than picked by eye, so a colorblind-
+readability regression fails loudly instead of shipping unnoticed — the one
+known ambiguity found this way (Ferrari's giallo accent vs. McLaren's papaya,
+too close for deuteranopia) is tracked deliberately rather than silently
+accepted.
+
+**Countdown falls back to a disk-persisted cache, not just an in-process one.**
+`/api/next-race` is the one documented exception to "the API never calls
+OpenF1 itself" — the `races` table only ever has completed sessions, so
+finding the *next* one means a live call. OpenF1's free tier blocks *all*
+unauthenticated requests while any session anywhere is live, which would
+otherwise blank the countdown for an entire race weekend. The last good
+payload is persisted to disk, not just kept in memory, so a process restart
+mid-lockout (a redeploy, `--reload` picking up a save) still has a fallback
+to serve instead of `null`.
+
+**Backdrop-filter over anything animated forces a permanent re-blur — never animate under glass.**
+The redesign's first real performance bug came from this: the page
+background ("aurora") originally used three `filter: blur(110px)` blobs on
+infinite drift keyframes, sitting under roughly a dozen `backdrop-filter`
+glass surfaces. Anything animating beneath a backdrop-filter surface forces
+it to recompute the blur every frame, forever — regardless of how cheap the
+animation itself is. Fixed by making the aurora a static layer: solid themed
+fills shaped by a `mask-image` radial gradient instead of `filter: blur()`,
+so only the 250ms retint crossfade animates. The same root cause resurfaced
+later, scoped to Race Analysis's chart cards specifically — see the
+scroll-jank entry below.
+
+**Custom accessible listbox instead of the native `<select>`.**
+The native dropdown's popup styling is controlled by the OS/browser, not
+CSS — it rendered a white menu in dark mode despite the page correctly
+setting `color-scheme`. Replaced with a WAI-ARIA listbox component
+(`GlassSelect.tsx`): trigger `aria-expanded`, `aria-activedescendant`,
+arrow-key navigation that skips disabled options, and close on
+`Escape`/`Tab`/outside-click — while still rendering as part of the same
+glass design system as everything else on the page.
+
+**Route-scoped code-splitting via `React.lazy`, not `vite.config.ts` manual chunks.**
+The dashboard's three views each pull in different heavy dependencies — `three.js` /
+`react-three-fiber` / `drei` for the Overview hero, `recharts` for the six Race Analysis
+charts — but every component was a static import, so all three shipped in one bundle
+regardless of which view a visitor landed on. Wrapping the already-existing
+`view === "..."` conditionals in `React.lazy()` + `Suspense` splits each cluster into
+its own chunk automatically (confirmed via `npm run build`: a ~905KB three.js/r3f/drei
+chunk and separate recharts chunks, apart from the ~355KB main bundle) — no
+`manualChunks` config needed, since Vite already splits on `import()` boundaries.
+
+**Cache-Control + gzip on backend responses, only where data is provably immutable.**
+Every `/api/races/{session_key}/...` endpoint serves data the fetch pipeline already
+backfilled — it never changes once written. `GZipMiddleware` plus a
+`Cache-Control: public, max-age=3600` header were added to those six endpoints, but
+deliberately not to `/health` or `/api/next-race`, which are live/uncached by design.
+
+**Race Analysis scroll jank root-caused to `backdrop-filter`, not JS.**
+The page stacks 6-7 frosted `.glass` chart cards; scrolling re-blurs whatever's moving
+underneath each one, every frame. Measured with a `requestAnimationFrame`-delta +
+`PerformanceObserver('longtask')` harness before touching anything: 18 frames over 33ms
+per fast-scroll pass and zero main-thread long tasks, confirming pure GPU compositor
+cost, not a JS bottleneck — then confirmed the cause via A/B (backdrop-filter stripped
+with injected CSS), which dropped the stutter to zero. Fix: Race Analysis's `ChartCard`s
+use a solid, non-blurred fill (`card--solid`) instead of the shared `.glass` recipe —
+same border/shadow language, no `backdrop-filter` — while the sidebar and Overview keep
+the full frosted treatment.
 
 ## Known data quirks (not bugs)
 
