@@ -1,5 +1,6 @@
 import type { Race } from "../api/types";
 import { fmtDate } from "../format";
+import { GlassSelect } from "./GlassSelect";
 
 interface Props {
   races: Race[];
@@ -16,30 +17,33 @@ function CalendarIcon() {
   );
 }
 
-/** The race combobox — one instance in Race Analysis's filter row, one under
+/** The race picker — one instance in Race Analysis's filter row, one under
  *  the hero; both drive the same `selected` state in App, so the whole app
- *  re-renders against the selected race wherever it was picked. Every pill
- *  is glass now (the liquid-glass pass), so the old glass variant is gone. */
+ *  re-renders against the selected race wherever it was picked. Renders
+ *  through GlassSelect (custom listbox — the OS-native popup was unreadable
+ *  in dark mode and never matched the glass look). */
 export function RaceSelector({ races, value, onChange }: Props) {
   return (
-    <label className="race-selector glass">
-      <span className="race-selector__label">
-        <CalendarIcon />
-        Race
-      </span>
-      <select
-        value={value ?? ""}
-        onChange={(e) => onChange(Number(e.target.value))}
-        disabled={races.length === 0}
-      >
-        {races.length === 0 && <option value="">Loading…</option>}
-        {races.map((race) => (
-          <option key={race.session_key} value={race.session_key}>
-            {race.location ?? race.circuit_short_name ?? race.session_key} ·{" "}
-            {fmtDate(race.date_start)}
-          </option>
-        ))}
-      </select>
-    </label>
+    <GlassSelect
+      ariaLabel="Race"
+      label={
+        <>
+          <CalendarIcon />
+          Race
+        </>
+      }
+      groups={[
+        {
+          options: races.map((race) => ({
+            value: race.session_key,
+            label: `${race.location ?? race.circuit_short_name ?? race.session_key} · ${fmtDate(race.date_start)}`,
+          })),
+        },
+      ]}
+      value={value}
+      placeholder="Loading…"
+      disabled={races.length === 0}
+      onChange={onChange}
+    />
   );
 }
