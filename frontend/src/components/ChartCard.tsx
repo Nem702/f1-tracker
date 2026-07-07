@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { DataTable, type TableSpec } from "./DataTable";
-import { duration, EASE, hoverLift } from "../motion";
+import { duration, EASE } from "../motion";
 
 export interface LegendItem {
   label: string;
@@ -62,10 +62,13 @@ function SwapIcon() {
  * empty / error states. While a refetch runs, the previous render is held at
  * reduced opacity — no skeleton, no layout jump.
  *
- * Liquid-glass layering: the card itself is glass over the page aurora;
- * headers, legends, and the toggle sit on the glass, while the data (chart
- * or table) draws on a near-opaque inset plate so marks stay readable over
- * the moving color underneath.
+ * Liquid-glass layering: the card is a solid (non-blurred) surface — see
+ * .card--solid in index.css. Race Analysis stacks 6-7 of these, and scroll
+ * profiling showed backdrop-filter here (re-blurring the moving aurora
+ * under every card, every frame) as the site's actual scroll-jank source;
+ * the sidebar and Overview keep the full frosted .glass treatment, since
+ * they don't compound the same way. The data (chart or table) still draws
+ * on a near-opaque inset plate underneath the header/legend/toggle.
  */
 export function ChartCard({
   title,
@@ -83,11 +86,10 @@ export function ChartCard({
 
   return (
     <motion.section
-      className={`card glass${wide ? " card--wide" : ""}`}
+      className={`card card--solid${wide ? " card--wide" : ""}`}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: duration.slow, ease: EASE }}
-      {...hoverLift}
     >
       <header className="card__header">
         <div>

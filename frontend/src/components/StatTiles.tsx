@@ -1,10 +1,10 @@
-import { type ReactNode, useMemo } from "react";
+import { Fragment, type ReactNode, useMemo } from "react";
 import { motion } from "framer-motion";
 import type { Lap, PitStop } from "../api/types";
 import type { DriverPair } from "../teams";
 import type { PairDelta } from "../lib/delta";
 import { fmtLapTime } from "../format";
-import { hoverLift, staggerContainer, staggerItem } from "../motion";
+import { staggerContainer, staggerItem } from "../motion";
 import { CountUp } from "./CountUp";
 
 interface Props {
@@ -14,6 +14,10 @@ interface Props {
   delta: PairDelta[];
   pair: DriverPair | null;
   loading: boolean;
+  /** The selected race, e.g. "Silverstone · Jul 5, 2026" (App.tsx already
+   *  derives this for the hero) — labels the insight card so it reads as
+   *  data for the selected race, not the countdown's upcoming one. */
+  raceLabel: string;
 }
 
 function StopwatchIcon() {
@@ -67,20 +71,6 @@ function GapIcon() {
   );
 }
 
-function CornerArrow() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M6 18 18 6M9 6h9v9"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 interface TileProps {
   icon: ReactNode;
   label: string;
@@ -89,11 +79,8 @@ interface TileProps {
 
 function StatTile({ icon, label, value }: TileProps) {
   return (
-    <motion.div className="stat-tile glass" variants={staggerItem} {...hoverLift}>
+    <motion.div className="stat-tile glass" variants={staggerItem}>
       <span className="stat-tile__icon">{icon}</span>
-      <span className="stat-tile__corner">
-        <CornerArrow />
-      </span>
       {value}
       <p className="stat-tile__label">{label}</p>
     </motion.div>
@@ -105,7 +92,7 @@ function StatTile({ icon, label, value }: TileProps) {
  *  own. Every value falls back to an em dash rather than a misleading 0 when
  *  the race has nothing to compute from yet (no race selected, or an
  *  empty-telemetry race like Sakhir/Jeddah). */
-export function StatTiles({ laps, pit, delta, pair, loading }: Props) {
+export function StatTiles({ laps, pit, delta, pair, loading, raceLabel }: Props) {
   const aNumber = pair?.[0].number ?? null;
   const bNumber = pair?.[1].number ?? null;
   const isTracked = (n: number) => n === aNumber || n === bNumber;
@@ -157,62 +144,118 @@ export function StatTiles({ laps, pit, delta, pair, loading }: Props) {
     return sum / delta.length;
   }, [delta]);
 
+  // Same rows as avgGap, signed instead of absolute, purely to find which
+  // driver is ahead: delta = b_duration - a_duration (lib/delta.ts), so a
+  // positive mean means A's laps averaged shorter — A is ahead.
+  const meanSignedDelta = useMemo(() => {
+    if (delta.length === 0) return null;
+    return delta.reduce((acc, d) => acc + d.delta, 0) / delta.length;
+  }, [delta]);
+
+  // A short race-weekend story, not just a number: pace gap + who set the
+  // pair's fastest lap + how many laps/stops it took to get there, woven
+  // into one sentence rather than left as four disconnected tiles.
+  const raceStory = useMemo(() => {
+    if (!pair) {
+      return "Select a driver pair to see the story of their race weekend.";
+    }
+    const [a, b] = pair;
+    if (lapsCompleted === 0) {
+      return `No lap data yet for ${a.lastName} and ${b.lastName} this weekend.`;
+    }
+
+    const paceClause =
+      avgGap === null || meanSignedDelta === null
+        ? `${a.lastName} and ${b.lastName} haven't gone head-to-head on track yet`
+        : Math.abs(meanSignedDelta) < 0.0005
+          ? `${a.lastName} and ${b.lastName} were dead even on average pace`
+          : (() => {
+              const ahead = meanSignedDelta > 0 ? a : b;
+              const behind = meanSignedDelta > 0 ? b : a;
+              return `${ahead.lastName} outpaced ${behind.lastName} by ${avgGap!.toFixed(3)}s/lap on average${sameTeam ? " as teammates" : ""}`;
+            })();
+
+    const fastestClause = fastestLap
+      ? `, with ${fastestDriverName} setting the pair's fastest lap at ${fmtLapTime(fastestLap.duration)}`
+      : "";
+
+    const lapWord = lapsCompleted === 1 ? "lap" : "laps";
+    const stopWord = pitStopCount === 1 ? "stop" : "stops";
+
+    return `${paceClause}${fastestClause}, across ${lapsCompleted} ${lapWord} and ${pitStopCount} pit ${stopWord} between them.`;
+  }, [
+    pair,
+    avgGap,
+    meanSignedDelta,
+    fastestLap,
+    fastestDriverName,
+    lapsCompleted,
+    pitStopCount,
+    sameTeam,
+  ]);
+
   return (
-    <motion.div
-      className="stat-row"
-      variants={staggerContainer()}
-      initial="hidden"
-      animate="show"
-      style={{ opacity: loading ? 0.55 : 1, transition: "opacity 0.2s ease" }}
-    >
-      <StatTile
-        icon={<StopwatchIcon />}
-        label={fastestDriverName ? `Fastest lap · ${fastestDriverName}` : "Fastest lap"}
-        value={
-          fastestLap ? (
-            <CountUp
-              value={fastestLap.duration}
-              decimals={3}
-              formatter={(n) => fmtLapTime(n)}
-              className="stat-tile__value"
-            />
-          ) : (
-            <span className="stat-tile__value">—</span>
-          )
-        }
-      />
-      <StatTile
-        icon={<FlagIcon />}
-        label="Laps completed"
-        value={
-          lapsCompleted > 0 ? (
-            <CountUp value={lapsCompleted} className="stat-tile__value" />
-          ) : (
-            <span className="stat-tile__value">—</span>
-          )
-        }
-      />
-      <StatTile
-        icon={<PitIcon />}
-        label="Pit stops"
-        value={<CountUp value={pitStopCount} className="stat-tile__value" />}
-      />
-      <StatTile
-        icon={<GapIcon />}
-        label={sameTeam ? "Avg. teammate gap" : "Avg. pair gap"}
-        value={
-          avgGap !== null ? (
-            <CountUp
-              value={avgGap}
-              decimals={3}
-              formatter={(n) => `${n.toFixed(3)}s`}
-              className="stat-tile__value"
-            />
-          ) : (
-            <span className="stat-tile__value">—</span>
-          )
-        }
-      />
-    </motion.div>
+    <Fragment>
+      <div className="overview__insight glass">
+        <p className="overview__insight-eyebrow">{raceLabel}</p>
+        <p className="overview__insight-text">{raceStory}</p>
+      </div>
+      <motion.div
+        className="stat-row"
+        variants={staggerContainer()}
+        initial="hidden"
+        animate="show"
+        style={{ opacity: loading ? 0.55 : 1, transition: "opacity 0.2s ease" }}
+      >
+        <StatTile
+          icon={<StopwatchIcon />}
+          label={fastestDriverName ? `Fastest lap · ${fastestDriverName}` : "Fastest lap"}
+          value={
+            fastestLap ? (
+              <CountUp
+                value={fastestLap.duration}
+                decimals={3}
+                formatter={(n) => fmtLapTime(n)}
+                className="stat-tile__value"
+              />
+            ) : (
+              <span className="stat-tile__value">—</span>
+            )
+          }
+        />
+        <StatTile
+          icon={<FlagIcon />}
+          label="Laps completed"
+          value={
+            lapsCompleted > 0 ? (
+              <CountUp value={lapsCompleted} className="stat-tile__value" />
+            ) : (
+              <span className="stat-tile__value">—</span>
+            )
+          }
+        />
+        <StatTile
+          icon={<PitIcon />}
+          label="Pit stops"
+          value={<CountUp value={pitStopCount} className="stat-tile__value" />}
+        />
+        <StatTile
+          icon={<GapIcon />}
+          label={sameTeam ? "Avg. teammate gap" : "Avg. pair gap"}
+          value={
+            avgGap !== null ? (
+              <CountUp
+                value={avgGap}
+                decimals={3}
+                formatter={(n) => `${n.toFixed(3)}s`}
+                className="stat-tile__value"
+              />
+            ) : (
+              <span className="stat-tile__value">—</span>
+            )
+          }
+        />
+      </motion.div>
+    </Fragment>
   );
 }
