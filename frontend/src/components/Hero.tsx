@@ -46,7 +46,7 @@ export function Hero({ laps, pair, rosters, onSelectPair, races, selected, onSel
         animate="show"
       >
         <motion.h1 variants={entrance}>
-          Track Formula 1&rsquo;s <RotatingWord words={ROTATING_WORDS} />.
+          Track Formula 1&rsquo;s <RotatingWord words={ROTATING_WORDS} suffix="." />
         </motion.h1>
         <motion.p variants={entrance} custom={homeCascade.introText - homeCascade.introTitle}>
           F1 Tracker follows the 2026 season lap by lap — pace, standings, race

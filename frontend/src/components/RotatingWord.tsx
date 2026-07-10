@@ -5,6 +5,9 @@ import { digitRollEnter, digitRollExit, WORD_ROTATE_MS } from "../motion";
 interface Props {
   /** Cycled one at a time, in order, looping back to the start. */
   words: string[];
+  /** Static text appended after the word, inside .rotating-word so it
+   *  inherits the same color instead of falling back to surrounding text. */
+  suffix?: string;
 }
 
 /** DigitRoll's vertical-roll idea, stretched from a single tabular-width
@@ -12,7 +15,7 @@ interface Props {
  *  one slides in from below. `mode="wait"` (not DigitRoll's `popLayout`)
  *  because word width varies — waiting for the exit to finish before the
  *  next word enters avoids two different-width words overlapping mid-swap. */
-export function RotatingWord({ words }: Props) {
+export function RotatingWord({ words, suffix }: Props) {
   const [index, setIndex] = useState(0);
   const reducedMotion = useReducedMotion();
 
@@ -28,7 +31,12 @@ export function RotatingWord({ words }: Props) {
   const word = words[index] ?? words[0];
 
   if (reducedMotion) {
-    return <span className="rotating-word">{word}</span>;
+    return (
+      <span className="rotating-word">
+        {word}
+        {suffix}
+      </span>
+    );
   }
 
   return (
@@ -44,6 +52,7 @@ export function RotatingWord({ words }: Props) {
           {word}
         </motion.span>
       </AnimatePresence>
+      {suffix}
     </span>
   );
 }
