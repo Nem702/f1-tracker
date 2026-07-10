@@ -2,10 +2,13 @@ import type {
   Driver,
   Lap,
   NextRaceResponse,
+  OfficialResultResponse,
   PitStop,
   PositionRow,
   Race,
   RaceControlRow,
+  RaceWeekendResponse,
+  StandingsResponse,
   Stint,
   WeatherRow,
 } from "./types";
@@ -33,4 +36,8 @@ export const api = {
   raceControl: (sk: number) =>
     get<RaceControlRow[]>(`/api/races/${sk}/race-control`),
   nextRace: () => get<NextRaceResponse>("/api/next-race"),
+  raceWeekend: () => get<RaceWeekendResponse>("/api/race-weekend"),
+  officialResult: (sk: number) =>
+    get<OfficialResultResponse>(`/api/races/${sk}/official-result`),
+  standings: () => get<StandingsResponse>("/api/standings"),
 };

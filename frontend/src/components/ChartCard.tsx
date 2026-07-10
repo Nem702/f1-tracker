@@ -66,7 +66,7 @@ function SwapIcon() {
  * .card--solid in index.css. Race Analysis stacks 6-7 of these, and scroll
  * profiling showed backdrop-filter here (re-blurring the moving aurora
  * under every card, every frame) as the site's actual scroll-jank source;
- * the sidebar and Overview keep the full frosted .glass treatment, since
+ * the navbar and #hero keep the full frosted .glass treatment, since
  * they don't compound the same way. The data (chart or table) still draws
  * on a near-opaque inset plate underneath the header/legend/toggle.
  */

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { api } from "../api/client";
 import { useApi } from "../hooks/useApi";
 import { useCountdown } from "../hooks/useCountdown";
+import { entranceX, homeCascade } from "../motion";
 import { DigitRoll } from "./DigitRoll";
 import "./Countdown.css";
 
@@ -56,7 +58,13 @@ export function Countdown() {
   const parts = countdown ?? { days: 0, hours: 0, minutes: 0, seconds: 0 };
 
   return (
-    <div className="countdown glass">
+    <motion.div
+      className="countdown glass"
+      variants={entranceX}
+      custom={{ x: 16, delay: homeCascade.countdown }}
+      initial="hidden"
+      animate="show"
+    >
       <p className="countdown__eyebrow">Up next</p>
       <h3 className="countdown__title">
         {gpName}
@@ -82,6 +90,6 @@ export function Countdown() {
       </div>
 
       <p className="countdown__local">{fmtLocalStart(session.date_start)} local time</p>
-    </div>
+    </motion.div>
   );
 }

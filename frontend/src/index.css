@@ -32,7 +32,7 @@
   --radius-tile: 18px; /* stat tiles, pipeline steps */
   --radius-card: 20px; /* chart cards */
   --radius-feature: 24px; /* countdown / feature cards */
-  --radius-rail: 28px; /* the sidebar rail */
+  --radius-rail: 28px; /* the navbar */
   --radius-plate: 14px; /* the opaque chart plate inside a card */
   --radius-pill: 999px;
 
@@ -47,9 +47,12 @@
   --space-8: 64px;
 
   /* ---- shell layout ---- */
-  --sidebar-w: 264px;
   --content-pad-x: 40px;
-  --content-pad-y: 36px;
+  /* How far a jumped-to section's top clears the sticky navbar (its own
+     16px top offset + rendered height + a little breathing room) — used
+     as scroll-margin-top wherever useScrollSpy/Navbar's click handler can
+     land, so a section's heading never tucks in behind the bar. */
+  --navbar-clearance: 108px;
 
   /* ---- glass ---- */
   /* backdrop-filter cost scales with the blur radius — 16px reads nearly
@@ -61,9 +64,7 @@
 
 @media (max-width: 900px) {
   :root {
-    --sidebar-w: 84px;
     --content-pad-x: 20px;
-    --content-pad-y: 24px;
   }
 }
 
@@ -139,6 +140,29 @@ body {
   transition: var(--tint-transition);
 }
 
+/* One-time entrance sweep (see AuroraBackground.tsx): a positioned wrapper
+   per blob that framer-motion fades 0→1 on mount/replay. The blob itself
+   keeps its own CSS-var opacity and position unset (it just fills its
+   wrapper's origin), so the retint crossfade below is completely untouched. */
+.aurora__blob-wrap {
+  position: absolute;
+}
+
+.aurora__blob-wrap--a {
+  top: -320px;
+  left: -260px;
+}
+
+.aurora__blob-wrap--b {
+  top: 16%;
+  right: -340px;
+}
+
+.aurora__blob-wrap--c {
+  bottom: -360px;
+  left: 28%;
+}
+
 /* Pre-blurred look without filter: a solid themed fill (so the retint
    transition still crossfades background-color) shaped by a static radial
    alpha mask instead of filter: blur(110px). */
@@ -164,97 +188,50 @@ body {
 }
 
 .aurora__blob--a {
-  top: -320px;
-  left: -260px;
   background: var(--accent);
   opacity: var(--aurora-a);
 }
 
 .aurora__blob--b {
-  top: 16%;
-  right: -340px;
   background: var(--driver1);
   opacity: var(--aurora-b);
 }
 
 .aurora__blob--c {
-  bottom: -360px;
-  left: 28%;
   background: var(--driver2);
   opacity: var(--aurora-c);
 }
 
-/* ---------- app shell: sidebar + content ---------- */
+/* ---------- app shell: navbar + content ---------- */
 
 .app-shell {
   min-height: 100vh;
-  display: grid;
-  grid-template-columns: var(--sidebar-w) 1fr;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
   color: var(--ink-primary);
   /* the fixed .aurora child paints the page background */
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .app-shell {
-    transition: grid-template-columns 0.25s ease;
-  }
-}
+/* ---------- navbar: floating glass top bar ---------- */
 
-/* Manual collapse (chevron in the sidebar header): same icon-rail look the
-   <900px media query forces, but user-toggled at any width and persisted
-   (App.tsx owns the state and this class). */
-.app-shell--collapsed {
-  --sidebar-w: 84px;
-}
-
-.app-shell--collapsed .sidebar__brand-word,
-.app-shell--collapsed .sidebar__nav-label {
-  display: none;
-}
-
-.app-shell--collapsed .sidebar__header {
-  flex-direction: column;
-}
-
-.app-shell--collapsed .sidebar__brand,
-.app-shell--collapsed .sidebar__nav-item,
-.app-shell--collapsed .sidebar__theme-toggle {
-  justify-content: center;
-}
-
-.app-shell--collapsed .sidebar__collapse svg {
-  transform: rotate(180deg);
-}
-
-/* ---------- sidebar: floating glass rail ---------- */
-
-.sidebar {
+.navbar {
   position: sticky;
   top: 16px;
-  z-index: 2;
-  height: calc(100vh - 32px);
-  margin: 16px 0 16px 16px;
+  z-index: 5;
+  margin: 16px;
   border-radius: var(--radius-rail);
   display: flex;
-  flex-direction: column;
-  gap: var(--space-6);
-  padding: var(--space-5) var(--space-3);
-  overflow-y: auto;
-}
-
-.sidebar__header {
-  display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-4);
 }
 
-.sidebar__brand {
+.navbar__brand {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-2);
+  flex-shrink: 0;
+  padding: var(--space-1) var(--space-2);
   color: var(--ink-primary);
   text-decoration: none;
   font-weight: var(--weight-heading);
@@ -262,34 +239,7 @@ body {
   letter-spacing: -0.01em;
 }
 
-.sidebar__collapse {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  color: var(--ink-secondary);
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  cursor: pointer;
-  transition:
-    color 0.2s ease,
-    border-color 0.2s ease;
-}
-
-.sidebar__collapse:hover {
-  color: var(--ink-primary);
-  border-color: var(--ink-muted);
-}
-
-.sidebar__collapse svg {
-  transition: transform 0.25s ease;
-}
-
-.sidebar__brand-mark {
+.navbar__brand-mark {
   flex-shrink: 0;
   width: 22px;
   height: 22px;
@@ -298,35 +248,48 @@ body {
   transition: var(--tint-transition);
 }
 
-.sidebar__nav {
+/* Horizontal scroll instead of wrapping when the nav list doesn't fit —
+   same pattern as .team-switcher__chips: items keep their shape and the
+   navbar never grows taller or forces the page sideways. */
+.navbar__nav {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: var(--space-1);
+  min-width: 0;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-.sidebar__nav-item {
+.navbar__nav::-webkit-scrollbar {
+  display: none;
+}
+
+.navbar__nav-item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: 10px var(--space-3);
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding: 8px var(--space-3);
   border-radius: var(--radius-pill);
   color: var(--ink-secondary);
   text-decoration: none;
   font-size: 13.5px;
   font-weight: 550;
+  white-space: nowrap;
   transition: color 0.2s ease;
 }
 
-.sidebar__nav-item:hover {
+.navbar__nav-item:hover {
   color: var(--ink-primary);
 }
 
-.sidebar__nav-item--active {
+.navbar__nav-item--active {
   color: var(--ink-primary);
 }
 
-.sidebar__nav-item--active .sidebar__nav-icon {
+.navbar__nav-item--active .navbar__nav-icon {
   color: var(--accent-ink);
   transition: color 0.25s ease;
 }
@@ -335,9 +298,9 @@ body {
    (see src/motion.ts) so it morphs between nav items instead of popping;
    sits behind the icon/label via z-index, not DOM order. A glass pill —
    translucent chip fill + frosted border + specular inset — but NO
-   backdrop-filter of its own: it sits on the already-frosted rail, and
+   backdrop-filter of its own: it sits on the already-frosted bar, and
    card > pill is the deepest sanctioned nesting. */
-.sidebar__nav-pill {
+.navbar__nav-pill {
   position: absolute;
   inset: 0;
   z-index: 0;
@@ -348,30 +311,24 @@ body {
   transition: var(--tint-transition);
 }
 
-.sidebar__nav-icon,
-.sidebar__nav-label {
+.navbar__nav-icon,
+.navbar__nav-label {
   position: relative;
   z-index: 1;
 }
 
-.sidebar__nav-icon {
+.navbar__nav-icon {
   display: inline-flex;
   flex-shrink: 0;
   color: inherit;
 }
 
-.sidebar__nav-label {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.sidebar__theme-toggle {
-  margin-top: auto;
+.navbar__theme-toggle {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: 10px var(--space-3);
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding: 8px var(--space-3);
   color: var(--ink-secondary);
   background: transparent;
   border: 1px solid var(--border);
@@ -380,36 +337,22 @@ body {
   font-size: 13px;
   font-weight: 550;
   cursor: pointer;
+  white-space: nowrap;
   transition:
     color 0.2s ease,
     border-color 0.2s ease;
 }
 
-.sidebar__theme-toggle:hover {
+.navbar__theme-toggle:hover {
   color: var(--ink-primary);
   border-color: var(--ink-muted);
 }
 
-/* Below 900px the rail is forced (an expanded 264px sidebar would crush the
-   content column), so the manual toggle hides — same rules as the
-   .app-shell--collapsed class above. */
-@media (max-width: 900px) {
-  .sidebar__brand-word,
-  .sidebar__nav-label {
-    display: none;
-  }
-
-  .sidebar__header {
-    flex-direction: column;
-  }
-
-  .sidebar__brand,
-  .sidebar__nav-item,
-  .sidebar__theme-toggle {
-    justify-content: center;
-  }
-
-  .sidebar__collapse {
+/* Below 640px, the brand wordmark drops to just the mark — the nav list
+   and theme toggle already handle narrow widths on their own (scroll,
+   icon+label at a smaller gap), this just buys the nav row more room. */
+@media (max-width: 640px) {
+  .navbar__brand-word {
     display: none;
   }
 }
@@ -420,7 +363,7 @@ body {
   position: relative;
   z-index: 1;
   min-width: 0;
-  padding: var(--content-pad-y) var(--content-pad-x) var(--space-8);
+  padding: 0 var(--content-pad-x) var(--space-8);
 }
 
 .view__header {
@@ -464,16 +407,20 @@ body {
   line-height: 1.1;
 }
 
-/* ---------- hero banner (Overview view) ---------- */
+/* ---------- hero banner (#hero section) ---------- */
 /* Uncontained — no surface/shadow/radius, bleeding past the content
    column's own side padding so the ribbons float directly on the page
-   aurora as the view's center feature, not a boxed-in panel. */
+   aurora as the section's center feature, not a boxed-in panel. */
+
+.hero-section {
+  scroll-margin-top: var(--navbar-clearance);
+}
 
 .hero {
   position: relative;
   height: clamp(360px, 48vw, 560px);
   overflow: hidden;
-  /* Tight bottom margin: the race selector directly below belongs to the
+  /* Tight bottom margin: the pair picker directly below belongs to the
      hero visually, so the big gap comes after it, not before. */
   margin: 0 calc(var(--content-pad-x) * -1) var(--space-4);
 }
@@ -518,27 +465,33 @@ body {
    `fit` calc), so it never actually fills an ultrawide monitor, but every
    card/grid below it otherwise would — this keeps the whole section reading
    as one column roughly as wide as the chart above, not edge to edge. */
-.overview__body {
+.hero-body {
   max-width: 1100px;
   margin: 0 auto;
 }
 
-/* The race selector takes the hero's old caption slot — a real, functional
-   picker instead of a plain "race name — each ribbon is..." text label. */
-.overview__race-row {
-  display: flex;
-  justify-content: center;
-  margin-bottom: var(--space-4);
-}
-
-/* Centers the team switcher under the race selector, its own row. */
-.overview__selectors {
+/* Centers the team switcher under the hero. */
+.hero-body__selectors {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   align-items: flex-start;
   gap: var(--space-3);
   margin-bottom: var(--space-6);
+}
+
+/* The countdown used to share a row with the selected-race insight card
+   (now #telemetry's header, not the hero's); it's #hero's own closing
+   card now, centered and capped to a comfortable width instead of
+   stretching full-bleed. */
+.hero-body__countdown {
+  display: flex;
+  justify-content: center;
+}
+
+.hero-body__countdown .countdown {
+  width: 100%;
+  max-width: 420px;
 }
 
 /* ---------- team switcher ---------- */
@@ -641,11 +594,11 @@ body {
 /* Active chip: brighter inner fill + a team-color glow. */
 .team-chip--active {
   background: var(--glass2);
-  border-color: color-mix(in srgb, var(--chip-color) 45%, var(--glass-border));
+  border-color: color-mix(in srgb, var(--chip-color) var(--glow-border-pct), var(--glass-border));
   box-shadow:
     inset 0 1px 0 var(--spec),
-    0 0 0 1px color-mix(in srgb, var(--chip-color) 30%, transparent),
-    0 8px 26px -10px color-mix(in srgb, var(--chip-color) 60%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--chip-color) var(--glow-ring-pct), transparent),
+    0 8px 26px -10px color-mix(in srgb, var(--chip-color) var(--glow-blur-pct), transparent);
 }
 
 .team-switcher__h2h {
@@ -684,56 +637,29 @@ body {
   color: var(--ink-secondary);
 }
 
-/* ---------- Overview row: the selected-race summary vs. the countdown ---------- */
-/* Two unrelated things side by side: everything about the CURRENTLY
-   SELECTED race (insight + its stat grid) grouped together in their own
-   column on the left — the stat grid nests directly under the insight it
-   summarizes instead of spanning under the countdown too — and the
-   countdown (always the UPCOMING race) on the right. Same height
-   (align-items: stretch) so the two read as one paired row, not two
-   independently-sized blocks. */
-
-.overview__row {
-  display: grid;
-  grid-template-columns: 1fr minmax(280px, 380px);
-  gap: var(--space-5);
-  align-items: stretch;
-}
-
-@media (max-width: 900px) {
-  .overview__row {
-    grid-template-columns: 1fr;
-  }
-}
-
-.overview__summary {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  min-width: 0;
-}
-
+/* ---------- #telemetry's header summary: insight card + stat tiles ---------- */
 /* The insight card: parallel to .countdown (same radius tier, same eyebrow
-   treatment) but labeled with the SELECTED race rather than "Up next" — the
-   two cards must read as different time frames at a glance. Glow (ring +
-   soft blur, appended to .glass's own inset-spec + shadow-card layers) uses
-   var(--accent) — exactly the color the active team chip (or the neutral
-   Head-to-Head chip) glows with. Scoped to just this one headline card —
-   glowing every stat tile too (6 glowing surfaces in one row) read as too
-   much, so .stat-tile stays plain .glass. */
+   treatment) but labeled with the SELECTED race — #telemetry's own picker,
+   not #hero's "up next" countdown. Glow (ring + soft blur, appended to
+   .glass's own inset-spec + shadow-card layers) uses var(--accent) —
+   exactly the color the active team chip (or the neutral Head-to-Head
+   chip) glows with. Scoped to just this one headline card — glowing every
+   stat tile too (4 glowing surfaces in one row) read as too much, so
+   .stat-tile stays plain .glass. */
 .overview__insight {
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: var(--space-1);
   min-width: 0;
+  margin-bottom: var(--space-4);
   padding: var(--space-5) var(--space-6);
   border-radius: var(--radius-feature);
   box-shadow:
     inset 0 1px 0 var(--spec),
     var(--shadow-card),
-    0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent),
-    0 8px 26px -10px color-mix(in srgb, var(--accent) 60%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--accent) var(--glow-ring-pct), transparent),
+    0 8px 26px -10px color-mix(in srgb, var(--accent) var(--glow-blur-pct), transparent);
 }
 
 .overview__insight-eyebrow {
@@ -760,6 +686,7 @@ body {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: var(--space-4);
+  margin-bottom: var(--space-6);
 }
 
 @media (max-width: 900px) {
@@ -773,6 +700,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  min-width: 0; /* grid items refuse to shrink below content size by default */
   padding: var(--space-4) var(--space-4);
   border-radius: var(--radius-tile);
 }
@@ -839,6 +767,9 @@ body {
 
 .about {
   max-width: 900px;
+  margin: 0 auto;
+  padding-top: var(--space-8);
+  scroll-margin-top: var(--navbar-clearance);
 }
 
 .about__body {
@@ -900,14 +831,19 @@ body {
   }
 }
 
-/* ---------- race analysis view ---------- */
-
-.race-info {
-  padding-top: 0;
-}
-
-.race-info__intro {
-  padding: 0 0 var(--space-4);
+/* ---------- page sections (single continuous scroll) ---------- */
+/* Every section below the hero shares one wrapper: capped/centered width
+   (matches .hero-body above it) and a scroll-margin so useScrollSpy's
+   IntersectionObserver anchors and Navbar's scroll-to-section jumps don't
+   tuck a heading's top edge flush behind the sticky navbar. Vertical
+   rhythm between sections comes from top padding rather than margin, so a
+   section's own background (none today, but keeps the option open) would
+   paint edge-to-edge without a gap showing through. */
+.page-section {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding-top: var(--space-8);
+  scroll-margin-top: var(--navbar-clearance);
 }
 
 /* Scroll-reveal wrappers are the grid items now, so they carry the wide
@@ -1490,6 +1426,204 @@ body {
 
 .footer__credit {
   margin: 0;
+}
+
+/* ---------- shared section meta/empty text ---------- */
+/* Reused by #next-race, #last-race and #last-race-results — a small "which
+   race/round is this" line under a SectionHeading, or the graceful-
+   omission message when that section's data hasn't arrived/doesn't exist
+   yet. */
+
+.section-meta {
+  margin: 6px 0 0;
+  color: var(--ink-secondary);
+  font-size: 0.9rem;
+}
+
+.section-empty {
+  color: var(--ink-secondary);
+}
+
+/* ---------- #next-race ---------- */
+/* Two peer cards, source order: schedule (narrower) then the circuit
+   image (wider) — each wrapped in its own <Reveal>, which is itself the
+   grid item (display: grid on .reveal stretches it to the row height). */
+.next-race__grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) 1fr;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .next-race__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.weekend-schedule {
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-feature);
+}
+
+.weekend-schedule__eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+}
+
+.weekend-schedule__title {
+  margin: 0 0 var(--space-3);
+  font-size: 1.1rem;
+  font-weight: 650;
+}
+
+.weekend-schedule__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.weekend-schedule__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--glass-border);
+  font-size: 0.9rem;
+}
+
+.weekend-schedule__row:last-child {
+  border-bottom: none;
+}
+
+.weekend-schedule__name {
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+
+.weekend-schedule__time {
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.weekend-schedule__note {
+  margin: var(--space-3) 0 0;
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+}
+
+.previous-race-recap {
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-feature);
+}
+
+.previous-race-recap__eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+}
+
+.previous-race-recap__title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 650;
+}
+
+.previous-race-recap__date {
+  margin: 2px 0 var(--space-3);
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+
+.previous-race-recap__podium {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.previous-race-recap__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 0.9rem;
+}
+
+.previous-race-recap__pos {
+  min-width: 1.4em;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.previous-race-recap__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+
+.previous-race-recap__gap {
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.previous-race-recap__fastest {
+  margin: var(--space-3) 0 0;
+  font-size: 0.8rem;
+  color: var(--ink-secondary);
+}
+
+.previous-race-recap__sprint {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--glass-border);
+}
+
+.previous-race-recap__sprint-label {
+  margin: 0 0 var(--space-1);
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.previous-race-recap__podium--sprint .previous-race-recap__row {
+  font-size: 0.8rem;
+}
+
+.previous-race-recap__link {
+  display: inline-block;
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--glass-border);
+  color: var(--accent-ink);
+  text-decoration: none;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.previous-race-recap__link:hover {
+  text-decoration: underline;
 }
 
 /* ---------- focus-visible baseline ---------- */
