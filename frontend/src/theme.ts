@@ -5,7 +5,10 @@
 // chart-plate surfaces — light rgba(255,253,249,.72) flattened over the
 // #ececec page base = #FAF8F5, dark rgba(18,18,20,.6) over #0a0a0c = #0F0F11
 // (page base was re-tinted from a warm #f2ede7 to this neutral gray after the
-// fact — lightness held constant, so none of the checks below shifted):
+// fact — lightness held constant, so none of the checks below shifted; light
+// shadowCard/shadowRaised were also re-tinted from a warm brown rgba(80,50,20,…)
+// to neutral rgba(23,25,34,…) — same alpha/blur/spread, decorative only, no
+// validator check touches shadow color):
 //   - per-team driver1↔driver2, worst of protan/deutan ΔE (target ≥ 12):
 //       ferrari  light 12.6 · dark 15.3  (dark seeds re-snapped: rosso
 //         L .66→.55, giallo L .80→.67 — the seed gold sat above the dark
@@ -190,6 +193,9 @@ export interface Theme {
   spec: string; // specular inset top-edge highlight — rgba
   shadowCard: string; // glass drop shadow
   shadowRaised: string; // stronger elevation: tooltips, hover
+  glowBorderPct: string; // team-glow recipe (.team-chip--active, .overview__insight): border-color color-mix %
+  glowRingPct: string; // …ring box-shadow color-mix %
+  glowBlurPct: string; // …blur box-shadow color-mix % — light mode runs all three hotter than dark so translucent red reads as red, not pink, over a pale fill
   accent: string; // team accent — chrome fills/glow only, never a series
   accentInk: string; // accent as TEXT or icon color (AA on glass)
   onAccent: string; // ink for text sitting on a solid `accent` fill
@@ -235,8 +241,11 @@ const base: Record<Mode, BaseTokens> = {
     cardSolid: "rgba(224, 226, 230, 0.94)",
     glassMenu: "rgba(255, 255, 255, 1)",
     spec: "rgba(255, 255, 255, 0.8)",
-    shadowCard: "0 24px 48px -28px rgba(80, 50, 20, 0.35)",
-    shadowRaised: "0 30px 60px -24px rgba(80, 50, 20, 0.4)",
+    shadowCard: "0 24px 48px -28px rgba(23, 25, 34, 0.35)",
+    shadowRaised: "0 30px 60px -24px rgba(23, 25, 34, 0.4)",
+    glowBorderPct: "70%",
+    glowRingPct: "50%",
+    glowBlurPct: "78%",
     auroraA: "0.42",
     auroraB: "0.38",
     auroraC: "0.34",
@@ -274,6 +283,9 @@ const base: Record<Mode, BaseTokens> = {
     spec: "rgba(255, 255, 255, 0.14)",
     shadowCard: "0 24px 48px -20px rgba(0, 0, 0, 0.65)",
     shadowRaised: "0 30px 56px -18px rgba(0, 0, 0, 0.75)",
+    glowBorderPct: "45%",
+    glowRingPct: "30%",
+    glowBlurPct: "60%",
     auroraA: "0.20",
     auroraB: "0.18",
     auroraC: "0.16",
@@ -348,6 +360,9 @@ export function cssVars(t: Theme): Record<string, string> {
     "--spec": t.spec,
     "--shadow-card": t.shadowCard,
     "--shadow-raised": t.shadowRaised,
+    "--glow-border-pct": t.glowBorderPct,
+    "--glow-ring-pct": t.glowRingPct,
+    "--glow-blur-pct": t.glowBlurPct,
     "--accent": t.accent,
     "--accent-ink": t.accentInk,
     "--on-accent": t.onAccent,

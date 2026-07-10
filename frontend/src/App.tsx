@@ -1,52 +1,24 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { MotionConfig } from "framer-motion";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { MotionConfig, motion } from "framer-motion";
 import { api } from "./api/client";
 import { useApi } from "./hooks/useApi";
+import { useScrollSpy } from "./hooks/useScrollSpy";
 import { setTint, useMode, useTheme } from "./hooks/useTheme";
 import { cssVars, tintForPair } from "./theme";
 import { buildRosters, findDriver, pairTeamSlug, type DriverPair } from "./teams";
 import { deriveDelta } from "./lib/delta";
 import { fmtDate } from "./format";
-import { Sidebar } from "./components/Sidebar";
-import { normalizeHash, type View } from "./viewState";
-import { ViewTransition } from "./components/ViewTransition";
+import { Navbar } from "./components/Navbar";
+import { SECTIONS, normalizeHash } from "./viewState";
 import { AuroraBackground } from "./components/AuroraBackground";
-import { Countdown } from "./components/Countdown";
+import { Hero } from "./components/Hero";
+import { NextRace } from "./components/NextRace";
+import { LastRace } from "./components/LastRace";
+import { LastRaceResults } from "./components/LastRaceResults";
+import { Standings } from "./components/Standings";
+import { Telemetry } from "./components/Telemetry";
 import { About } from "./components/About";
-import { Reveal } from "./components/Reveal";
-import { StatTiles } from "./components/StatTiles";
-import { RaceSelector } from "./components/RaceSelector";
-import { TeamSwitcher } from "./components/TeamSwitcher";
-
-// Each of these clusters (three.js/r3f/drei for Hero3D, recharts for the
-// race-analysis charts) is only ever rendered behind one `view === "..."`
-// gate below — lazy-loading keeps them out of the initial bundle for the
-// views that don't need them.
-const Hero3D = lazy(() => import("./components/Hero3D").then((m) => ({ default: m.Hero3D })));
-const LapTimeChart = lazy(() => import("./components/LapTimeChart").then((m) => ({ default: m.LapTimeChart })));
-const DeltaChart = lazy(() => import("./components/DeltaChart").then((m) => ({ default: m.DeltaChart })));
-const TireStrategy = lazy(() => import("./components/TireStrategy").then((m) => ({ default: m.TireStrategy })));
-const PitStopChart = lazy(() => import("./components/PitStopChart").then((m) => ({ default: m.PitStopChart })));
-const PositionChart = lazy(() => import("./components/PositionChart").then((m) => ({ default: m.PositionChart })));
-const WeatherChart = lazy(() => import("./components/WeatherChart").then((m) => ({ default: m.WeatherChart })));
-const RaceControlFeed = lazy(() => import("./components/RaceControlFeed").then((m) => ({ default: m.RaceControlFeed })));
-
-/* Sidebar collapse: an explicit user choice persists (same storage pattern
-   as hooks/useTheme.ts); first visit defaults to collapsed on narrow
-   screens. Below 900px the CSS media query forces the icon rail regardless
-   of this state, and the toggle button is hidden there. */
-const SIDEBAR_KEY = "f1-tracker-sidebar";
-
-function readStoredCollapsed(): boolean {
-  try {
-    const raw = localStorage.getItem(SIDEBAR_KEY);
-    if (raw === "collapsed") return true;
-    if (raw === "expanded") return false;
-  } catch {
-    // Storage being unavailable only loses persistence, not the toggle.
-  }
-  return window.innerWidth < 900;
-}
+import { entrance } from "./motion";
 
 /* The selected pair persists as two driver numbers. They're validated
    against the fetched roster on every resolve (a stale number from a past
@@ -72,38 +44,68 @@ function readStoredPair(): [number, number] | null {
   return null;
 }
 
-/** Hash-synced view state — no router. Sidebar owns the view list; this
- *  just mirrors `location.hash` into it so back/forward and reload both
- *  land on the right view. */
-function useView(): View {
-  const [view, setView] = useState<View>(() => normalizeHash(window.location.hash));
-  useEffect(() => {
-    const onHashChange = () => setView(normalizeHash(window.location.hash));
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
-  }, []);
-  return view;
-}
-
 export default function App() {
   const mode = useMode();
-  const view = useView();
+  const active = useScrollSpy(SECTIONS, normalizeHash(window.location.hash));
+
+  // On first load with a mid-page hash (a shared link, a reload after
+  // scrolling), jump straight there with no animation instead of always
+  // opening at the hero — same as a plain anchor link would. This can't
+  // just scroll on the next frame: every section fetches its own data
+  // independently (races, standings, official results, telemetry, …), each
+  // resolving at its own pace, and Hero3D plus every telemetry chart are
+  // lazy-loaded on top of that — so the page's height grows in several
+  // separate spurts over the first second or two rather than settling once.
+  // A ResizeObserver on <body> catches every one of those spurts — the jump
+  // only fires once layout has gone quiet for 600ms (comfortably longer
+  // than the gap between one section's data arriving and the next's), so it
+  // lands on the section's final position instead of wherever it happened
+  // to be after the first quiet moment. The hard timeout is a floor, not
+  // the common case: it only matters if a fetch stalls badly enough that
+  // layout never goes quiet.
+  useEffect(() => {
+    const target = normalizeHash(window.location.hash);
+    if (target === "hero") return;
+
+    let settled = false;
+    let debounceId = 0;
+
+    const land = () => {
+      if (settled) return;
+      settled = true;
+      document.getElementById(target)?.scrollIntoView({ behavior: "auto", block: "start" });
+    };
+    const scheduleLand = () => {
+      window.clearTimeout(debounceId);
+      debounceId = window.setTimeout(land, 600);
+    };
+
+    // ResizeObserver reports once immediately on observe() (covers the
+    // case where layout is already fully settled) and again on every
+    // subsequent height change, so no separate initial call is needed here
+    // — adding one would race the real first report and could fire `land`
+    // before anything lazy has actually grown the page.
+    const observer = new ResizeObserver(scheduleLand);
+    observer.observe(document.body);
+
+    const hardTimeout = window.setTimeout(land, 4500);
+
+    return () => {
+      settled = true;
+      observer.disconnect();
+      window.clearTimeout(debounceId);
+      window.clearTimeout(hardTimeout);
+    };
+  }, []);
 
   const races = useApi((_k) => api.races(), 0);
   const drivers = useApi((_k) => api.drivers(), 0);
+  // #next-race and #last-race both read this one payload — a race weekend
+  // recap embeds the previous race alongside the upcoming one, so one fetch
+  // serves both sections' worth of Jolpica data.
+  const raceWeekend = useApi((_k) => api.raceWeekend(), 0);
 
   const [selected, setSelected] = useState<number | null>(null);
-
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(readStoredCollapsed);
-  const toggleSidebar = () => {
-    const next = !sidebarCollapsed;
-    setSidebarCollapsed(next);
-    try {
-      localStorage.setItem(SIDEBAR_KEY, next ? "collapsed" : "expanded");
-    } catch {
-      // Storage being unavailable only loses persistence, not the toggle.
-    }
-  };
 
   // Default to the most recent race once the list arrives.
   useEffect(() => {
@@ -158,6 +160,7 @@ export default function App() {
   const positions = useApi(api.positions, selected);
   const weather = useApi(api.weather, selected);
   const raceControl = useApi(api.raceControl, selected);
+  const officialResult = useApi(api.officialResult, selected);
 
   // Client-side teammate delta (the old /api/delta was only a join-and-
   // subtract over rows already in `laps`) — a pair switch recomputes it
@@ -177,171 +180,77 @@ export default function App() {
     ? `${race.location ?? race.circuit_short_name ?? "?"} · ${fmtDate(race.date_start)}`
     : "2026 season";
 
-  // Sakhir/Jeddah exist on OpenF1 with a roster but zero telemetry — the
-  // charts each show their own empty state; this banner explains why.
-  const emptyRace = laps.data !== null && laps.data.length === 0;
-
   return (
     <MotionConfig reducedMotion="user">
       <div
-        className={`app-shell${sidebarCollapsed ? " app-shell--collapsed" : ""}`}
+        className="app-shell"
         data-team={teamSlug ?? undefined}
         style={{ ...cssVars(theme), colorScheme: mode } as CSSProperties}
       >
         <AuroraBackground />
-        <Sidebar
-          view={view}
-          collapsed={sidebarCollapsed}
-          onToggleCollapsed={toggleSidebar}
-        />
+        <Navbar active={active} />
 
         <div className="content">
-          <ViewTransition viewKey={view}>
-            {view === "overview" && (
-              <section className="view view--overview">
-                <header className="view__header">
-                  <p className="view__eyebrow">Overview</p>
-                  <h1 className="view__title">Pick a pair. Follow the gap.</h1>
-                </header>
+          <section id="hero" className="hero-section">
+            <Hero laps={laps.data ?? []} pair={pair} rosters={rosters} onSelectPair={setPair} />
+          </section>
 
-                <Suspense fallback={null}>
-                  <Hero3D laps={laps.data ?? []} pair={pair} />
-                </Suspense>
+          <section id="next-race" className="page-section">
+            <NextRace
+              data={raceWeekend.data?.race_weekend ?? null}
+              loading={raceWeekend.loading}
+              error={raceWeekend.error}
+            />
+          </section>
 
-                <div className="overview__body">
-                  <div className="overview__race-row">
-                    <RaceSelector
-                      races={races.data ?? []}
-                      value={selected}
-                      onChange={setSelected}
-                    />
-                  </div>
+          <section id="last-race" className="page-section">
+            <LastRace
+              recap={raceWeekend.data?.race_weekend?.previous_race ?? null}
+              loading={raceWeekend.loading}
+            />
+          </section>
 
-                  <div className="overview__selectors">
-                    {rosters.length > 0 && pair && (
-                      <TeamSwitcher
-                        rosters={rosters}
-                        pair={pair}
-                        onSelectPair={setPair}
-                      />
-                    )}
-                  </div>
+          <section id="last-race-results" className="page-section">
+            <LastRaceResults
+              data={officialResult.data?.official_result ?? null}
+              loading={officialResult.loading}
+              error={officialResult.error}
+              raceLabel={raceLabel}
+            />
+          </section>
 
-                  <div className="overview__row">
-                    <div className="overview__summary">
-                      <StatTiles
-                        laps={laps.data ?? []}
-                        pit={pit.data ?? []}
-                        delta={deltaRows}
-                        pair={pair}
-                        loading={laps.loading || pit.loading}
-                        raceLabel={raceLabel}
-                      />
-                    </div>
-                    <Countdown />
-                  </div>
-                </div>
-              </section>
-            )}
+          <section id="season-standings" className="page-section">
+            <Standings />
+          </section>
 
-            {view === "race-analysis" && (
-              <section className="view view--race-analysis race-info">
-                <header className="view__header">
-                  <p className="view__eyebrow">Race Analysis</p>
-                  <h1 className="view__title">Pick a race. See how it unfolded.</h1>
-                </header>
+          <section id="telemetry" className="page-section">
+            <Telemetry
+              races={races.data ?? []}
+              selected={selected}
+              onSelectRace={setSelected}
+              race={race}
+              raceLabel={raceLabel}
+              racesError={races.error}
+              pair={pair}
+              laps={laps}
+              stints={stints}
+              pit={pit}
+              positions={positions}
+              weather={weather}
+              raceControl={raceControl}
+              deltaRows={deltaRows}
+            />
+          </section>
 
-                <div className="filters">
-                  <RaceSelector
-                    races={races.data ?? []}
-                    value={selected}
-                    onChange={setSelected}
-                  />
-                  {race && (
-                    <span className="filters__meta">
-                      {race.country_name} · {race.circuit_short_name}
-                    </span>
-                  )}
-                  {emptyRace && (
-                    <span className="filters__note">
-                      OpenF1 published no telemetry for this race — every panel
-                      below is empty by design, not by error.
-                    </span>
-                  )}
-                  {races.error && (
-                    <span className="filters__note">{races.error}</span>
-                  )}
-                </div>
+          <About />
 
-                <Suspense fallback={null}>
-                  <main className="grid">
-                    <Reveal wide>
-                      <LapTimeChart
-                        laps={laps.data ?? []}
-                        pair={pair}
-                        loading={laps.loading}
-                        error={laps.error}
-                      />
-                    </Reveal>
-                    <Reveal wide>
-                      <DeltaChart
-                        rows={deltaRows}
-                        pair={pair}
-                        loading={laps.loading}
-                        error={laps.error}
-                      />
-                    </Reveal>
-                    <Reveal>
-                      <TireStrategy
-                        stints={stints.data ?? []}
-                        pair={pair}
-                        loading={stints.loading}
-                        error={stints.error}
-                      />
-                    </Reveal>
-                    <Reveal delay={0.08}>
-                      <PitStopChart
-                        pit={pit.data ?? []}
-                        pair={pair}
-                        loading={pit.loading}
-                        error={pit.error}
-                      />
-                    </Reveal>
-                    <Reveal wide>
-                      <PositionChart
-                        positions={positions.data ?? []}
-                        pair={pair}
-                        loading={positions.loading}
-                        error={positions.error}
-                      />
-                    </Reveal>
-                    <Reveal>
-                      <WeatherChart
-                        weather={weather.data ?? []}
-                        loading={weather.loading}
-                        error={weather.error}
-                      />
-                    </Reveal>
-                    <Reveal delay={0.08}>
-                      <RaceControlFeed
-                        raceControl={raceControl.data ?? []}
-                        loading={raceControl.loading}
-                        error={raceControl.error}
-                      />
-                    </Reveal>
-                  </main>
-                </Suspense>
-              </section>
-            )}
-
-            {view === "about" && (
-              <section className="view view--about">
-                <About />
-              </section>
-            )}
-          </ViewTransition>
-
-          <footer className="footer">
+          <motion.footer
+            className="footer"
+            variants={entrance}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, margin: "-60px" }}
+          >
             <nav className="footer__social" aria-label="Social links">
               <a
                 href="https://github.com/Nem702/f1-tracker"
@@ -359,7 +268,7 @@ export default function App() {
               Data from OpenF1, fetched weekly into Neon Postgres · a
               skill-building project, not a finished product.
             </p>
-          </footer>
+          </motion.footer>
         </div>
       </div>
     </MotionConfig>

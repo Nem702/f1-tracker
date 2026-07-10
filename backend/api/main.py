@@ -4,11 +4,20 @@ frontend. Serves what the fetch pipeline has already persisted — it never
 calls OpenF1 itself, so it's immune to rate limits and the live-session
 lockout. No writes: every endpoint is a SELECT.
 
-The single documented exception is GET /api/next-race: the races table has
-zero future rows (backfill only stores completed sessions), so that one
-endpoint calls OpenF1 live, through a TTL cache (persisted to disk so
-restarts during a race-weekend 401 lockout keep the fallback), and degrades
-to a stale cache or {"next_session": null} instead of ever raising a 5xx.
+Several documented exceptions call out live instead of reading Postgres,
+each through its own cache (persisted to disk so a restart keeps the
+fallback), and each degrading to a stale cache or a null payload instead of
+ever raising a 5xx:
+  - GET /api/next-race: the races table has zero future rows (backfill only
+    stores completed sessions), so this calls OpenF1 live. TTL-cached.
+  - GET /api/race-weekend, GET /api/standings: season schedule, circuit
+    info, standings, and historical results aren't OpenF1 concepts at all,
+    so these call the free Jolpica F1 API (Ergast-schema) live instead.
+    TTL-cached (this data changes at most weekly).
+  - GET /api/races/{session_key}/official-result: also Jolpica-backed, but
+    a *finished* race's result is immutable forever — cached with no TTL
+    at all (see that endpoint's docstring for why a plain TTL cache isn't
+    the right shape here).
 
 Run from the repo root:  py -m uvicorn backend.api.main:app --reload --reload-dir backend
 (or just run dev.ps1, which starts this and the frontend together)
@@ -27,7 +36,10 @@ from psycopg2.extras import RealDictCursor
 
 from backend.shared.db import get_connection
 from backend.shared.logger import logger
+from backend.shared.jolpica_lookup import find_jolpica_round
+from backend.shared.jolpica_results import get_official_result
 from backend.shared.next_race import get_next_session
+from backend.shared.race_weekend import get_race_weekend, get_standings
 
 app = FastAPI(title="f1-tracker API", version="0.1.0")
 
@@ -201,6 +213,214 @@ def next_race():
     _next_race_cache["fetched_at"] = now
     _save_next_race_cache(payload)
     logger.debug("GET /api/next-race - fetched fresh from OpenF1")
+    return payload
+
+
+# Race-weekend detail (schedule/circuit/standings/last-year-winner) changes
+# at most once a week, so this gets a much longer TTL than /api/next-race —
+# no point re-fetching four Jolpica endpoints on every page load.
+_RACE_WEEKEND_TTL_SECONDS = 6 * 60 * 60
+_race_weekend_cache = {"payload": None, "fetched_at": 0.0}
+_RACE_WEEKEND_CACHE_FILE = Path(__file__).resolve().parents[1] / ".race_weekend_cache.json"
+
+
+def _load_race_weekend_cache():
+    try:
+        payload = json.loads(_RACE_WEEKEND_CACHE_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return
+    except Exception:
+        logger.exception("race-weekend cache file unreadable - ignoring it")
+        return
+    if isinstance(payload, dict) and "race_weekend" in payload:
+        _race_weekend_cache["payload"] = payload
+
+
+def _save_race_weekend_cache(payload):
+    try:
+        _RACE_WEEKEND_CACHE_FILE.write_text(json.dumps(payload), encoding="utf-8")
+    except Exception:
+        logger.exception("race-weekend cache file unwritable - continuing without persistence")
+
+
+_load_race_weekend_cache()
+
+
+@app.get("/api/race-weekend")
+def race_weekend():
+    """Jolpica-backed aggregate for the race-weekend page: round/circuit,
+    weekend session times, last year's winner at that circuit, and top-5
+    driver/constructor standings. Cached for _RACE_WEEKEND_TTL_SECONDS with
+    the same disk-persisted stale-fallback pattern as /api/next-race, so a
+    Jolpica hiccup never 5xx's — see that endpoint's docstring above."""
+    now = time.monotonic()
+    cached = _race_weekend_cache["payload"]
+    cache_age = now - _race_weekend_cache["fetched_at"]
+
+    if cached is not None and cache_age < _RACE_WEEKEND_TTL_SECONDS:
+        logger.debug("GET /api/race-weekend - cache hit (age %.0fs)", cache_age)
+        return cached
+
+    try:
+        result = get_race_weekend()
+    except Exception:
+        logger.exception("GET /api/race-weekend - Jolpica fetch failed")
+        if cached is not None:
+            logger.warning("GET /api/race-weekend - serving stale cache after fetch error")
+            return cached
+        logger.warning("GET /api/race-weekend - no usable cache, returning null")
+        return {"race_weekend": None, "fetched_at": _utc_now_iso()}
+
+    payload = {"race_weekend": result, "fetched_at": _utc_now_iso()}
+    _race_weekend_cache["payload"] = payload
+    _race_weekend_cache["fetched_at"] = now
+    _save_race_weekend_cache(payload)
+    logger.debug("GET /api/race-weekend - fetched fresh from Jolpica")
+    return payload
+
+
+# Full/uncapped standings changes on the same cadence as race-weekend's
+# top-5 cards, so it gets the same TTL and cache shape.
+_STANDINGS_TTL_SECONDS = 6 * 60 * 60
+_standings_cache = {"payload": None, "fetched_at": 0.0}
+_STANDINGS_CACHE_FILE = Path(__file__).resolve().parents[1] / ".standings_cache.json"
+
+
+def _load_standings_cache():
+    try:
+        payload = json.loads(_STANDINGS_CACHE_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return
+    except Exception:
+        logger.exception("standings cache file unreadable - ignoring it")
+        return
+    if isinstance(payload, dict) and "standings" in payload:
+        _standings_cache["payload"] = payload
+
+
+def _save_standings_cache(payload):
+    try:
+        _STANDINGS_CACHE_FILE.write_text(json.dumps(payload), encoding="utf-8")
+    except Exception:
+        logger.exception("standings cache file unwritable - continuing without persistence")
+
+
+_load_standings_cache()
+
+
+@app.get("/api/standings")
+def standings():
+    """Full/uncapped current-season driver + constructor standings, for
+    the dedicated Standings page (Race Weekend's own standings cards stay
+    top-5, unaffected by this). Same TTL + disk-fallback cache shape as
+    /api/race-weekend, never a 5xx."""
+    now = time.monotonic()
+    cached = _standings_cache["payload"]
+    cache_age = now - _standings_cache["fetched_at"]
+
+    if cached is not None and cache_age < _STANDINGS_TTL_SECONDS:
+        logger.debug("GET /api/standings - cache hit (age %.0fs)", cache_age)
+        return cached
+
+    try:
+        result = get_standings()
+    except Exception:
+        logger.exception("GET /api/standings - Jolpica fetch failed")
+        if cached is not None:
+            logger.warning("GET /api/standings - serving stale cache after fetch error")
+            return cached
+        logger.warning("GET /api/standings - no usable cache, returning null")
+        return {"standings": None, "fetched_at": _utc_now_iso()}
+
+    payload = {"standings": result, "fetched_at": _utc_now_iso()}
+    _standings_cache["payload"] = payload
+    _standings_cache["fetched_at"] = now
+    _save_standings_cache(payload)
+    logger.debug("GET /api/standings - fetched fresh from Jolpica")
+    return payload
+
+
+# Official race results are immutable once a race has finished, unlike
+# every other Jolpica-backed cache above — so this one has no TTL at all,
+# keyed per session_key instead of a single slot. Critically: only a
+# SUCCESSFUL lookup ever gets cached (see official_result() below) — the
+# other caches can safely hold a stale/null payload because their TTL
+# guarantees a retry later; this cache has no TTL, so caching a failure
+# would hide the data forever even after Jolpica recovers.
+_official_result_cache: dict[str, dict] = {}
+_OFFICIAL_RESULT_CACHE_FILE = Path(__file__).resolve().parents[1] / ".official_result_cache.json"
+
+
+def _load_official_result_cache():
+    try:
+        payload = json.loads(_OFFICIAL_RESULT_CACHE_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return
+    except Exception:
+        logger.exception("official-result cache file unreadable - ignoring it")
+        return
+    if isinstance(payload, dict):
+        _official_result_cache.update(payload)
+
+
+def _save_official_result_cache():
+    try:
+        _OFFICIAL_RESULT_CACHE_FILE.write_text(json.dumps(_official_result_cache), encoding="utf-8")
+    except Exception:
+        logger.exception("official-result cache file unwritable - continuing without persistence")
+
+
+_load_official_result_cache()
+
+
+def _get_race_row(conn, session_key):
+    rows = query(conn, "SELECT date_start, year FROM races WHERE session_key = %s", (session_key,))
+    return rows[0] if rows else None
+
+
+@app.get("/api/races/{session_key}/official-result")
+def official_result(session_key: int, conn=Depends(get_db)):
+    """Official classification + qualifying (+ sprint, when applicable)
+    for a past race, joined from our own `races` row to its Jolpica
+    season/round via find_jolpica_round() (date-matched — see that
+    function's docstring). Cached forever once resolved (immutable data);
+    a lookup miss or Jolpica error returns a null payload WITHOUT caching
+    it, so the next request tries again instead of being stuck null."""
+    row = _get_race_row(conn, session_key)
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Unknown session_key {session_key}")
+
+    cache_key = str(session_key)
+    cached = _official_result_cache.get(cache_key)
+    if cached is not None:
+        logger.debug("GET /api/races/%s/official-result - cache hit", session_key)
+        return cached
+
+    try:
+        ref = find_jolpica_round(row["year"], row["date_start"])
+        if ref is None:
+            logger.warning("GET /api/races/%s/official-result - no Jolpica round matched", session_key)
+            return {"official_result": None, "fetched_at": _utc_now_iso()}
+        result = get_official_result(ref["season"], ref["round"], ref["has_sprint"])
+    except Exception:
+        logger.exception("GET /api/races/%s/official-result - Jolpica fetch failed", session_key)
+        return {"official_result": None, "fetched_at": _utc_now_iso()}
+
+    payload = {
+        "official_result": {
+            "season": ref["season"],
+            "round": ref["round"],
+            "race_name": ref["race_name"],
+            "has_sprint": ref["has_sprint"],
+            "qualifying": result["qualifying"],
+            "race": result["race"],
+            "sprint": result["sprint"],
+        },
+        "fetched_at": _utc_now_iso(),
+    }
+    _official_result_cache[cache_key] = payload
+    _save_official_result_cache()
+    logger.debug("GET /api/races/%s/official-result - fetched fresh from Jolpica", session_key)
     return payload
 
 

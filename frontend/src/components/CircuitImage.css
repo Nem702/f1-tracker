@@ -1,0 +1,47 @@
+/* Circuit image card — the glass shell + text match the rest of
+ * race-weekend's cards (index.css); only the image frame is scoped here.
+ */
+
+.circuit-image {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-feature);
+}
+
+.circuit-image__eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+}
+
+.circuit-image__title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.circuit-image__location {
+  margin: 0 0 var(--space-3);
+  font-size: 0.85rem;
+  color: var(--ink-secondary);
+}
+
+/* Empty placeholder frame — no track-layout diagram is rendered. */
+.circuit-image__frame {
+  min-height: 280px;
+  border-radius: var(--radius-tile);
+  background: #f4f4f4;
+}
+
+.circuit-image__last-winner {
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--glass-border);
+  font-size: 0.8rem;
+  color: var(--ink-secondary);
+}

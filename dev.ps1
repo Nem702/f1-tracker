@@ -7,8 +7,15 @@
 #  bind its port in the new window, and you can close that duplicate).
 
 $root = $PSScriptRoot
-# Prefer PowerShell 7 if installed, fall back to Windows PowerShell.
-$shell = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }
+# Prefer a real PowerShell 7 install if present, fall back to Windows PowerShell.
+# (Deliberately not just `Get-Command pwsh`: on this machine that resolves to the
+# Microsoft Store package's app-execution alias, which Start-Process launches with
+# a virtualized/reset PATH - `npm` etc. then fail to resolve in the spawned window.)
+$shell = if (Test-Path "$env:ProgramFiles\PowerShell\7\pwsh.exe") {
+    "$env:ProgramFiles\PowerShell\7\pwsh.exe"
+} else {
+    "powershell"
+}
 
 Start-Process $shell -WorkingDirectory $root -ArgumentList @(
     "-NoExit", "-Command",

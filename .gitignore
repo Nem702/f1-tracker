@@ -2,7 +2,12 @@ venv/
 __pycache__/
 .env
 .claude/
+CLAUDE.md
+CONTEXT-HYGIENE.md
 # local one-off DB utilities, deliberately untracked
 backend/tools/
-# /api/next-race disk cache (runtime artifact)
+# /api/next-race, /api/race-weekend, /api/standings, /api/races/*/official-result disk caches (runtime artifacts)
 backend/.next_race_cache.json
+backend/.race_weekend_cache.json
+backend/.standings_cache.json
+backend/.official_result_cache.json

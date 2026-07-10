@@ -1,12 +1,18 @@
-import { Component, useMemo, useRef, type PointerEvent, type ReactNode } from "react";
+import { Component, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Line } from "@react-three/drei";
-import { motion, useMotionValue, useSpring, type MotionValue } from "framer-motion";
+import { animate, motion, useMotionValue, useSpring, type MotionValue } from "framer-motion";
 import type { Group } from "three";
 import type { Lap } from "../api/types";
 import type { DriverPair } from "../teams";
 import { useTheme } from "../hooks/useTheme";
-import { entrance, staggerContainer, stagger } from "../motion";
+import { EASE, entrance, homeCascade, staggerContainer, stagger } from "../motion";
+
+/** Ribbon draw-in duration (seconds) — the reveal is bespoke to Hero3D (a
+ *  progress value tweened via framer's imperative `animate()`, not a DOM
+ *  variant), so it isn't one of motion.ts's Variants; it still borrows EASE
+ *  and homeCascade's ribbonA/ribbonB delays from there. */
+const RIBBON_DRAW_SECONDS = 0.9;
 
 interface Props {
   laps: Lap[];
@@ -87,11 +93,15 @@ function Ribbons({
   b,
   pointerX,
   pointerY,
+  progressA,
+  progressB,
 }: {
   a: Point[];
   b: Point[];
   pointerX: MotionValue<number>;
   pointerY: MotionValue<number>;
+  progressA: MotionValue<number>;
+  progressB: MotionValue<number>;
 }) {
   // three.js materials need real color values (they can't read CSS vars) —
   // useTheme() works inside the Canvas because it's a module store, and the
@@ -106,6 +116,14 @@ function Ribbons({
   const { viewport } = useThree();
   const fit = Math.min(1, viewport.width / 13.5);
 
+  // Draw-in reveal: progressA/progressB are tweened 0→1 once by Hero3D (see
+  // below); read them here each frame and slice the ribbon's points down to
+  // that fraction, so the line grows in left-to-right. Stops re-rendering
+  // once both reach 1 rather than tracking them forever at 60fps.
+  const [revealA, setRevealA] = useState(still ? 1 : 0);
+  const [revealB, setRevealB] = useState(still ? 1 : 0);
+  const revealDone = useRef(still);
+
   // Gentle oscillation plus a subtle pointer-driven tilt — not a full spin
   // (a wide ribbon rotated 90° would be edge-on and vanish), and not a
   // scroll parallax (the hero is a fixed-size banner now, not a page you
@@ -117,10 +135,27 @@ function Ribbons({
     const tiltX = still ? 0 : pointerY.get() * 0.1;
     group.current.rotation.y = sway + tiltY;
     group.current.rotation.x = -0.3 + tiltX;
+
+    if (!revealDone.current) {
+      const pa = progressA.get();
+      const pb = progressB.get();
+      setRevealA(pa);
+      setRevealB(pb);
+      if (pa >= 1 && pb >= 1) revealDone.current = true;
+    }
   });
 
-  const aGlow = useMemo(() => glowSegments(a), [a]);
-  const bGlow = useMemo(() => glowSegments(b), [b]);
+  const aVisible = useMemo(
+    () => (still || a.length < 2 ? a : a.slice(0, Math.max(2, Math.ceil(a.length * revealA)))),
+    [a, revealA, still],
+  );
+  const bVisible = useMemo(
+    () => (still || b.length < 2 ? b : b.slice(0, Math.max(2, Math.ceil(b.length * revealB)))),
+    [b, revealB, still],
+  );
+
+  const aGlow = useMemo(() => glowSegments(aVisible), [aVisible]);
+  const bGlow = useMemo(() => glowSegments(bVisible), [bVisible]);
 
   return (
     <group ref={group} rotation={[-0.3, 0, 0]} scale={[fit, fit, 1]}>
@@ -146,8 +181,8 @@ function Ribbons({
           opacity={seg.opacity}
         />
       ))}
-      <Line points={a} color={theme.driver1} lineWidth={2.5} />
-      <Line points={b} color={theme.driver2} lineWidth={2.5} />
+      <Line points={aVisible} color={theme.driver1} lineWidth={2.5} />
+      <Line points={bVisible} color={theme.driver2} lineWidth={2.5} />
     </group>
   );
 }
@@ -180,6 +215,36 @@ export function Hero3D({ laps, pair }: Props) {
   const pointerX = useSpring(rawPointerX, { stiffness: 40, damping: 20, mass: 0.6 });
   const pointerY = useSpring(rawPointerY, { stiffness: 40, damping: 20, mass: 0.6 });
 
+  // Ribbon draw-in: two motion values tweened 0→1 once on mount (Hero3D is
+  // inside Overview's per-view conditional, so it naturally remounts —  and
+  // replays this — every time the user navigates back to Overview, same as
+  // the overlay text stagger below). Reduced motion skips straight to 1, no
+  // reveal, no animation.
+  const progressA = useMotionValue(0);
+  const progressB = useMotionValue(0);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      progressA.set(1);
+      progressB.set(1);
+      return;
+    }
+    const controlsA = animate(progressA, 1, {
+      duration: RIBBON_DRAW_SECONDS,
+      ease: EASE,
+      delay: homeCascade.ribbonA,
+    });
+    const controlsB = animate(progressB, 1, {
+      duration: RIBBON_DRAW_SECONDS,
+      ease: EASE,
+      delay: homeCascade.ribbonB,
+    });
+    return () => {
+      controlsA.stop();
+      controlsB.stop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handlePointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -200,13 +265,20 @@ export function Hero3D({ laps, pair }: Props) {
           dpr={[1, 1.5]}
           gl={{ alpha: true, antialias: true }}
         >
-          <Ribbons a={a} b={b} pointerX={pointerX} pointerY={pointerY} />
+          <Ribbons
+            a={a}
+            b={b}
+            pointerX={pointerX}
+            pointerY={pointerY}
+            progressA={progressA}
+            progressB={progressB}
+          />
         </Canvas>
       </HeroBoundary>
 
       <motion.div
         className="hero__overlay"
-        variants={staggerContainer(stagger.base, 0.1)}
+        variants={staggerContainer(stagger.base, homeCascade.heroText)}
         initial="hidden"
         animate="show"
       >

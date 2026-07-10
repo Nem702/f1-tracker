@@ -99,3 +99,138 @@ export interface NextRaceResponse {
   next_session: NextSession | null;
   fetched_at: string;
 }
+
+/** GET /api/race-weekend — Jolpica-backed (Ergast schema), cached ~6h
+ *  server-side. `race_weekend` is null when neither this year's nor next
+ *  year's schedule has an upcoming race (should be rare — mainly a brief
+ *  window right at a season rollover before the new calendar is published). */
+export interface WeekendSession {
+  name: string; // "Practice 1" | "Practice 2" | "Practice 3" | "Sprint Qualifying" | "Sprint" | "Qualifying" | "Race"
+  date_start: string; // ISO 8601 with UTC offset
+}
+
+export interface CircuitInfo {
+  circuit_id: string;
+  name: string | null;
+  locality: string | null;
+  country: string | null;
+  lat: number;
+  long: number;
+}
+
+export interface LastYearWinner {
+  season: number;
+  driver_name: string | null;
+  constructor_name: string | null;
+}
+
+export interface DriverStandingRow {
+  position: number;
+  driver_name: string;
+  code: string | null;
+  team_name: string | null;
+  points: number;
+}
+
+export interface ConstructorStandingRow {
+  position: number;
+  team_name: string;
+  points: number;
+}
+
+/** A single driver's classification row from Jolpica's official race (or
+ *  sprint) results — grid/finish position, status, time gap, points, and
+ *  fastest-lap info. Shared by /api/races/{sk}/official-result (both its
+ *  `race` and `sprint` arrays) and /api/race-weekend's `previous_race`. */
+export interface RaceResultRow {
+  position: number | null;
+  position_text: string | null;
+  points: number | null;
+  driver_code: string | null;
+  driver_name: string;
+  constructor_name: string | null;
+  grid: number | null;
+  laps: number | null;
+  status: string | null;
+  time: string | null;
+  fastest_lap_rank: number | null;
+  fastest_lap_time: string | null;
+}
+
+export interface QualifyingRow {
+  position: number | null;
+  driver_code: string | null;
+  driver_name: string;
+  constructor_name: string | null;
+  q1: string | null;
+  q2: string | null;
+  q3: string | null;
+}
+
+/** GET /api/races/{session_key}/official-result — joined from our own
+ *  `races` row to its Jolpica season/round by race date (see
+ *  find_jolpica_round in api/main.py). `sprint` is null for a non-sprint
+ *  weekend; `official_result` itself is null if the join or fetch failed
+ *  (rare — this is a past, already-completed race). */
+export interface OfficialResult {
+  season: number;
+  round: number;
+  race_name: string | null;
+  has_sprint: boolean;
+  qualifying: QualifyingRow[];
+  race: RaceResultRow[];
+  sprint: RaceResultRow[] | null;
+}
+
+export interface OfficialResultResponse {
+  official_result: OfficialResult | null;
+  fetched_at: string;
+}
+
+/** The most recently completed race, embedded in /api/race-weekend —
+ *  top-3 classification, the outright fastest lap of the race, and the
+ *  sprint's top-3 when that weekend had one. No points-swing field:
+ *  Jolpica doesn't expose pre-race standings snapshots, so it isn't
+ *  computable without approximating. */
+export interface PreviousRaceRecap {
+  season: number;
+  round: number;
+  race_name: string | null;
+  date: string;
+  top3: RaceResultRow[];
+  fastest_lap: RaceResultRow | null;
+  sprint_top3: RaceResultRow[] | null;
+}
+
+export interface RaceWeekend {
+  season: number;
+  round: number;
+  total_rounds: number;
+  race_name: string | null;
+  date_start: string;
+  circuit: CircuitInfo;
+  sessions: WeekendSession[];
+  last_year_winner: LastYearWinner | null;
+  previous_race: PreviousRaceRecap | null;
+  driver_standings: DriverStandingRow[];
+  constructor_standings: ConstructorStandingRow[];
+}
+
+export interface RaceWeekendResponse {
+  race_weekend: RaceWeekend | null;
+  fetched_at: string;
+}
+
+/** GET /api/standings — full/uncapped current-season driver + constructor
+ *  tables, for the dedicated Standings page. Race Weekend's own top-5
+ *  cards are unaffected by this (separate endpoint, separate cache). */
+export interface Standings {
+  season: number;
+  driver_standings: DriverStandingRow[];
+  constructor_standings: ConstructorStandingRow[];
+}
+
+export interface StandingsResponse {
+  standings: Standings | null;
+  fetched_at: string;
+}

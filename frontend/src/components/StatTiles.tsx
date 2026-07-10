@@ -1,11 +1,17 @@
-import { Fragment, type ReactNode, useMemo } from "react";
-import { motion } from "framer-motion";
+import { Fragment, type ReactNode, useMemo, useRef } from "react";
+import { motion, useInView } from "framer-motion";
 import type { Lap, PitStop } from "../api/types";
 import type { DriverPair } from "../teams";
 import type { PairDelta } from "../lib/delta";
 import { fmtLapTime } from "../format";
-import { staggerContainer, staggerItem } from "../motion";
+import { entrance } from "../motion";
 import { CountUp } from "./CountUp";
+
+/** Local reveal timing — this is a whileInView-triggered block (see the
+ *  `inView` gate below), not part of the page-load home cascade, so its
+ *  delays are re-based to "seconds after this scrolled into view" rather
+ *  than pulled from motion.ts's homeCascade. */
+const REVEAL_STAGGER = 0.08;
 
 interface Props {
   laps: Lap[];
@@ -75,11 +81,27 @@ interface TileProps {
   icon: ReactNode;
   label: string;
   value: ReactNode;
+  delay: number;
+  inView: boolean;
 }
 
-function StatTile({ icon, label, value }: TileProps) {
+// Explicit per-tile `custom` delay rather than a staggerChildren/
+// delayChildren orchestration: StatTile is a separate component (not an
+// inline motion.* in the parent's JSX like Hero3D's h1/p), and going through
+// that extra layer of indirection was silently dropping delayChildren's
+// offset — tiles landed within the first ~500ms regardless of the intended
+// delay. `animate` (not `whileInView`) because the whole row shares one
+// IntersectionObserver at the StatTiles level (see `inView` below) rather
+// than each tile running its own.
+function StatTile({ icon, label, value, delay, inView }: TileProps) {
   return (
-    <motion.div className="stat-tile glass" variants={staggerItem}>
+    <motion.div
+      className="stat-tile glass"
+      variants={entrance}
+      custom={delay}
+      initial="hidden"
+      animate={inView ? "show" : "hidden"}
+    >
       <span className="stat-tile__icon">{icon}</span>
       {value}
       <p className="stat-tile__label">{label}</p>
@@ -87,7 +109,7 @@ function StatTile({ icon, label, value }: TileProps) {
   );
 }
 
-/** Reference-style stat tile row for the Overview: four per-race summary
+/** Reference-style stat tile row for #telemetry: four per-race summary
  *  numbers derived from data App.tsx already fetches — no endpoints of its
  *  own. Every value falls back to an em dash rather than a misleading 0 when
  *  the race has nothing to compute from yet (no race selected, or an
@@ -194,68 +216,120 @@ export function StatTiles({ laps, pit, delta, pair, loading, raceLabel }: Props)
     sameTeam,
   ]);
 
+  const tileDelay = (i: number) => 0.15 + i * REVEAL_STAGGER;
+
+  // This whole block (the insight card + all four tiles) sits below the
+  // fold now — #telemetry's header summary, not Overview's page-load
+  // cascade — so it reveals once on scroll-in instead of racing a
+  // mount-relative clock. One IntersectionObserver for the whole group
+  // (not one per tile): `inView` both drives every child's `animate` state
+  // and gates when each CountUp actually mounts. CountUp animates from 0
+  // starting the instant IT mounts, so mounting it eagerly at page load
+  // (like the old page-load cascade did) meant it finished counting while
+  // still off-screen — by the time this scrolled into view the number just
+  // sat there already-counted, with the animation invisible. Rendering the
+  // plain formatted value until `inView` flips true, then swapping in a
+  // freshly-mounted CountUp, keeps the count-up itself tied to visibility.
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(sectionRef, { once: true, margin: "-100px" });
+
   return (
     <Fragment>
-      <div className="overview__insight glass">
+      <motion.div
+        ref={sectionRef}
+        className="overview__insight glass"
+        variants={entrance}
+        initial="hidden"
+        animate={inView ? "show" : "hidden"}
+      >
         <p className="overview__insight-eyebrow">{raceLabel}</p>
         <p className="overview__insight-text">{raceStory}</p>
-      </div>
-      <motion.div
+      </motion.div>
+      <div
         className="stat-row"
-        variants={staggerContainer()}
-        initial="hidden"
-        animate="show"
-        style={{ opacity: loading ? 0.55 : 1, transition: "opacity 0.2s ease" }}
+        // `filter` rather than `opacity` for the loading dim: framer already
+        // owns this element's `opacity` for the entrance cascade (driven via
+        // inline style), and layering a second, independently CSS-transitioned
+        // `opacity` on the same property fights it — the loading dim would
+        // win the race and short-circuit the cascade to whatever this dim
+        // value resolved to. `filter: opacity()` reads identically but is a
+        // different CSS property, so the two never contend for the same value.
+        style={{
+          filter: loading ? "opacity(0.55)" : "opacity(1)",
+          transition: "filter 0.2s ease",
+        }}
       >
         <StatTile
           icon={<StopwatchIcon />}
           label={fastestDriverName ? `Fastest lap · ${fastestDriverName}` : "Fastest lap"}
+          delay={tileDelay(0)}
+          inView={inView}
           value={
-            fastestLap ? (
+            !fastestLap ? (
+              <span className="stat-tile__value">—</span>
+            ) : inView ? (
               <CountUp
                 value={fastestLap.duration}
                 decimals={3}
                 formatter={(n) => fmtLapTime(n)}
+                startDelay={tileDelay(0)}
                 className="stat-tile__value"
               />
             ) : (
-              <span className="stat-tile__value">—</span>
+              <span className="stat-tile__value">{fmtLapTime(fastestLap.duration)}</span>
             )
           }
         />
         <StatTile
           icon={<FlagIcon />}
           label="Laps completed"
+          delay={tileDelay(1)}
+          inView={inView}
           value={
-            lapsCompleted > 0 ? (
-              <CountUp value={lapsCompleted} className="stat-tile__value" />
-            ) : (
+            lapsCompleted === 0 ? (
               <span className="stat-tile__value">—</span>
+            ) : inView ? (
+              <CountUp value={lapsCompleted} startDelay={tileDelay(1)} className="stat-tile__value" />
+            ) : (
+              <span className="stat-tile__value">{lapsCompleted.toLocaleString()}</span>
             )
           }
         />
         <StatTile
           icon={<PitIcon />}
           label="Pit stops"
-          value={<CountUp value={pitStopCount} className="stat-tile__value" />}
+          delay={tileDelay(2)}
+          inView={inView}
+          value={
+            inView ? (
+              <CountUp value={pitStopCount} startDelay={tileDelay(2)} className="stat-tile__value" />
+            ) : (
+              <span className="stat-tile__value">{pitStopCount.toLocaleString()}</span>
+            )
+          }
         />
         <StatTile
           icon={<GapIcon />}
           label={sameTeam ? "Avg. teammate gap" : "Avg. pair gap"}
+          delay={tileDelay(3)}
+          inView={inView}
           value={
-            avgGap !== null ? (
+            avgGap === null ? (
+              <span className="stat-tile__value">—</span>
+            ) : inView ? (
               <CountUp
                 value={avgGap}
                 decimals={3}
                 formatter={(n) => `${n.toFixed(3)}s`}
+                startDelay={tileDelay(3)}
                 className="stat-tile__value"
               />
             ) : (
-              <span className="stat-tile__value">—</span>
+              <span className="stat-tile__value">{avgGap.toFixed(3)}s</span>
             )
           }
         />
-      </motion.div>
+      </div>
     </Fragment>
   );
 }

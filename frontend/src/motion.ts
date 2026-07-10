@@ -48,6 +48,22 @@ export const entrance: Variants = {
   }),
 };
 
+/** Reveal.tsx's alternate variant: a clip-path wipe instead of fade+rise —
+ *  same whileInView-once mechanism, just a different entrance shape for
+ *  visual variety on one or two standout cards. `clip-path` + `opacity` are
+ *  both compositor-friendly (no layout thrash), which is what keeps this
+ *  safe to use alongside `entrance` rather than something scroll-linked —
+ *  see App.tsx's scroll-performance notes. Used sparingly (one card, not a
+ *  whole grid) so it reads as a deliberate accent, not visual noise. */
+export const wipeReveal: Variants = {
+  hidden: { opacity: 0, clipPath: "inset(0 0 100% 0)" },
+  show: (delay: number = 0) => ({
+    opacity: 1,
+    clipPath: "inset(0 0 0% 0)",
+    transition: { duration: duration.slower, ease: EASE, delay },
+  }),
+};
+
 /** Stagger container: wrap a list of `entrance`-variant children in this to
  *  cascade them (nav items, stat tiles, card grids). Children use `entrance`
  *  directly (aliased below as `staggerItem`) with no `custom` of their own —
@@ -63,35 +79,83 @@ export function staggerContainer(
 }
 export const staggerItem: Variants = entrance;
 
-/* ---------------------------------------------------------------------------
- * View transition: AnimatePresence enter/exit for the sidebar's view switch
- * (Overview / Race Analysis / About). See components/ViewTransition.tsx for
- * the wrapper that applies this.
- * ------------------------------------------------------------------------- */
-
-export const viewTransition: Variants = {
-  initial: { opacity: 0, y: 12 },
-  animate: {
+/** Like `entrance` but slides in on x instead of y — the countdown's own
+ *  right-slide. Unlike `entrance`, both
+ *  `hidden` and `show` are dynamic: the travel distance (and its sign/
+ *  direction) varies by caller, so it rides along on `custom` next to the
+ *  delay instead of being baked into the variant. */
+export const entranceX: Variants = {
+  hidden: (custom: { x: number }) => ({ opacity: 0, x: custom.x }),
+  show: (custom: { x: number; delay?: number }) => ({
     opacity: 1,
-    y: 0,
-    transition: { duration: duration.base, ease: EASE },
-  },
-  exit: {
-    opacity: 0,
-    y: -8,
-    transition: { duration: duration.fast, ease: EASE_EXIT },
-  },
+    x: 0,
+    transition: { duration: duration.slow, ease: EASE, delay: custom.delay ?? 0 },
+  }),
+};
+
+/** Factory for cascade rows whose travel distance/duration don't match
+ *  `entrance`'s fixed y:16/duration.slow shape (compact navbar chrome,
+ *  quicker control rows) — same fade+rise shape and `custom`-delay
+ *  convention, just parameterized. Values live in motion.ts either way. */
+export function riseIn(y: number, seconds: number): Variants {
+  return {
+    hidden: { opacity: 0, y },
+    show: (delay: number = 0) => ({
+      opacity: 1,
+      y: 0,
+      transition: { duration: seconds, ease: EASE, delay },
+    }),
+  };
+}
+
+/** Navbar nav items + theme toggle: a shorter, quicker rise than content
+ *  cards get. */
+export const navItemEntrance: Variants = riseIn(6, 0.4);
+/** Team switcher chips. */
+export const chipEntrance: Variants = riseIn(16, 0.4);
+
+/** Navbar brand mark: scale + fade rather than a rise. */
+export const scaleIn: Variants = {
+  hidden: { opacity: 0, scale: 0.6 },
+  show: (delay: number = 0) => ({
+    opacity: 1,
+    scale: 1,
+    transition: { duration: 0.4, ease: EASE, delay },
+  }),
 };
 
 /* ---------------------------------------------------------------------------
- * Active-nav pill: shared layoutId convention. The sidebar renders exactly
+ * Home cascade: the page's landing choreography — delay offsets (seconds
+ * from mount) for every element that's visible without scrolling, i.e. the
+ * navbar chrome and the #hero section. Everything further down the page
+ * reveals on scroll instead (see Reveal.tsx / whileInView) rather than
+ * racing a mount-time clock it'll finish before it's ever seen. Durations
+ * live with the variants above; this is purely "when does each row start."
+ * Every consumer imports from here rather than hardcoding a delay inline.
+ * ------------------------------------------------------------------------- */
+
+export const homeCascade = {
+  brandMark: 0.05,
+  nav: [0.12, 0.18, 0.24, 0.3, 0.36, 0.42, 0.48] as const,
+  themeToggle: 0.54,
+  auroraBlobs: [0.05, 0.1, 0.15] as const,
+  ribbonA: 0.15,
+  ribbonB: 0.25,
+  heroText: 0.55,
+  chips: 0.75,
+  chipStagger: 0.05,
+  countdown: 0.95,
+} as const;
+
+/* ---------------------------------------------------------------------------
+ * Active-nav pill: shared layoutId convention. The navbar renders exactly
  * one `<motion.div layoutId={NAV_PILL_LAYOUT_ID} />` positioned behind the
  * active nav item; framer-motion animates that one element between DOM
  * positions whenever the active item changes — no per-item exit/enter logic
- * needed on the sidebar's side.
+ * needed on the navbar's side.
  * ------------------------------------------------------------------------- */
 
-export const NAV_PILL_LAYOUT_ID = "sidebar-nav-active-pill";
+export const NAV_PILL_LAYOUT_ID = "navbar-nav-active-pill";
 export const navPillTransition: Transition = { duration: duration.base, ease: EASE };
 
 /* ---------------------------------------------------------------------------
@@ -138,10 +202,10 @@ function easeOutExpo(t: number): number {
 
 export function useCountUp(
   target: number,
-  opts: { duration?: number; decimals?: number } = {},
+  opts: { duration?: number; decimals?: number; startDelay?: number } = {},
 ): number {
   const prefersReducedMotion = useReducedMotion();
-  const { duration: seconds = duration.slower, decimals = 0 } = opts;
+  const { duration: seconds = duration.slower, decimals = 0, startDelay = 0 } = opts;
   const [value, setValue] = useState(0);
   const fromRef = useRef(0);
 
@@ -152,21 +216,29 @@ export function useCountUp(
       return;
     }
     const from = fromRef.current;
-    const start = performance.now();
     let raf = 0;
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / 1000 / seconds);
-      const eased = easeOutExpo(t);
-      setValue(from + (target - from) * eased);
-      if (t < 1) {
-        raf = requestAnimationFrame(tick);
-      } else {
-        fromRef.current = target;
-      }
+    const start = (now: number) => {
+      const startedAt = now;
+      const tick = (t: number) => {
+        const p = Math.min(1, (t - startedAt) / 1000 / seconds);
+        const eased = easeOutExpo(p);
+        setValue(from + (target - from) * eased);
+        if (p < 1) {
+          raf = requestAnimationFrame(tick);
+        } else {
+          fromRef.current = target;
+        }
+      };
+      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, seconds, prefersReducedMotion]);
+    const timeout = window.setTimeout(() => {
+      raf = requestAnimationFrame(start);
+    }, startDelay * 1000);
+    return () => {
+      window.clearTimeout(timeout);
+      cancelAnimationFrame(raf);
+    };
+  }, [target, seconds, startDelay, prefersReducedMotion]);
 
   return decimals > 0 ? Number(value.toFixed(decimals)) : Math.round(value);
 }

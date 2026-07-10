@@ -1,8 +1,10 @@
 import { useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { motion } from "framer-motion";
 import type { DriverPair, TeamRoster } from "../teams";
 import { useMode } from "../hooks/useTheme";
 import { teamSwatch } from "../theme";
 import { GlassSelect } from "./GlassSelect";
+import { chipEntrance, homeCascade } from "../motion";
 
 interface Props {
   rosters: TeamRoster[];
@@ -30,6 +32,13 @@ const samePair = (duo: DriverPair, pair: DriverPair) =>
  * roving tabindex, arrow keys move AND select, matching the WAI-ARIA radio
  * pattern. Chip click swaps the whole dashboard to that team's duo; no
  * refetch happens anywhere (charts filter client-side by driver number).
+ *
+ * Chips carry the home cascade's entrance (see App.tsx's homeCascade.chips)
+ * — the delay is relative to THIS component's own mount, not the page's,
+ * since App.tsx only renders it once rosters/pair have resolved. On a fast
+ * API response that's indistinguishable from the rest of the cascade; on a
+ * slow one, chips simply land a beat later than the nominal ~1s rather than
+ * ever looking broken — same tradeoff Countdown already makes.
  */
 export function TeamSwitcher({ rosters, pair, onSelectPair }: Props) {
   const mode = useMode();
@@ -74,7 +83,7 @@ export function TeamSwitcher({ rosters, pair, onSelectPair }: Props) {
         {rosters.map((roster, idx) => {
           const isActive = active === roster.slug;
           return (
-            <button
+            <motion.button
               key={roster.slug}
               ref={(el) => {
                 chipRefs.current[idx] = el;
@@ -87,16 +96,20 @@ export function TeamSwitcher({ rosters, pair, onSelectPair }: Props) {
               style={{ "--chip-color": teamSwatch(mode, roster.slug) } as CSSProperties}
               onClick={() => select(roster.slug)}
               onKeyDown={(e) => onKeyDown(e, idx)}
+              variants={chipEntrance}
+              custom={homeCascade.chips + idx * homeCascade.chipStagger}
+              initial="hidden"
+              animate="show"
             >
               <span className="team-chip__swatch" aria-hidden="true" />
               <span className="team-chip__name">{roster.name}</span>
               <span className="team-chip__duo">
                 {roster.duo[0].acronym} · {roster.duo[1].acronym}
               </span>
-            </button>
+            </motion.button>
           );
         })}
-        <button
+        <motion.button
           ref={(el) => {
             chipRefs.current[rosters.length] = el;
           }}
@@ -107,13 +120,17 @@ export function TeamSwitcher({ rosters, pair, onSelectPair }: Props) {
           className={`team-chip team-chip--h2h glass${active === "h2h" ? " team-chip--active" : ""}`}
           onClick={() => select("h2h")}
           onKeyDown={(e) => onKeyDown(e, rosters.length)}
+          variants={chipEntrance}
+          custom={homeCascade.chips + rosters.length * homeCascade.chipStagger}
+          initial="hidden"
+          animate="show"
         >
           <span className="team-chip__swatch team-chip__swatch--h2h" aria-hidden="true">
             <VersusIcon />
           </span>
           <span className="team-chip__name">Head-to-Head</span>
           <span className="team-chip__duo">any two drivers</span>
-        </button>
+        </motion.button>
       </div>
 
       {active === "h2h" && pair && (
