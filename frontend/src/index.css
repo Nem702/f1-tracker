@@ -210,6 +210,12 @@ body {
   flex-direction: column;
   color: var(--ink-primary);
   /* the fixed .aurora child paints the page background */
+  /* Section bands break out to the full viewport width with a 100vw
+     pseudo-element (see .page-section::before); clip keeps that breakout —
+     which is scrollbar-width wider than the content box — from ever showing a
+     horizontal scrollbar. `clip` (not `hidden`) so it doesn't turn this into a
+     scroll container and break the sticky navbar. */
+  overflow-x: clip;
 }
 
 /* ---------- navbar: floating glass top bar ---------- */
@@ -387,6 +393,16 @@ body {
   line-height: 1.05;
 }
 
+/* Short lead paragraph under a section title — same tone/measure as
+   .about__body, sized for a section intro. */
+.section-lead {
+  margin: var(--space-4) 0 0;
+  max-width: 640px;
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--ink-secondary);
+}
+
 /* Card recipes referenced by chart panels below still say "old" names
    (section__eyebrow/title) — kept as aliases so About.tsx (not mine) keeps
    compiling unchanged; same visual language as .view__eyebrow/.view__title. */
@@ -412,52 +428,98 @@ body {
    column's own side padding so the ribbons float directly on the page
    aurora as the section's center feature, not a boxed-in panel. */
 
+/* Fills the viewport on load, but not as one centered stack: the intro
+   headline is pinned up near the navbar (it's copy, not the focal point),
+   .hero-stage is the flexible middle that centers the ribbon animation —
+   the thing that's actually meant to read as "centered" — and the picker +
+   caption sit at the bottom. `min-height` (not `height`) so a short
+   viewport grows/scrolls instead of clipping content, and `dvh` (with a
+   `vh` fallback for browsers that don't support it) so mobile Safari's
+   address-bar resize doesn't jump or clip the section the way a plain
+   `100vh` would. */
 .hero-section {
+  /* No padding-top here: the sticky navbar (position: sticky, not fixed)
+     already reserves its own space in normal flow, so the section starts
+     right after it without help. scroll-margin-top is only for the
+     anchor-jump case (Navbar/useScrollSpy), which doesn't add real layout
+     space the way padding would.
+
+     min-height is `100dvh` *minus* that same navbar space, not a flat
+     `100dvh` — the section's top is already ~navbar-clearance down the
+     page, so a flat 100dvh would force the section itself to be a full
+     screen tall on top of that offset and push its bottom past the
+     viewport by however much the navbar took. */
   scroll-margin-top: var(--navbar-clearance);
-}
-
-.hero {
-  position: relative;
-  height: clamp(360px, 48vw, 560px);
-  overflow: hidden;
-  /* Tight bottom margin: the pair picker directly below belongs to the
-     hero visually, so the big gap comes after it, not before. */
-  margin: 0 calc(var(--content-pad-x) * -1) var(--space-4);
-}
-
-.hero__canvas {
-  position: absolute !important;
-  inset: 0;
-}
-
-/* Anchored to the top of the frame, not centered: the ribbons sway through
-   the vertical middle, so a centered block sat right on top of them. */
-.hero__overlay {
-  position: absolute;
-  inset: 0;
+  min-height: calc(100vh - var(--navbar-clearance));
+  min-height: calc(100dvh - var(--navbar-clearance));
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  text-align: center;
-  padding: var(--space-6) var(--space-5) 0;
-  pointer-events: none;
+  gap: var(--space-4);
+  padding-bottom: var(--space-6);
 }
 
-.hero__overlay h1 {
+.hero-intro {
+  flex: 0 0 auto;
+  text-align: center;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.hero-intro h1 {
   margin: 0;
-  font-size: var(--fs-heading);
+  font-size: var(--fs-display);
   font-weight: var(--weight-display);
   letter-spacing: -0.02em;
   line-height: 1.1;
 }
 
-.hero__overlay p {
-  margin: 12px 0 0;
-  max-width: 420px;
-  font-size: 14px;
+.hero-intro p {
+  margin: var(--space-3) auto 0;
+  max-width: 520px;
+  font-size: 1rem;
   line-height: 1.5;
   color: var(--ink-secondary);
+}
+
+/* Fixed frame + hidden overflow so the varying word width during the roll
+   never shifts surrounding text; DigitRoll.tsx does the same thing for a
+   single character. */
+.rotating-word {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--accent-ink);
+}
+
+/* The flexible middle: grows to absorb whatever space the intro and body
+   don't use, then centers the ribbon box within itself both ways — this is
+   what makes the ribbon animation (not the intro copy) the section's visual
+   center. `min-height: 0` overrides flexbox's default min-height:auto, which
+   would otherwise refuse to shrink below the ribbon's content size on short
+   viewports and defeat the "grow the section, don't clip" fallback. */
+.hero-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero {
+  position: relative;
+  width: 100%;
+  /* Height-driven now, not width-driven: .hero-stage centers it within a
+     viewport-height column, so height (not width) is the constrained axis
+     here. No text overlays the canvas anymore (that moved below the picker
+     as .hero-caption), so it's free to fill the whole box. */
+  height: clamp(260px, 34vh, 460px);
+  overflow: hidden;
+  margin: 0 calc(var(--content-pad-x) * -1);
+}
+
+.hero__canvas {
+  position: absolute !important;
+  inset: 0;
 }
 
 /* Everything below the uncontained hero is capped to a comfortable width and
@@ -466,8 +528,13 @@ body {
    card/grid below it otherwise would — this keeps the whole section reading
    as one column roughly as wide as the chart above, not edge to edge. */
 .hero-body {
+  flex: 0 0 auto;
   max-width: 1100px;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 /* Centers the team switcher under the hero. */
@@ -477,22 +544,20 @@ body {
   justify-content: center;
   align-items: flex-start;
   gap: var(--space-3);
-  margin-bottom: var(--space-6);
 }
 
-/* The countdown used to share a row with the selected-race insight card
-   (now #telemetry's header, not the hero's); it's #hero's own closing
-   card now, centered and capped to a comfortable width instead of
-   stretching full-bleed. */
-.hero-body__countdown {
-  display: flex;
-  justify-content: center;
+/* What moved down from the old ribbon-canvas overlay, reworded from a
+   caption ("X vs. Y, lap by lap") into an explanation of the picker it now
+   sits under. */
+.hero-caption {
+  margin: 0;
+  max-width: 480px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-secondary);
 }
 
-.hero-body__countdown .countdown {
-  width: 100%;
-  max-width: 420px;
-}
 
 /* ---------- team switcher ---------- */
 
@@ -840,10 +905,37 @@ body {
    section's own background (none today, but keeps the option open) would
    paint edge-to-edge without a gap showing through. */
 .page-section {
+  position: relative;
   max-width: 1100px;
   margin: 0 auto;
+  /* Generous vertical rhythm so each band reads as its own slab. */
   padding-top: var(--space-8);
+  padding-bottom: var(--space-8);
   scroll-margin-top: var(--navbar-clearance);
+}
+
+/* Full-bleed section band: a 100vw pseudo-element centered on the section
+   (which is itself viewport-centered), painting a top hairline on every
+   section plus a faint translucent veil on alternating ones. Sits at
+   z-index:-1 inside .content's stacking context — behind the section's own
+   cards but still above the fixed aurora, so the veil dims the aurora without
+   hiding it and the glass cards frost band+aurora together. The veil is static
+   (no animation behind glass), per the app's scroll-perf rule. */
+.page-section::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  width: 100vw;
+  margin-left: -50vw;
+  z-index: -1;
+  border-top: 1px solid var(--border);
+  pointer-events: none;
+  transition: var(--tint-transition);
+}
+
+.page-section[data-band="b"]::before {
+  background: color-mix(in srgb, var(--surface) 45%, transparent);
 }
 
 /* Scroll-reveal wrappers are the grid items now, so they carry the wide
@@ -864,6 +956,7 @@ body {
 .filters {
   display: flex;
   align-items: center;
+  justify-content: center;
   flex-wrap: wrap;
   gap: var(--space-3);
   padding: 0 0 var(--space-4);
@@ -1429,10 +1522,9 @@ body {
 }
 
 /* ---------- shared section meta/empty text ---------- */
-/* Reused by #next-race, #last-race and #last-race-results — a small "which
-   race/round is this" line under a SectionHeading, or the graceful-
-   omission message when that section's data hasn't arrived/doesn't exist
-   yet. */
+/* Reused by #next-race and #last-race — a small "which race/round is this"
+   line under a SectionHeading, or the graceful-omission message when that
+   section's data hasn't arrived/doesn't exist yet. */
 
 .section-meta {
   margin: 6px 0 0;
@@ -1445,20 +1537,109 @@ body {
 }
 
 /* ---------- #next-race ---------- */
+/* The next-session countdown moved here out of the hero — its own closing
+   card above the weekend grid, centered and capped to a comfortable width
+   instead of stretching full-bleed. */
+.next-race__countdown {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-6);
+}
+
+.next-race__countdown .countdown {
+  width: 100%;
+  max-width: 420px;
+}
+
 /* Two peer cards, source order: schedule (narrower) then the circuit
    image (wider) — each wrapped in its own <Reveal>, which is itself the
-   grid item (display: grid on .reveal stretches it to the row height). */
+   grid item (display: grid on .reveal stretches it to the row height).
+   align-items left at its grid default (stretch) so both cards match the
+   row's tallest — otherwise .reveal's own stretch behavior (see its doc
+   comment) never has a row height to stretch to. */
 .next-race__grid {
   display: grid;
   grid-template-columns: minmax(280px, 380px) 1fr;
   gap: var(--space-5);
-  align-items: start;
 }
 
 @media (max-width: 900px) {
   .next-race__grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ---------- #last-race (recap + results, merged) ---------- */
+/* The recap is a compact summary card (podium + fastest lap), so it's capped
+   and sits on its own above the results rather than squeezing the wide tables
+   into a side column. */
+.last-race__recap {
+  max-width: 420px;
+  margin-bottom: var(--space-6);
+}
+
+/* The result tables (classification, qualifying, sprint) each get the whole
+   content column — they carry ~20 rows and their own row-limit control, so
+   they need the width. Stacked one per row. */
+.last-race__results {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-5);
+  margin-bottom: var(--space-6);
+}
+
+/* Secondary heading inside a section (the merged Last Race's "Qualifying &
+   Sprint" block) — smaller than a section title, same type family. */
+.subsection__heading {
+  margin: var(--space-7) 0 var(--space-4);
+  font-size: 1.15rem;
+  font-weight: var(--weight-heading);
+  letter-spacing: -0.01em;
+}
+
+/* ---------- data-table row-limit control ---------- */
+/* The "5 · 10 · All" segmented pills above a standalone results table (see
+   DataTable's `limits`). Lives outside .table-scroll so it never scrolls with
+   a wide table. */
+.data-table__limit {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+
+.data-table__limit-label {
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.data-table__limit-group {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.data-table__limit-btn {
+  min-width: 40px;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table__count {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A table with a row-limit control sets its own height through the pills, so
+   it drops the 300px inner scroll the chart-twin tables use — the selected
+   rows show in full instead of scrolling inside a fixed box. */
+.data-table__wrap .table-scroll {
+  max-height: none;
 }
 
 .weekend-schedule {
