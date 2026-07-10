@@ -1,0 +1,107 @@
+/* Circuit facts card — the glass shell + text match the rest of
+ * race-weekend's cards (index.css); only the facts grid is scoped here.
+ */
+
+.circuit-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-feature);
+}
+
+.circuit-card__eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+}
+
+.circuit-card__title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.circuit-card__location {
+  margin: 0 0 var(--space-3);
+  font-size: 0.85rem;
+  color: var(--ink-secondary);
+}
+
+.circuit-card__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+/* Value-over-label mini-tile (StatTiles hierarchy at a smaller scale) —
+ * markup keeps the semantic dt-then-dd order; column-reverse puts the
+ * big value on top visually. */
+.circuit-card__fact {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-tile);
+}
+
+.circuit-card__fact dd {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+}
+
+.circuit-card__fact dt {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-secondary);
+}
+
+.circuit-card__record {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+}
+
+.circuit-card__record-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-secondary);
+}
+
+.circuit-card__record-value {
+  font-size: 1.05rem;
+  font-weight: 620;
+}
+
+.circuit-card__record-holder {
+  font-size: 0.85rem;
+  color: var(--ink-secondary);
+}
+
+.circuit-card__note {
+  margin: var(--space-3) 0 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--ink-secondary);
+}
+
+.circuit-card__last-winner {
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--glass-border);
+  font-size: 0.8rem;
+  color: var(--ink-secondary);
+}

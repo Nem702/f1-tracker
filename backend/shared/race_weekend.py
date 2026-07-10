@@ -16,7 +16,9 @@ effects at import time and are safe to call directly (the API layer wraps
 them in a cache).
 """
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 from backend.shared.jolpica_lookup import get_season_schedule, race_datetime
 from backend.shared.jolpica_client import request_with_retry
@@ -27,6 +29,15 @@ from backend.shared.logger import logger
 # "SecondPractice" for what's now "SprintQualifying" in 2024+ — jolpica
 # already normalizes that (see docs/ergast_differences.md), so this project
 # only needs to know the current key names.
+# Hand-curated circuit facts (length, turns, laps, lap record, one fun-fact
+# line), keyed by the same Ergast circuitId the schedule payload already
+# carries. A circuit missing from the file yields facts: null and the
+# frontend's Circuit card degrades to name/location/winner — cosmetic, not
+# breaking. Coverage check: py -m backend.tools.check_circuit_facts
+_CIRCUIT_FACTS = json.loads(
+    Path(__file__).with_name("circuit_facts.json").read_text(encoding="utf-8")
+)
+
 SESSION_BLOCKS = [
     ("FirstPractice", "Practice 1"),
     ("SecondPractice", "Practice 2"),
@@ -261,6 +272,7 @@ def get_race_weekend():
             "country": location.get("country"),
             "lat": float(location["lat"]),
             "long": float(location["long"]),
+            "facts": _CIRCUIT_FACTS.get(circuit["circuitId"]),
         },
         "sessions": _extract_sessions(race),
         "last_year_winner": last_winner,
