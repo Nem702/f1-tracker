@@ -1,8 +1,6 @@
-import { Fragment, type ReactNode, useMemo, useRef } from "react";
+import { type ReactNode, useRef } from "react";
 import { motion, useInView } from "framer-motion";
-import type { Lap, PitStop } from "../api/types";
-import type { DriverPair } from "../teams";
-import type { PairDelta } from "../lib/delta";
+import type { RaceSummary } from "../lib/raceStory";
 import { fmtLapTime } from "../format";
 import { entrance } from "../motion";
 import { CountUp } from "./CountUp";
@@ -15,16 +13,14 @@ import { Skeleton } from "./Skeleton";
 const REVEAL_STAGGER = 0.08;
 
 interface Props {
-  laps: Lap[];
-  pit: PitStop[];
-  /** Client-derived pair delta (lib/delta.ts) — pit in/out laps already excluded. */
-  delta: PairDelta[];
-  pair: DriverPair | null;
+  /** The atomic per-race summary Telemetry.tsx snapshots (lib/raceStory.ts)
+   *  — the same object that feeds the header insight sentence, so tile
+   *  values and labels can never disagree with it. Null until the first
+   *  race's data lands (skeletons). */
+  summary: RaceSummary | null;
+  /** True while a refetch is in flight — dims held values (never
+   *  re-skeletons; see the stat-row filter note below). */
   loading: boolean;
-  /** The selected race, e.g. "Silverstone · Jul 5, 2026" (App.tsx already
-   *  derives this for the hero) — labels the insight card so it reads as
-   *  data for the selected race, not the countdown's upcoming one. */
-  raceLabel: string;
 }
 
 function StopwatchIcon() {
@@ -111,245 +107,136 @@ function StatTile({ icon, label, value, delay, inView }: TileProps) {
 }
 
 /** Reference-style stat tile row for #telemetry: four per-race summary
- *  numbers derived from data App.tsx already fetches — no endpoints of its
- *  own. Every value falls back to an em dash rather than a misleading 0 when
- *  the race has nothing to compute from yet (no race selected, or an
- *  empty-telemetry race like Sakhir/Jeddah). */
-export function StatTiles({ laps, pit, delta, pair, loading, raceLabel }: Props) {
-  const aNumber = pair?.[0].number ?? null;
-  const bNumber = pair?.[1].number ?? null;
-  const isTracked = (n: number) => n === aNumber || n === bNumber;
-  const sameTeam = pair !== null && pair[0].teamSlug === pair[1].teamSlug;
-
-  const fastestLap = useMemo(() => {
-    let best: { driver: number; duration: number } | null = null;
-    for (const lap of laps) {
-      if (lap.lap_duration == null) continue;
-      if (lap.driver_number !== aNumber && lap.driver_number !== bNumber) continue;
-      if (!best || lap.lap_duration < best.duration) {
-        best = { driver: lap.driver_number, duration: lap.lap_duration };
-      }
-    }
-    return best;
-  }, [laps, aNumber, bNumber]);
-
-  const fastestDriverName =
-    fastestLap === null || pair === null
-      ? null
-      : fastestLap.driver === aNumber
-        ? pair[0].lastName
-        : pair[1].lastName;
-
-  const lapsCompleted = useMemo(() => {
-    let max = 0;
-    for (const lap of laps) {
-      if (!isTracked(lap.driver_number)) continue;
-      if (lap.lap_number > max) max = lap.lap_number;
-    }
-    return max;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [laps, aNumber, bNumber]);
-
-  const pitStopCount = useMemo(
-    () =>
-      pit.filter((p) => p.pit_duration !== null && isTracked(p.driver_number))
-        .length,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pit, aNumber, bNumber],
-  );
-
-  // deriveDelta already applied the pair's pit in/out exclusion — a pit
-  // cycle's ±20s swing would swamp the racing-pace story this tile
-  // summarizes — so the mean is over racing laps only.
-  const avgGap = useMemo(() => {
-    if (delta.length === 0) return null;
-    const sum = delta.reduce((acc, d) => acc + Math.abs(d.delta), 0);
-    return sum / delta.length;
-  }, [delta]);
-
-  // Same rows as avgGap, signed instead of absolute, purely to find which
-  // driver is ahead: delta = b_duration - a_duration (lib/delta.ts), so a
-  // positive mean means A's laps averaged shorter — A is ahead.
-  const meanSignedDelta = useMemo(() => {
-    if (delta.length === 0) return null;
-    return delta.reduce((acc, d) => acc + d.delta, 0) / delta.length;
-  }, [delta]);
-
-  // A short race-weekend story, not just a number: pace gap + who set the
-  // pair's fastest lap + how many laps/stops it took to get there, woven
-  // into one sentence rather than left as four disconnected tiles.
-  const raceStory = useMemo(() => {
-    if (!pair) {
-      return "Select a driver pair to see the story of their race weekend.";
-    }
-    const [a, b] = pair;
-    if (lapsCompleted === 0) {
-      return `No lap data yet for ${a.lastName} and ${b.lastName} this weekend.`;
-    }
-
-    const paceClause =
-      avgGap === null || meanSignedDelta === null
-        ? `${a.lastName} and ${b.lastName} haven't gone head-to-head on track yet`
-        : Math.abs(meanSignedDelta) < 0.0005
-          ? `${a.lastName} and ${b.lastName} were dead even on average pace`
-          : (() => {
-              const ahead = meanSignedDelta > 0 ? a : b;
-              const behind = meanSignedDelta > 0 ? b : a;
-              return `${ahead.lastName} outpaced ${behind.lastName} by ${avgGap!.toFixed(3)}s/lap on average${sameTeam ? " as teammates" : ""}`;
-            })();
-
-    const fastestClause = fastestLap
-      ? `, with ${fastestDriverName} setting the pair's fastest lap at ${fmtLapTime(fastestLap.duration)}`
-      : "";
-
-    const lapWord = lapsCompleted === 1 ? "lap" : "laps";
-    const stopWord = pitStopCount === 1 ? "stop" : "stops";
-
-    return `${paceClause}${fastestClause}, across ${lapsCompleted} ${lapWord} and ${pitStopCount} pit ${stopWord} between them.`;
-  }, [
-    pair,
-    avgGap,
-    meanSignedDelta,
-    fastestLap,
-    fastestDriverName,
-    lapsCompleted,
-    pitStopCount,
-    sameTeam,
-  ]);
-
+ *  numbers, all read off the snapshotted RaceSummary (the insight sentence
+ *  in the section header reads the same object). Every value falls back to
+ *  an em dash rather than a misleading 0 when the race has nothing to
+ *  compute from (an empty-telemetry race like Sakhir/Jeddah). */
+export function StatTiles({ summary, loading }: Props) {
   const tileDelay = (i: number) => 0.15 + i * REVEAL_STAGGER;
 
-  // No lap payload yet and one in flight: every tile would show its em-dash
+  // No snapshot yet (first load): every tile would show its em-dash
   // fallback (or a misleading 0 for pit stops), so swap in shimmer lines
-  // instead. Once any data has landed, refetches keep the existing
+  // instead. Once a snapshot exists, refetches keep the existing
   // filter-opacity dim below rather than re-skeletoning.
-  const firstLoad = loading && laps.length === 0;
+  const firstLoad = summary === null;
   const skeletonValue = (
     <span className="stat-tile__value">
       <Skeleton variant="line" width={72} height={20} />
     </span>
   );
 
-  // This whole block (the insight card + all four tiles) sits below the
-  // fold now — #telemetry's header summary, not Overview's page-load
-  // cascade — so it reveals once on scroll-in instead of racing a
-  // mount-relative clock. One IntersectionObserver for the whole group
-  // (not one per tile): `inView` both drives every child's `animate` state
-  // and gates when each CountUp actually mounts. CountUp animates from 0
+  // This block sits below the fold — #telemetry's summary, not Overview's
+  // page-load cascade — so it reveals once on scroll-in instead of racing a
+  // mount-relative clock. One IntersectionObserver for the whole row (not
+  // one per tile): `inView` both drives every child's `animate` state and
+  // gates when each CountUp actually mounts. CountUp animates from 0
   // starting the instant IT mounts, so mounting it eagerly at page load
-  // (like the old page-load cascade did) meant it finished counting while
-  // still off-screen — by the time this scrolled into view the number just
-  // sat there already-counted, with the animation invisible. Rendering the
-  // plain formatted value until `inView` flips true, then swapping in a
+  // meant it finished counting while still off-screen — rendering the plain
+  // formatted value until `inView` flips true, then swapping in a
   // freshly-mounted CountUp, keeps the count-up itself tied to visibility.
   const sectionRef = useRef<HTMLDivElement>(null);
   const inView = useInView(sectionRef, { once: true, margin: "-100px" });
 
+  const fastestLap = summary?.fastestLap ?? null;
+  const fastestDriverName = summary?.fastestDriverName ?? null;
+  const lapsCompleted = summary?.lapsCompleted ?? 0;
+  const pitStopCount = summary?.pitStopCount ?? 0;
+  const avgGap = summary?.avgGap ?? null;
+
   return (
-    <Fragment>
-      <motion.div
-        ref={sectionRef}
-        className="overview__insight glass"
-        variants={entrance}
-        initial="hidden"
-        animate={inView ? "show" : "hidden"}
-      >
-        <p className="overview__insight-eyebrow">{raceLabel}</p>
-        <p className="overview__insight-text">{raceStory}</p>
-      </motion.div>
-      <div
-        className="stat-row"
-        // `filter` rather than `opacity` for the loading dim: framer already
-        // owns this element's `opacity` for the entrance cascade (driven via
-        // inline style), and layering a second, independently CSS-transitioned
-        // `opacity` on the same property fights it — the loading dim would
-        // win the race and short-circuit the cascade to whatever this dim
-        // value resolved to. `filter: opacity()` reads identically but is a
-        // different CSS property, so the two never contend for the same value.
-        style={{
-          filter: loading ? "opacity(0.55)" : "opacity(1)",
-          transition: "filter 0.2s ease",
-        }}
-      >
-        <StatTile
-          icon={<StopwatchIcon />}
-          label={fastestDriverName ? `Fastest lap · ${fastestDriverName}` : "Fastest lap"}
-          delay={tileDelay(0)}
-          inView={inView}
-          value={
-            firstLoad ? (
-              skeletonValue
-            ) : !fastestLap ? (
-              <span className="stat-tile__value">—</span>
-            ) : inView ? (
-              <CountUp
-                value={fastestLap.duration}
-                decimals={3}
-                formatter={(n) => fmtLapTime(n)}
-                startDelay={tileDelay(0)}
-                className="stat-tile__value"
-              />
-            ) : (
-              <span className="stat-tile__value">{fmtLapTime(fastestLap.duration)}</span>
-            )
-          }
-        />
-        <StatTile
-          icon={<FlagIcon />}
-          label="Laps completed"
-          delay={tileDelay(1)}
-          inView={inView}
-          value={
-            firstLoad ? (
-              skeletonValue
-            ) : lapsCompleted === 0 ? (
-              <span className="stat-tile__value">—</span>
-            ) : inView ? (
-              <CountUp value={lapsCompleted} startDelay={tileDelay(1)} className="stat-tile__value" />
-            ) : (
-              <span className="stat-tile__value">{lapsCompleted.toLocaleString()}</span>
-            )
-          }
-        />
-        <StatTile
-          icon={<PitIcon />}
-          label="Pit stops"
-          delay={tileDelay(2)}
-          inView={inView}
-          value={
-            firstLoad ? (
-              skeletonValue
-            ) : inView ? (
-              <CountUp value={pitStopCount} startDelay={tileDelay(2)} className="stat-tile__value" />
-            ) : (
-              <span className="stat-tile__value">{pitStopCount.toLocaleString()}</span>
-            )
-          }
-        />
-        <StatTile
-          icon={<GapIcon />}
-          label={sameTeam ? "Avg. teammate gap" : "Avg. pair gap"}
-          delay={tileDelay(3)}
-          inView={inView}
-          value={
-            firstLoad ? (
-              skeletonValue
-            ) : avgGap === null ? (
-              <span className="stat-tile__value">—</span>
-            ) : inView ? (
-              <CountUp
-                value={avgGap}
-                decimals={3}
-                formatter={(n) => `${n.toFixed(3)}s`}
-                startDelay={tileDelay(3)}
-                className="stat-tile__value"
-              />
-            ) : (
-              <span className="stat-tile__value">{avgGap.toFixed(3)}s</span>
-            )
-          }
-        />
-      </div>
-    </Fragment>
+    <div
+      ref={sectionRef}
+      className="stat-row"
+      // `filter` rather than `opacity` for the loading dim: framer already
+      // owns this element's `opacity` for the entrance cascade (driven via
+      // inline style), and layering a second, independently CSS-transitioned
+      // `opacity` on the same property fights it — the loading dim would
+      // win the race and short-circuit the cascade to whatever this dim
+      // value resolved to. `filter: opacity()` reads identically but is a
+      // different CSS property, so the two never contend for the same value.
+      style={{
+        filter: loading ? "opacity(0.55)" : "opacity(1)",
+        transition: "filter 0.2s ease",
+      }}
+    >
+      <StatTile
+        icon={<StopwatchIcon />}
+        label={fastestDriverName ? `Fastest lap · ${fastestDriverName}` : "Fastest lap"}
+        delay={tileDelay(0)}
+        inView={inView}
+        value={
+          firstLoad ? (
+            skeletonValue
+          ) : !fastestLap ? (
+            <span className="stat-tile__value">—</span>
+          ) : inView ? (
+            <CountUp
+              value={fastestLap.duration}
+              decimals={3}
+              formatter={(n) => fmtLapTime(n)}
+              startDelay={tileDelay(0)}
+              className="stat-tile__value"
+            />
+          ) : (
+            <span className="stat-tile__value">{fmtLapTime(fastestLap.duration)}</span>
+          )
+        }
+      />
+      <StatTile
+        icon={<FlagIcon />}
+        label="Laps completed"
+        delay={tileDelay(1)}
+        inView={inView}
+        value={
+          firstLoad ? (
+            skeletonValue
+          ) : lapsCompleted === 0 ? (
+            <span className="stat-tile__value">—</span>
+          ) : inView ? (
+            <CountUp value={lapsCompleted} startDelay={tileDelay(1)} className="stat-tile__value" />
+          ) : (
+            <span className="stat-tile__value">{lapsCompleted.toLocaleString()}</span>
+          )
+        }
+      />
+      <StatTile
+        icon={<PitIcon />}
+        label="Pit stops"
+        delay={tileDelay(2)}
+        inView={inView}
+        value={
+          firstLoad ? (
+            skeletonValue
+          ) : inView ? (
+            <CountUp value={pitStopCount} startDelay={tileDelay(2)} className="stat-tile__value" />
+          ) : (
+            <span className="stat-tile__value">{pitStopCount.toLocaleString()}</span>
+          )
+        }
+      />
+      <StatTile
+        icon={<GapIcon />}
+        label={summary?.sameTeam ? "Avg. teammate gap" : "Avg. pair gap"}
+        delay={tileDelay(3)}
+        inView={inView}
+        value={
+          firstLoad ? (
+            skeletonValue
+          ) : avgGap === null ? (
+            <span className="stat-tile__value">—</span>
+          ) : inView ? (
+            <CountUp
+              value={avgGap}
+              decimals={3}
+              formatter={(n) => `${n.toFixed(3)}s`}
+              startDelay={tileDelay(3)}
+              className="stat-tile__value"
+            />
+          ) : (
+            <span className="stat-tile__value">{avgGap.toFixed(3)}s</span>
+          )
+        }
+      />
+    </div>
   );
 }
