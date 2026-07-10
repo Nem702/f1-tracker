@@ -39,8 +39,10 @@ export function Standings() {
   return (
     <>
       <SectionHeading
+        index={4}
         eyebrow="Season"
         title={data ? `${data.season} Championship` : "Championship standings"}
+        description="The running season total, not a single race — driver and constructor points accumulate here after every completed weekend."
       />
 
       <div className="grid">

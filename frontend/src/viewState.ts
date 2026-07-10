@@ -8,7 +8,6 @@ export const SECTIONS = [
   "hero",
   "next-race",
   "last-race",
-  "last-race-results",
   "season-standings",
   "telemetry",
   "about",
