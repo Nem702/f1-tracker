@@ -56,10 +56,6 @@ export function PreviousRaceRecap({ recap }: Props) {
           </ol>
         </div>
       )}
-
-      <a className="previous-race-recap__link" href="#last-race-results">
-        Full classification →
-      </a>
     </div>
   );
 }

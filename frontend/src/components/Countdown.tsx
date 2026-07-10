@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { api } from "../api/client";
 import { useApi } from "../hooks/useApi";
 import { useCountdown } from "../hooks/useCountdown";
-import { entranceX, homeCascade } from "../motion";
+import { entranceX } from "../motion";
 import { DigitRoll } from "./DigitRoll";
 import "./Countdown.css";
 
@@ -31,10 +31,12 @@ function fmtLocalStart(iso: string): string {
   });
 }
 
-/** Overview's frosted-glass card: the live next-race countdown. Renders
+/** #next-race's frosted-glass card: the live next-race countdown. Renders
  *  nothing when OpenF1 has no upcoming session (or the endpoint has never
  *  had anything to cache) — the card simply doesn't exist rather than
- *  showing an empty/error state. */
+ *  showing an empty/error state. Below the fold now, so it reveals on
+ *  scroll-in (whileInView) like every other section card rather than on a
+ *  mount-time cascade clock it would finish before ever being seen. */
 export function Countdown() {
   // `fetchEpoch` doubles as the refetch trigger: bumping it changes useApi's
   // key, which re-runs the fetch, following the app's existing
@@ -61,9 +63,10 @@ export function Countdown() {
     <motion.div
       className="countdown glass"
       variants={entranceX}
-      custom={{ x: 16, delay: homeCascade.countdown }}
+      custom={{ x: 16 }}
       initial="hidden"
-      animate="show"
+      whileInView="show"
+      viewport={{ once: true, margin: "-40px" }}
     >
       <p className="countdown__eyebrow">Up next</p>
       <h3 className="countdown__title">

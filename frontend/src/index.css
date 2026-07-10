@@ -1521,6 +1521,16 @@ body {
   margin: 0;
 }
 
+.footer__credit a {
+  color: var(--ink-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.footer__credit a:hover {
+  color: var(--ink-primary);
+}
+
 /* ---------- shared section meta/empty text ---------- */
 /* Reused by #next-race and #last-race — a small "which race/round is this"
    line under a SectionHeading, or the graceful-omission message when that

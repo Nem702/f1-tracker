@@ -1,10 +1,11 @@
 import { Suspense, lazy } from "react";
 import type { ApiState } from "../hooks/useApi";
 import type { Lap, PitStop, PositionRow, Race, RaceControlRow, Stint, WeatherRow } from "../api/types";
-import type { DriverPair } from "../teams";
+import type { DriverPair, TeamRoster } from "../teams";
 import type { PairDelta } from "../lib/delta";
 import { SectionHeading } from "./SectionHeading";
 import { RaceSelector } from "./RaceSelector";
+import { TeamSwitcher } from "./TeamSwitcher";
 import { StatTiles } from "./StatTiles";
 import { Reveal } from "./Reveal";
 
@@ -28,6 +29,12 @@ interface Props {
   raceLabel: string;
   racesError: string | null;
   pair: DriverPair | null;
+  /** Rosters + the shared pair setter power the in-section pair switcher —
+   *  the same TeamSwitcher the hero uses, wired to App's one setPair (no
+   *  duplicate pair state), so a visitor can change the head-to-head pair
+   *  without scrolling back up to Overview. */
+  rosters: TeamRoster[];
+  onSelectPair: (a: number, b: number) => void;
   laps: ApiState<Lap[]>;
   stints: ApiState<Stint[]>;
   pit: ApiState<PitStop[]>;
@@ -53,6 +60,8 @@ export function Telemetry({
   raceLabel,
   racesError,
   pair,
+  rosters,
+  onSelectPair,
   laps,
   stints,
   pit,
@@ -65,7 +74,12 @@ export function Telemetry({
 
   return (
     <>
-      <SectionHeading eyebrow="Telemetry" title="Pick a race. See how it unfolded." />
+      <SectionHeading
+        index={5}
+        eyebrow="Telemetry"
+        title="Pick a race. See how it unfolded."
+        description="Every chart below is built from second-by-second car telemetry for one selected race weekend: pace, tire choices, pit stops, running order, track conditions, and every flag race control issued."
+      />
 
       <div className="filters">
         <RaceSelector races={races} value={selected} onChange={onSelectRace} />
@@ -82,6 +96,14 @@ export function Telemetry({
         )}
         {racesError && <span className="filters__note">{racesError}</span>}
       </div>
+
+      {/* Same pair switcher as the hero, wired to the same setPair — change the
+          team or compose a head-to-head pair without scrolling back up. */}
+      {rosters.length > 0 && pair && (
+        <div className="telemetry__pair-switcher">
+          <TeamSwitcher rosters={rosters} pair={pair} onSelectPair={onSelectPair} />
+        </div>
+      )}
 
       <StatTiles
         laps={laps.data ?? []}

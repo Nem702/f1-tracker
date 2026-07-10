@@ -2,6 +2,7 @@ import type { RaceWeekend } from "../api/types";
 import { SectionHeading } from "./SectionHeading";
 import { RaceWeekendSchedule } from "./RaceWeekendSchedule";
 import { CircuitImage } from "./CircuitImage";
+import { Countdown } from "./Countdown";
 import { Reveal } from "./Reveal";
 
 interface Props {
@@ -21,8 +22,10 @@ export function NextRace({ data, loading, error }: Props) {
   return (
     <>
       <SectionHeading
+        index={2}
         eyebrow="Next race"
         title={data?.race_name ?? "Up next on the calendar"}
+        description="Pulled straight off the season calendar — every practice, qualifying and race session converted to your local time, plus circuit context and a note on who won here last year."
         meta={
           data && (
             <p className="section-meta">
@@ -32,6 +35,12 @@ export function NextRace({ data, loading, error }: Props) {
           )
         }
       />
+
+      {/* Self-contained: Countdown fetches its own /api/next-race payload, so it
+          renders (or hides itself) independent of this section's data. */}
+      <div className="next-race__countdown">
+        <Countdown />
+      </div>
 
       {!data && !loading && (
         <p className="section-empty">

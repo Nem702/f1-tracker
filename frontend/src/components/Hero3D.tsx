@@ -1,12 +1,12 @@
 import { Component, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Line } from "@react-three/drei";
-import { animate, motion, useMotionValue, useSpring, type MotionValue } from "framer-motion";
+import { animate, useMotionValue, useSpring, type MotionValue } from "framer-motion";
 import type { Group } from "three";
 import type { Lap } from "../api/types";
 import type { DriverPair } from "../teams";
 import { useTheme } from "../hooks/useTheme";
-import { EASE, entrance, homeCascade, staggerContainer, stagger } from "../motion";
+import { EASE, homeCascade } from "../motion";
 
 /** Ribbon draw-in duration (seconds) — the reveal is bespoke to Hero3D (a
  *  progress value tweened via framer's imperative `animate()`, not a DOM
@@ -216,10 +216,9 @@ export function Hero3D({ laps, pair }: Props) {
   const pointerY = useSpring(rawPointerY, { stiffness: 40, damping: 20, mass: 0.6 });
 
   // Ribbon draw-in: two motion values tweened 0→1 once on mount (Hero3D is
-  // inside Overview's per-view conditional, so it naturally remounts —  and
-  // replays this — every time the user navigates back to Overview, same as
-  // the overlay text stagger below). Reduced motion skips straight to 1, no
-  // reveal, no animation.
+  // inside Overview's per-view conditional, so it naturally remounts — and
+  // replays this — every time the user navigates back to Overview). Reduced
+  // motion skips straight to 1, no reveal, no animation.
   const progressA = useMotionValue(0);
   const progressB = useMotionValue(0);
   useEffect(() => {
@@ -275,23 +274,6 @@ export function Hero3D({ laps, pair }: Props) {
           />
         </Canvas>
       </HeroBoundary>
-
-      <motion.div
-        className="hero__overlay"
-        variants={staggerContainer(stagger.base, homeCascade.heroText)}
-        initial="hidden"
-        animate="show"
-      >
-        <motion.h1 variants={entrance}>
-          {pair ? `${pair[0].lastName} vs. ${pair[1].lastName},` : "Two drivers,"}
-          <br />
-          lap by lap.
-        </motion.h1>
-        <motion.p variants={entrance}>
-          Real lap-by-lap data from every 2026 race weekend — who's quicker,
-          and by how much.
-        </motion.p>
-      </motion.div>
     </div>
   );
 }

@@ -33,7 +33,7 @@ export function QualifyingResult({ rows, loading, error }: Props) {
       error={error}
       emptyText="No qualifying result published yet for this race."
     >
-      <DataTable spec={table} />
+      <DataTable spec={table} limits={[5, 10, "all"]} defaultLimit={10} />
     </ChartCard>
   );
 }

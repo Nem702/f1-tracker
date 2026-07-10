@@ -14,7 +14,6 @@ import { AuroraBackground } from "./components/AuroraBackground";
 import { Hero } from "./components/Hero";
 import { NextRace } from "./components/NextRace";
 import { LastRace } from "./components/LastRace";
-import { LastRaceResults } from "./components/LastRaceResults";
 import { Standings } from "./components/Standings";
 import { Telemetry } from "./components/Telemetry";
 import { About } from "./components/About";
@@ -192,10 +191,18 @@ export default function App() {
 
         <div className="content">
           <section id="hero" className="hero-section">
-            <Hero laps={laps.data ?? []} pair={pair} rosters={rosters} onSelectPair={setPair} />
+            <Hero
+              laps={laps.data ?? []}
+              pair={pair}
+              rosters={rosters}
+              onSelectPair={setPair}
+              races={races.data ?? []}
+              selected={selected}
+              onSelectRace={setSelected}
+            />
           </section>
 
-          <section id="next-race" className="page-section">
+          <section id="next-race" className="page-section" data-band="a">
             <NextRace
               data={raceWeekend.data?.race_weekend ?? null}
               loading={raceWeekend.loading}
@@ -203,27 +210,22 @@ export default function App() {
             />
           </section>
 
-          <section id="last-race" className="page-section">
+          <section id="last-race" className="page-section" data-band="b">
             <LastRace
               recap={raceWeekend.data?.race_weekend?.previous_race ?? null}
-              loading={raceWeekend.loading}
-            />
-          </section>
-
-          <section id="last-race-results" className="page-section">
-            <LastRaceResults
-              data={officialResult.data?.official_result ?? null}
-              loading={officialResult.loading}
-              error={officialResult.error}
+              recapLoading={raceWeekend.loading}
+              result={officialResult.data?.official_result ?? null}
+              resultLoading={officialResult.loading}
+              resultError={officialResult.error}
               raceLabel={raceLabel}
             />
           </section>
 
-          <section id="season-standings" className="page-section">
+          <section id="season-standings" className="page-section" data-band="a">
             <Standings />
           </section>
 
-          <section id="telemetry" className="page-section">
+          <section id="telemetry" className="page-section" data-band="b">
             <Telemetry
               races={races.data ?? []}
               selected={selected}
@@ -232,6 +234,8 @@ export default function App() {
               raceLabel={raceLabel}
               racesError={races.error}
               pair={pair}
+              rosters={rosters}
+              onSelectPair={setPair}
               laps={laps}
               stints={stints}
               pit={pit}
@@ -265,8 +269,27 @@ export default function App() {
               <a href="#">X</a>
             </nav>
             <p className="footer__credit">
-              Data from OpenF1, fetched weekly into Neon Postgres · a
-              skill-building project, not a finished product.
+              Data from{" "}
+              <a href="https://openf1.org/" target="_blank" rel="noreferrer">
+                OpenF1
+              </a>{" "}
+              and{" "}
+              <a
+                href="https://github.com/jolpica/jolpica-f1"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Jolpica F1
+              </a>
+              , fetched weekly into Neon Postgres · built by{" "}
+              <a
+                href="https://github.com/Nem702"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Nem702
+              </a>{" "}
+              · a skill-building project, not a finished product.
             </p>
           </motion.footer>
         </div>

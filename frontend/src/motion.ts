@@ -79,11 +79,11 @@ export function staggerContainer(
 }
 export const staggerItem: Variants = entrance;
 
-/** Like `entrance` but slides in on x instead of y — the countdown's own
- *  right-slide. Unlike `entrance`, both
- *  `hidden` and `show` are dynamic: the travel distance (and its sign/
- *  direction) varies by caller, so it rides along on `custom` next to the
- *  delay instead of being baked into the variant. */
+/** Like `entrance` but slides in on x instead of y — the countdown's
+ *  right-slide and every below-fold section title's side-slide. Unlike
+ *  `entrance`, both `hidden` and `show` are dynamic: the travel distance (and
+ *  its sign/direction) varies by caller, so it rides along on `custom` next to
+ *  the delay instead of being baked into the variant. */
 export const entranceX: Variants = {
   hidden: (custom: { x: number }) => ({ opacity: 0, x: custom.x }),
   show: (custom: { x: number; delay?: number }) => ({
@@ -92,6 +92,11 @@ export const entranceX: Variants = {
     transition: { duration: duration.slow, ease: EASE, delay: custom.delay ?? 0 },
   }),
 };
+
+/** Horizontal travel for a below-fold section title's side-slide (SectionHeading
+ *  alternates the sign by section parity). Lives here so the one distance every
+ *  heading shares isn't a magic number inline. */
+export const SECTION_TITLE_SLIDE = 48;
 
 /** Factory for cascade rows whose travel distance/duration don't match
  *  `entrance`'s fixed y:16/duration.slow shape (compact navbar chrome,
@@ -136,14 +141,17 @@ export const scaleIn: Variants = {
 
 export const homeCascade = {
   brandMark: 0.05,
-  nav: [0.12, 0.18, 0.24, 0.3, 0.36, 0.42, 0.48] as const,
-  themeToggle: 0.54,
+  nav: [0.12, 0.18, 0.24, 0.3, 0.36, 0.42] as const,
+  themeToggle: 0.48,
   auroraBlobs: [0.05, 0.1, 0.15] as const,
-  ribbonA: 0.15,
-  ribbonB: 0.25,
-  heroText: 0.55,
-  chips: 0.75,
+  introTitle: 0.05,
+  introText: 0.2,
+  ribbonA: 0.35,
+  ribbonB: 0.45,
+  race: 0.55,
+  chips: 0.65,
   chipStagger: 0.05,
+  caption: 0.9,
   countdown: 0.95,
 } as const;
 
@@ -165,6 +173,10 @@ export const navPillTransition: Transition = { duration: duration.base, ease: EA
 
 export const digitRollEnter: Transition = { duration: duration.fast, ease: EASE };
 export const digitRollExit: Transition = { duration: duration.fast, ease: EASE_EXIT };
+
+/** RotatingWord.tsx's cycle interval — how long each word holds before the
+ *  next one rolls in. */
+export const WORD_ROTATE_MS = 2400;
 
 /* ---------------------------------------------------------------------------
  * Chart draw-in guidance for Recharts (teammate "components"). Spread onto
