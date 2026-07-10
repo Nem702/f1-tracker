@@ -374,7 +374,26 @@ body {
 }
 
 .view__header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-6);
+  row-gap: var(--space-4);
+  align-items: end;
   margin-bottom: var(--space-6);
+}
+
+/* Live-data payload beside the title (podium, leaders, round progress) —
+   fills the header's right column; on narrow viewports it drops below the
+   text and hugs the left edge like everything else. */
+.view__aside {
+  min-width: 0;
+}
+
+@media (max-width: 840px) {
+  .view__header {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
 }
 
 .view__eyebrow {
@@ -468,7 +487,9 @@ body {
 
 .hero-intro h1 {
   margin: 0;
-  font-size: var(--fs-display);
+  /* One step above --fs-display so the page's h1 visibly outranks the
+     section h2s (which share the 3.25rem display clamp). */
+  font-size: clamp(2.2rem, 1.5rem + 3vw, 3.75rem);
   font-weight: var(--weight-display);
   letter-spacing: -0.02em;
   line-height: 1.1;
@@ -557,6 +578,8 @@ body {
   font-size: 14px;
   line-height: 1.5;
   color: var(--ink-secondary);
+  /* Even out the line lengths — the last line used to be a lone "lap." */
+  text-wrap: balance;
 }
 
 
@@ -744,6 +767,19 @@ body {
   font-weight: 600;
   line-height: 1.4;
   color: var(--ink-primary);
+}
+
+/* Compact variant for the #telemetry header aside — same card language,
+   sized to sit beside the section title instead of spanning the column. */
+.overview__insight--aside {
+  max-width: 420px;
+  margin-bottom: 0;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-tile);
+}
+
+.overview__insight--aside .overview__insight-text {
+  font-size: 0.9rem;
 }
 
 /* ---------- stat tiles ---------- */
@@ -1128,6 +1164,15 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Wraps the in-section TeamSwitcher (same pill row as the hero) between the
+   race filter row and the stat tiles — centered like .filters, with its own
+   margin since it sits between two elements that only pad on one side. */
+.telemetry__pair-switcher {
+  display: flex;
+  justify-content: center;
+  margin: 0 0 var(--space-6);
+}
+
 .filters__meta {
   color: var(--ink-muted);
 }
@@ -1390,6 +1435,21 @@ body {
 
 /* ---------- tire strip ---------- */
 
+/* The stint strip is short (two rows) while its grid-stretched card matches
+   the taller pit-stop card beside it — flex the card so the strip centers
+   in the leftover height instead of pooling it all below the bars. */
+.card:has(.tire-strip) {
+  display: flex;
+  flex-direction: column;
+}
+
+.card:has(.tire-strip) .card__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
 .tire-strip {
   position: relative;
 }
@@ -1450,6 +1510,13 @@ body {
   border-radius: var(--radius-sm);
 }
 
+/* Canonical standalone tables (DataTable's `fitContent`) show every row —
+   a 300px scrollbox with an overlay scrollbar reads as "the table ends
+   here", which for standings would silently hide real entries. */
+.table-scroll--fit {
+  max-height: none;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -1477,7 +1544,42 @@ body {
   background: color-mix(in srgb, var(--ink-primary) 4%, transparent);
 }
 
+.data-table th.data-table__num,
+.data-table td.data-table__num {
+  text-align: right;
+}
+
+/* Team-color dot beside a driver/team name (standings) — same footprint as
+   .driver-chip__dot; the muted default covers untracked teams, a tracked
+   team's swatch overrides it inline. */
+.team-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border-radius: 50%;
+  vertical-align: -1px;
+  background: color-mix(in srgb, var(--ink-secondary) 45%, transparent);
+}
+
+.data-table__dim {
+  color: var(--ink-secondary);
+}
+
 /* ---------- race control feed ---------- */
+
+.rc-feed__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+.rc-feed__none {
+  margin: var(--space-3) 0;
+  font-size: 0.85rem;
+  color: var(--ink-secondary);
+}
 
 .rc-feed {
   list-style: none;
@@ -1635,11 +1737,6 @@ body {
 /* The recap is a compact summary card (podium + fastest lap), so it's capped
    and sits on its own above the results rather than squeezing the wide tables
    into a side column. */
-.last-race__recap {
-  max-width: 420px;
-  margin-bottom: var(--space-6);
-}
-
 /* The result tables (classification, qualifying, sprint) each get the whole
    content column — they carry ~20 rows and their own row-limit control, so
    they need the width. Stacked one per row. */
@@ -1765,33 +1862,16 @@ body {
   color: var(--ink-muted);
 }
 
-.previous-race-recap {
-  padding: var(--space-5) var(--space-6);
-  border-radius: var(--radius-feature);
+/* Podium payload in #last-race's header aside — the compact successor to
+   the old .previous-race-recap card (same row anatomy, no card chrome
+   beyond a small glass tile; race name/date live in the header text). */
+.podium-aside {
+  min-width: 240px;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-tile);
 }
 
-.previous-race-recap__eyebrow {
-  margin: 0;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--accent-ink);
-}
-
-.previous-race-recap__title {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: 650;
-}
-
-.previous-race-recap__date {
-  margin: 2px 0 var(--space-3);
-  font-size: 0.8rem;
-  color: var(--ink-muted);
-}
-
-.previous-race-recap__podium {
+.podium-aside__list {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -1800,20 +1880,20 @@ body {
   list-style: none;
 }
 
-.previous-race-recap__row {
+.podium-aside__row {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
   font-size: 0.9rem;
 }
 
-.previous-race-recap__pos {
+.podium-aside__pos {
   min-width: 1.4em;
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
 }
 
-.previous-race-recap__name {
+.podium-aside__name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -1823,26 +1903,69 @@ body {
   font-weight: 600;
 }
 
-.previous-race-recap__gap {
+.podium-aside__gap {
   color: var(--ink-secondary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.previous-race-recap__fastest {
-  margin: var(--space-3) 0 0;
-  font-size: 0.8rem;
+.podium-aside__fastest {
+  margin: var(--space-2) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--glass-border);
+  font-size: 0.75rem;
   color: var(--ink-secondary);
 }
 
-.previous-race-recap__sprint {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--glass-border);
+/* Season-progress payload in #next-race's header aside. */
+.round-progress {
+  min-width: 220px;
 }
 
-.previous-race-recap__sprint-label {
-  margin: 0 0 var(--space-1);
+.round-progress__label {
+  margin: 0 0 var(--space-2);
+  font-size: 0.85rem;
+  color: var(--ink-secondary);
+}
+
+.round-progress__label strong {
+  color: var(--ink-primary);
+  font-weight: 650;
+}
+
+.round-progress__track {
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink-secondary) 22%, transparent);
+  overflow: hidden;
+}
+
+.round-progress__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+/* Championship-leaders payload in #season-standings' header aside. */
+.leaders-aside {
+  min-width: 260px;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-tile);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.leaders-aside__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.leaders-aside__kind {
+  min-width: 4em;
   font-size: 0.7rem;
   font-weight: 650;
   letter-spacing: 0.06em;
@@ -1850,23 +1973,18 @@ body {
   color: var(--ink-muted);
 }
 
-.previous-race-recap__podium--sprint .previous-race-recap__row {
-  font-size: 0.8rem;
-}
-
-.previous-race-recap__link {
-  display: inline-block;
-  margin-top: var(--space-4);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--glass-border);
-  color: var(--accent-ink);
-  text-decoration: none;
-  font-size: 0.8rem;
+.leaders-aside__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
 }
 
-.previous-race-recap__link:hover {
-  text-decoration: underline;
+.leaders-aside__points {
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- focus-visible baseline ---------- */
