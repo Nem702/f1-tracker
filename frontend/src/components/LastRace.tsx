@@ -7,6 +7,7 @@ import { PreviousRaceRecap } from "./PreviousRaceRecap";
 import { OfficialResult } from "./OfficialResult";
 import { QualifyingResult } from "./QualifyingResult";
 import { Reveal } from "./Reveal";
+import { Skeleton } from "./Skeleton";
 
 interface Props {
   recap: PreviousRaceRecapData | null;
@@ -48,6 +49,14 @@ export function LastRace({
 
       {!recap && !recapLoading && (
         <p className="section-empty">No completed race found yet this season.</p>
+      )}
+
+      {/* First load: stand in for the compact recap card (the result tables
+          below render their own skeletons via ChartCard). */}
+      {!recap && recapLoading && (
+        <div className="last-race__recap" aria-hidden="true">
+          <Skeleton height={220} />
+        </div>
       )}
 
       {recap && (

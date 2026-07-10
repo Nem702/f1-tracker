@@ -4,6 +4,7 @@ import { RaceWeekendSchedule } from "./RaceWeekendSchedule";
 import { CircuitImage } from "./CircuitImage";
 import { Countdown } from "./Countdown";
 import { Reveal } from "./Reveal";
+import { Skeleton } from "./Skeleton";
 
 interface Props {
   data: RaceWeekend | null;
@@ -48,6 +49,15 @@ export function NextRace({ data, loading, error }: Props) {
             ? "Couldn't load race weekend data — try again shortly."
             : "No upcoming race found. Check back once the next season's calendar is published."}
         </p>
+      )}
+
+      {/* First load: hold the two-column grid's shape so the schedule and
+          circuit cards don't pop the layout open when the payload lands. */}
+      {!data && loading && (
+        <div className="next-race__grid" aria-hidden="true">
+          <Skeleton height={340} />
+          <Skeleton height={340} />
+        </div>
       )}
 
       {data && (

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { MotionConfig, motion } from "framer-motion";
 import { api } from "./api/client";
-import { useApi } from "./hooks/useApi";
+import { useApi, type ApiState } from "./hooks/useApi";
 import { useScrollSpy } from "./hooks/useScrollSpy";
 import { setTint, useMode, useTheme } from "./hooks/useTheme";
 import { cssVars, tintForPair } from "./theme";
@@ -161,6 +161,16 @@ export default function App() {
   const raceControl = useApi(api.raceControl, selected);
   const officialResult = useApi(api.officialResult, selected);
 
+  // While the races list is still in flight nothing can be selected, so every
+  // per-race fetch above sits idle (key null, loading false) — which reads
+  // exactly like a loaded-but-empty race. Surface that bootstrap window as
+  // loading so a slow first paint shows skeletons instead of "No data
+  // recorded for this race". A races error leaves this false: the existing
+  // empty/error states are then the truthful ones.
+  const bootstrapping = selected === null && races.loading;
+  const withBootstrap = <T,>(s: ApiState<T>): ApiState<T> =>
+    bootstrapping && !s.loading ? { ...s, loading: true } : s;
+
   // Client-side teammate delta (the old /api/delta was only a join-and-
   // subtract over rows already in `laps`) — a pair switch recomputes it
   // instantly, no refetch.
@@ -215,7 +225,7 @@ export default function App() {
               recap={raceWeekend.data?.race_weekend?.previous_race ?? null}
               recapLoading={raceWeekend.loading}
               result={officialResult.data?.official_result ?? null}
-              resultLoading={officialResult.loading}
+              resultLoading={officialResult.loading || bootstrapping}
               resultError={officialResult.error}
               raceLabel={raceLabel}
             />
@@ -236,12 +246,12 @@ export default function App() {
               pair={pair}
               rosters={rosters}
               onSelectPair={setPair}
-              laps={laps}
-              stints={stints}
-              pit={pit}
-              positions={positions}
-              weather={weather}
-              raceControl={raceControl}
+              laps={withBootstrap(laps)}
+              stints={withBootstrap(stints)}
+              pit={withBootstrap(pit)}
+              positions={withBootstrap(positions)}
+              weather={withBootstrap(weather)}
+              raceControl={withBootstrap(raceControl)}
               deltaRows={deltaRows}
             />
           </section>
