@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
 import { DataTable, type TableSpec } from "./DataTable";
+import { Skeleton } from "./Skeleton";
 import { duration, EASE } from "../motion";
 
 export interface LegendItem {
@@ -37,6 +38,10 @@ interface Props {
   error?: string | null;
   hasData: boolean;
   emptyText?: string;
+  /** Approximate height of the eventual content, so the first-load skeleton
+   *  holds the card near its final size and data landing doesn't shift the
+   *  page. Callers with taller charts pass their chart height. */
+  skeletonHeight?: number;
   table?: TableSpec;
   wide?: boolean;
   children: ReactNode;
@@ -59,8 +64,9 @@ function SwapIcon() {
 /**
  * The container every view mounts in: title, legend, the chart/table toggle
  * (every chart ships its accessible table twin), and the shared loading /
- * empty / error states. While a refetch runs, the previous render is held at
- * reduced opacity — no skeleton, no layout jump.
+ * empty / error states. The very first load (no data yet) shows a shimmer
+ * skeleton plate; while a refetch runs, the previous render is held at
+ * reduced opacity instead — no skeleton, no layout jump.
  *
  * Liquid-glass layering: the card is a solid (non-blurred) surface — see
  * .card--solid in index.css. Race Analysis stacks 6-7 of these, and scroll
@@ -78,6 +84,7 @@ export function ChartCard({
   error = null,
   hasData,
   emptyText = "No data recorded for this race.",
+  skeletonHeight = 260,
   table,
   wide = false,
   children,
@@ -114,6 +121,12 @@ export function ChartCard({
       <div className="card__body" style={{ opacity: loading ? 0.55 : 1 }}>
         {error ? (
           <p className="card__state card__state--error">{error}</p>
+        ) : !hasData && loading ? (
+          // First load only — refetches keep hasData (useApi holds the
+          // previous payload) and land in the children branch dimmed to 0.55.
+          <div className="card__plate">
+            <Skeleton height={skeletonHeight} />
+          </div>
         ) : !hasData && !loading ? (
           <p className="card__state">{emptyText}</p>
         ) : view === "table" && table ? (

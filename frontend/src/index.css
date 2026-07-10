@@ -260,6 +260,7 @@ body {
 .navbar__nav {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-1);
   min-width: 0;
   flex: 1;
@@ -1251,6 +1252,57 @@ body {
 
 .card__state--error {
   color: var(--ink-secondary);
+}
+
+/* ---------- skeleton (first-load placeholders) ---------- */
+/* Shown only while a section's very first payload is in flight (data === null
+   && loading). Refetches keep the existing hold-last-render-at-0.55-opacity
+   behavior (see ChartCard / useApi) — skeletons never replace real content. */
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--plate);
+  border: 1px solid var(--plate-border);
+  border-radius: var(--radius-plate);
+  display: block;
+  transition: var(--tint-transition);
+}
+
+/* Moving specular band over the plate base — same highlight vocabulary as
+   the glass surfaces (inset var(--spec) speculars), so it reads as light
+   sweeping the material rather than a foreign gray pulse. */
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    var(--glass2) 50%,
+    transparent 70%
+  );
+  transform: translateX(-100%);
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+.skeleton--line {
+  height: 14px;
+  border-radius: var(--radius-pill);
+}
+
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* MotionConfig reducedMotion="user" only covers framer-driven animation;
+   raw CSS keyframes need their own gate. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after {
+    animation: none;
+  }
 }
 
 /* ---------- legend ---------- */

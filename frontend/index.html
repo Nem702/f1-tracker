@@ -6,9 +6,59 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Real lap-by-lap F1 data for the 2026 season — follow a race weekend from lights out to chequered flag, head-to-head." />
     <title>F1 Tracker</title>
+    <!-- Pre-mount placeholder styles: this covers the window before the JS
+         bundle arrives (index.css comes with it), so everything here must be
+         inline and self-contained. React wipes #root's children on mount. -->
+    <style>
+      .boot {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        color: #3a3a3e;
+        background: #efeff1;
+      }
+      .boot__dot {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 30%, #ff8a3d, #e10600 70%);
+        animation: boot-pulse 1.2s ease-in-out infinite;
+      }
+      .boot__label {
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+      @keyframes boot-pulse {
+        50% {
+          transform: scale(0.8);
+          opacity: 0.6;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot__dot {
+          animation: none;
+        }
+      }
+      @media (prefers-color-scheme: dark) {
+        .boot {
+          background: #0e0e10;
+          color: #c9c9ce;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot" aria-label="Loading F1 Tracker">
+        <div class="boot__dot"></div>
+        <p class="boot__label">F1 Tracker</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

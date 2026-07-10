@@ -6,6 +6,7 @@ import type { PairDelta } from "../lib/delta";
 import { fmtLapTime } from "../format";
 import { entrance } from "../motion";
 import { CountUp } from "./CountUp";
+import { Skeleton } from "./Skeleton";
 
 /** Local reveal timing — this is a whileInView-triggered block (see the
  *  `inView` gate below), not part of the page-load home cascade, so its
@@ -218,6 +219,17 @@ export function StatTiles({ laps, pit, delta, pair, loading, raceLabel }: Props)
 
   const tileDelay = (i: number) => 0.15 + i * REVEAL_STAGGER;
 
+  // No lap payload yet and one in flight: every tile would show its em-dash
+  // fallback (or a misleading 0 for pit stops), so swap in shimmer lines
+  // instead. Once any data has landed, refetches keep the existing
+  // filter-opacity dim below rather than re-skeletoning.
+  const firstLoad = loading && laps.length === 0;
+  const skeletonValue = (
+    <span className="stat-tile__value">
+      <Skeleton variant="line" width={72} height={20} />
+    </span>
+  );
+
   // This whole block (the insight card + all four tiles) sits below the
   // fold now — #telemetry's header summary, not Overview's page-load
   // cascade — so it reveals once on scroll-in instead of racing a
@@ -265,7 +277,9 @@ export function StatTiles({ laps, pit, delta, pair, loading, raceLabel }: Props)
           delay={tileDelay(0)}
           inView={inView}
           value={
-            !fastestLap ? (
+            firstLoad ? (
+              skeletonValue
+            ) : !fastestLap ? (
               <span className="stat-tile__value">—</span>
             ) : inView ? (
               <CountUp
@@ -286,7 +300,9 @@ export function StatTiles({ laps, pit, delta, pair, loading, raceLabel }: Props)
           delay={tileDelay(1)}
           inView={inView}
           value={
-            lapsCompleted === 0 ? (
+            firstLoad ? (
+              skeletonValue
+            ) : lapsCompleted === 0 ? (
               <span className="stat-tile__value">—</span>
             ) : inView ? (
               <CountUp value={lapsCompleted} startDelay={tileDelay(1)} className="stat-tile__value" />
@@ -301,7 +317,9 @@ export function StatTiles({ laps, pit, delta, pair, loading, raceLabel }: Props)
           delay={tileDelay(2)}
           inView={inView}
           value={
-            inView ? (
+            firstLoad ? (
+              skeletonValue
+            ) : inView ? (
               <CountUp value={pitStopCount} startDelay={tileDelay(2)} className="stat-tile__value" />
             ) : (
               <span className="stat-tile__value">{pitStopCount.toLocaleString()}</span>
@@ -314,7 +332,9 @@ export function StatTiles({ laps, pit, delta, pair, loading, raceLabel }: Props)
           delay={tileDelay(3)}
           inView={inView}
           value={
-            avgGap === null ? (
+            firstLoad ? (
+              skeletonValue
+            ) : avgGap === null ? (
               <span className="stat-tile__value">—</span>
             ) : inView ? (
               <CountUp
