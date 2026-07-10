@@ -1,6 +1,7 @@
 import type { RaceResultRow } from "../api/types";
 import { ChartCard } from "./ChartCard";
 import { DataTable, type TableSpec } from "./DataTable";
+import { TeamDot } from "./TeamDot";
 
 interface Props {
   title: string;
@@ -18,16 +19,42 @@ interface Props {
  *  instance each time — title/subtitle/emptyText tell them apart, not a
  *  second near-duplicate component). */
 export function OfficialResult({ title, subtitle, rows, loading, error, emptyText }: Props) {
+  // Time/Gap + Status + Laps collapse into one Result column: finishers
+  // show their time/gap (Status was "Finished" and Laps the full distance
+  // for every one of them — zero-information columns); a retirement shows
+  // its status and the lap it ended on, which is the only case where
+  // either mattered.
   const table: TableSpec = {
     columns: [
       { key: "position", label: "Pos" },
-      { key: "driver_name", label: "Driver" },
+      {
+        key: "driver_name",
+        label: "Driver",
+        render: (row) => (
+          <>
+            <TeamDot teamName={row.constructor_name as string | null} />
+            {String(row.driver_name ?? "—")}
+          </>
+        ),
+      },
       { key: "constructor_name", label: "Team" },
-      { key: "grid", label: "Grid" },
-      { key: "laps", label: "Laps" },
-      { key: "time", label: "Time/Gap" },
-      { key: "status", label: "Status" },
-      { key: "points", label: "Pts" },
+      { key: "grid", label: "Grid", align: "right" },
+      {
+        key: "time",
+        label: "Result",
+        align: "right",
+        render: (row) => {
+          if (row.time != null) return String(row.time);
+          if (row.status == null) return "—";
+          return (
+            <span className="data-table__dim">
+              {String(row.status)}
+              {row.laps != null ? ` · L${row.laps}` : ""}
+            </span>
+          );
+        },
+      },
+      { key: "points", label: "Pts", align: "right" },
     ],
     rows: rows as unknown as Record<string, unknown>[],
   };

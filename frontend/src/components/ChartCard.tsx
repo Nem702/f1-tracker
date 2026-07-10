@@ -100,7 +100,9 @@ export function ChartCard({
     >
       <header className="card__header">
         <div>
-          <h2 className="card__title">{title}</h2>
+          {/* h3: cards always sit under a section's h2 (SectionHeading), so
+              the document outline matches the visual hierarchy. */}
+          <h3 className="card__title">{title}</h3>
           {subtitle && <p className="card__subtitle">{subtitle}</p>}
         </div>
         <div className="card__tools">
