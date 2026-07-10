@@ -193,11 +193,14 @@ duplicate every row.
 **Red-flag outliers are blanked from charts, never from data (Part 6).**
 A red-flag stoppage records one absurd "lap" (30+ minutes at Monaco) and one
 absurd "pit stop" (the car sitting out the stoppage), and a single such value
-flattens every real lap against the axis. The charts drop laps over 3× the
-median and stops over 180s so the actual racing story stays readable — but
-only in the chart layer: the values remain untouched in the database, the
-API response, and each chart's table view, and the chart subtitle says when
-something was left off.
+flattens every real lap against the axis. The lap chart drops anything over
+1.5× the median (tightened from an initial 3× — ordinary SC/red-flag crawl
+laps at ~1.6×+ race pace were still squashing the real pace battle into a
+sliver; pit in/out laps sit around 1.2–1.35× so they survive the cut) and
+the pit stop chart drops stops over 180s, so the actual racing story stays
+readable — but only in the chart layer: the values remain untouched in the
+database, the API response, and each chart's table view, and the chart
+subtitle says when something was left off.
 
 **4-team pair model instead of a fixed Hamilton/Leclerc comparison.**
 The pipeline expanded to track every driver across four teams (Ferrari,
@@ -289,12 +292,23 @@ get a 6-hour TTL (schedule/circuit/standings move at most weekly);
 finished race's result is immutable forever and re-fetching it on a timer
 would just be wasted requests against the rate limit.
 
-**Circuit card is an empty placeholder frame, not a map or image.**
-`CircuitImage.tsx` originally rendered a lat/long pin map; that was dropped
-in favor of a plain framed placeholder plus the circuit name/location and a
-"who won here last year" footnote. Simpler, doesn't depend on a mapping
-library or circuit imagery that Jolpica doesn't provide, and keeps the
-card's real job (circuit identity + last-year context) front and center.
+**Circuit card serves hand-curated facts, not a map or image.**
+`CircuitImage.tsx` originally rendered a lat/long pin map, then a plain
+placeholder frame once that was dropped — neither gave a visitor anything
+circuit-specific to look at, since Jolpica doesn't provide circuit imagery.
+Replaced by `CircuitCard.tsx`, backed by `backend/shared/circuit_facts.json`
+(length, turns, lap count, lap record, one fun-fact line) keyed by the same
+Ergast `circuitId` the schedule payload already carries. A circuit missing
+from the file arrives as `facts: null` and the card degrades to name/
+location/last-year-winner — cosmetic, not breaking.
+
+**One atomic per-race snapshot feeds both the telemetry insight sentence and the stat tiles.**
+`lib/raceStory.ts` computes fastest lap/laps completed/pit stops/avg gap
+once per race, and `Telemetry.tsx` only commits a new snapshot once every
+fetch it depends on has settled *and* agrees with the currently selected
+race (checked via each row's own `session_key`). Without that guard, a race
+switch could show the new race's label over the previous race's numbers for
+one render — or one stat tile updating a beat ahead of another.
 
 ## Known data quirks (not bugs)
 
