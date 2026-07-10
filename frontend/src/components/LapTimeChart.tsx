@@ -75,22 +75,33 @@ export function LapTimeChart({ laps, pair, loading, error }: Props) {
   );
   const drawIn = useDrawInOnce(merged.length > 0);
 
-  // A red-flag stoppage records one absurd "lap" (30+ minutes at Monaco) that
-  // flattens every real lap against the x-axis. Blank anything over 3× the
-  // median from the chart — it reads as a gap, like other missing times — and
-  // keep the raw value in the table view.
-  const data = useMemo(() => {
+  // Slow outliers ruin the y-axis: a red-flag stoppage records one absurd
+  // "lap" (30+ minutes at Monaco), and even ordinary SC/red-flag crawl laps
+  // (~1.6×+ race pace) squash the actual pace battle into a sliver. Blank
+  // anything over 1.5× the median from the chart — pit in/out laps
+  // (~1.2–1.35×) stay, so the strategy spikes still read — and let the
+  // auto domain fit the racing story. Blanked laps read as gaps, like
+  // other missing times; the raw values stay in the table view, and the
+  // card subtitle reports how many went off-scale.
+  const { data, offScale } = useMemo(() => {
     const durations = merged
       .flatMap((p) => [p.a, p.b])
       .filter((d): d is number => d !== null)
       .sort((a, b) => a - b);
-    if (durations.length === 0) return merged;
-    const cutoff = durations[Math.floor(durations.length / 2)] * 3;
-    return merged.map((p) => ({
-      ...p,
-      a: p.a !== null && p.a > cutoff ? null : p.a,
-      b: p.b !== null && p.b > cutoff ? null : p.b,
-    }));
+    if (durations.length === 0) return { data: merged, offScale: 0 };
+    const cutoff = durations[Math.floor(durations.length / 2)] * 1.5;
+    let offScale = 0;
+    const data = merged.map((p) => {
+      const aOver = p.a !== null && p.a > cutoff;
+      const bOver = p.b !== null && p.b > cutoff;
+      offScale += (aOver ? 1 : 0) + (bOver ? 1 : 0);
+      return {
+        ...p,
+        a: aOver ? null : p.a,
+        b: bOver ? null : p.b,
+      };
+    });
+    return { data, offScale };
   }, [merged]);
 
   // Index of each series' last real point, so the direct end-label sits on
@@ -176,7 +187,11 @@ export function LapTimeChart({ laps, pair, loading, error }: Props) {
   return (
     <ChartCard
       title="Lap times"
-      subtitle="Dots mark pit-out laps; gaps are missing times or red-flag laps (full values in the table)."
+      subtitle={
+        offScale > 0
+          ? `Dots mark pit-out laps; gaps are missing times. ${offScale} slow ${offScale === 1 ? "lap" : "laps"} (safety car / red flag) off-scale — full values in the table.`
+          : "Dots mark pit-out laps; gaps are missing times or red-flag laps (full values in the table)."
+      }
       legend={<PairLegend pair={pair} />}
       loading={loading}
       error={error}

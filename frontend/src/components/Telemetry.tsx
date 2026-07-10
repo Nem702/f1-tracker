@@ -1,8 +1,9 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import type { ApiState } from "../hooks/useApi";
 import type { Lap, PitStop, PositionRow, Race, RaceControlRow, Stint, WeatherRow } from "../api/types";
 import type { DriverPair, TeamRoster } from "../teams";
 import type { PairDelta } from "../lib/delta";
+import { summarizeRace, type RaceSummary } from "../lib/raceStory";
 import { SectionHeading } from "./SectionHeading";
 import { RaceSelector } from "./RaceSelector";
 import { TeamSwitcher } from "./TeamSwitcher";
@@ -72,13 +73,56 @@ export function Telemetry({
 }: Props) {
   const emptyRace = laps.data !== null && laps.data.length === 0;
 
+  // Atomic per-race snapshot for the header insight + stat tiles: the race
+  // label and every derived number are captured together, and only once
+  // every fetch they read from has settled — so a race switch can never
+  // show a fresh label over stale values (or one tile ahead of another).
+  // While the next race's data is in flight the previous snapshot holds,
+  // dimmed. Charts keep their own per-fetch hold-previous behavior — each
+  // is self-consistent; the lie was only ever in this cross-referenced
+  // summary.
+  const [snap, setSnap] = useState<{ summary: RaceSummary; raceLabel: string } | null>(null);
+  useEffect(() => {
+    if (laps.loading || pit.loading || laps.data === null) return;
+    // Guard the one-render gap right after a race switch: `selected` (and
+    // raceLabel with it) has already moved, but useApi hasn't flipped
+    // `loading` yet, so the held data still belongs to the previous race —
+    // capturing in that frame would recreate the exact fresh-label/
+    // stale-numbers mix this snapshot exists to prevent. The rows carry
+    // their own session_key, so only capture when the data agrees with the
+    // selection. (An empty payload has no rows to check — but also no stale
+    // numbers to lie with; its "no lap data" story is safe either way.)
+    const dataMatchesSelection = (rows: { session_key: number }[] | null) =>
+      rows === null || rows.length === 0 || selected === null || rows[0].session_key === selected;
+    if (!dataMatchesSelection(laps.data) || !dataMatchesSelection(pit.data)) return;
+    setSnap({
+      summary: summarizeRace(laps.data, pit.data ?? [], deltaRows, pair),
+      raceLabel,
+    });
+  }, [laps, pit, deltaRows, pair, raceLabel, selected]);
+  const summaryStale = laps.loading || pit.loading;
+
   return (
     <>
       <SectionHeading
         index={5}
         eyebrow="Telemetry"
         title="Pick a race. See how it unfolded."
-        description="Every chart below is built from second-by-second car telemetry for one selected race weekend: pace, tire choices, pit stops, running order, track conditions, and every flag race control issued."
+        description="Second-by-second telemetry for one race weekend: pace, tires, pit stops, running order, weather, and race control."
+        aside={
+          snap && (
+            <div
+              className="overview__insight glass overview__insight--aside"
+              style={{
+                filter: summaryStale ? "opacity(0.55)" : "opacity(1)",
+                transition: "filter 0.2s ease",
+              }}
+            >
+              <p className="overview__insight-eyebrow">{snap.raceLabel}</p>
+              <p className="overview__insight-text">{snap.summary.story}</p>
+            </div>
+          )
+        }
       />
 
       <div className="filters">
@@ -105,14 +149,7 @@ export function Telemetry({
         </div>
       )}
 
-      <StatTiles
-        laps={laps.data ?? []}
-        pit={pit.data ?? []}
-        delta={deltaRows}
-        pair={pair}
-        loading={laps.loading || pit.loading}
-        raceLabel={raceLabel}
-      />
+      <StatTiles summary={snap?.summary ?? null} loading={summaryStale} />
 
       <Suspense fallback={null}>
         <main className="grid">

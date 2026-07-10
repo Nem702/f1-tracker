@@ -82,6 +82,9 @@ export function PitStopChart({ pit, pair, loading, error }: Props) {
   const color = (driverNumber: number) =>
     driverNumber === aNumber ? theme.driver1 : theme.driver2;
 
+  const acronym = (driverNumber: number) =>
+    (driverNumber === aNumber ? pair?.[0].acronym : pair?.[1].acronym) ?? "?";
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const renderTooltip = ({ active, payload }: any) => {
     if (!active || !payload?.length) return null;
@@ -127,7 +130,12 @@ export function PitStopChart({ pit, pair, loading, error }: Props) {
           <CartesianGrid stroke={theme.grid} strokeWidth={1} vertical={false} />
           <XAxis
             dataKey="key"
-            tickFormatter={(_: string, i: number) => `Lap ${stops[i]?.lap ?? ""}`}
+            // Who + when, not just when: two stops on the same lap used to
+            // print two identical "Lap 48" ticks.
+            tickFormatter={(_: string, i: number) => {
+              const s = stops[i];
+              return s ? `${acronym(s.driverNumber)} · L${s.lap}` : "";
+            }}
             tickLine={false}
             axisLine={{ stroke: theme.axis }}
             tick={{ fill: theme.inkMuted, fontSize: 11 }}
