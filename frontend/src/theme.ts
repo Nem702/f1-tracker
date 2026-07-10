@@ -246,9 +246,13 @@ const base: Record<Mode, BaseTokens> = {
     glowBorderPct: "70%",
     glowRingPct: "50%",
     glowBlurPct: "78%",
+    // A (top-left, hero) keeps its strength; B (mid-right) and especially
+    // C (bottom-left — it sits behind the Standings/Telemetry tables) are
+    // toned down so light mode's decoration stops competing with data.
+    // Dark mode's values were already subordinate and stay unchanged.
     auroraA: "0.42",
-    auroraB: "0.38",
-    auroraC: "0.34",
+    auroraB: "0.30",
+    auroraC: "0.22",
     inkPrimary: "#171922",
     inkSecondary: "#585b66",
     inkMuted: "#716e67",

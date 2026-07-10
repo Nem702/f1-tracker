@@ -273,10 +273,9 @@ export default function App() {
               >
                 GitHub
               </a>
-              {/* TODO: replace with real URL */}
-              <a href="#">LinkedIn</a>
-              {/* TODO: replace with real URL */}
-              <a href="#">X</a>
+              {/* TODO: LinkedIn + X pills went here — re-add once the real
+                  profile URLs exist (placeholder "#" links shipped to
+                  production and read as broken). */}
             </nav>
             <p className="footer__credit">
               Data from{" "}
