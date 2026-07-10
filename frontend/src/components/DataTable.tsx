@@ -1,9 +1,15 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 export interface TableColumn {
   key: string;
   label: string;
   format?: (value: unknown) => string;
+  /** Right-align this column (header + cells) — for numerals, which the
+   *  base .data-table styles already render tabular. */
+  align?: "right";
+  /** Custom cell over the whole row (e.g. a team dot beside a name).
+   *  Wins over `format`; a null/undefined return still shows the em dash. */
+  render?: (row: Record<string, unknown>) => ReactNode;
 }
 
 export interface TableSpec {
@@ -14,7 +20,8 @@ export interface TableSpec {
 /** A row-limit choice: a number of rows, or "all". */
 export type RowLimit = number | "all";
 
-function cell(col: TableColumn, row: Record<string, unknown>): string {
+function cell(col: TableColumn, row: Record<string, unknown>): ReactNode {
+  if (col.render) return col.render(row) ?? "—";
   const value = row[col.key];
   if (value === null || value === undefined) return "—";
   return col.format ? col.format(value) : String(value);
@@ -28,12 +35,17 @@ interface Props {
   limits?: RowLimit[];
   /** Which of `limits` is selected initially (defaults to the first). */
   defaultLimit?: RowLimit;
+  /** Grow with the rows instead of clipping at .table-scroll's 300px
+   *  scrollbox — for canonical standalone tables (standings) where a
+   *  near-invisible scrollbar would read as "the table ends here". Tables
+   *  with a `limits` control already grow via .data-table__wrap. */
+  fitContent?: boolean;
 }
 
 /** The accessible twin of every chart — same rows, plain HTML, no color.
  *  Tables that stand on their own (the last-race classification / qualifying /
  *  sprint results) opt into a row-limit control via `limits`. */
-export function DataTable({ spec, limits, defaultLimit }: Props) {
+export function DataTable({ spec, limits, defaultLimit, fitContent }: Props) {
   const [limit, setLimit] = useState<RowLimit>(defaultLimit ?? limits?.[0] ?? "all");
 
   // Only worth a control if the shortest limit would actually hide rows.
@@ -47,12 +59,16 @@ export function DataTable({ spec, limits, defaultLimit }: Props) {
     showControl && limit !== "all" ? spec.rows.slice(0, limit) : spec.rows;
 
   const table = (
-    <div className="table-scroll">
+    <div className={`table-scroll${fitContent ? " table-scroll--fit" : ""}`}>
       <table className="data-table">
         <thead>
           <tr>
             {spec.columns.map((col) => (
-              <th key={col.key} scope="col">
+              <th
+                key={col.key}
+                scope="col"
+                className={col.align === "right" ? "data-table__num" : undefined}
+              >
                 {col.label}
               </th>
             ))}
@@ -62,7 +78,12 @@ export function DataTable({ spec, limits, defaultLimit }: Props) {
           {visibleRows.map((row, i) => (
             <tr key={i}>
               {spec.columns.map((col) => (
-                <td key={col.key}>{cell(col, row)}</td>
+                <td
+                  key={col.key}
+                  className={col.align === "right" ? "data-table__num" : undefined}
+                >
+                  {cell(col, row)}
+                </td>
               ))}
             </tr>
           ))}

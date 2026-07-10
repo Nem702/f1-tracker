@@ -1,6 +1,7 @@
 import type { QualifyingRow } from "../api/types";
 import { ChartCard } from "./ChartCard";
 import { DataTable, type TableSpec } from "./DataTable";
+import { TeamDot } from "./TeamDot";
 
 interface Props {
   rows: QualifyingRow[];
@@ -15,11 +16,20 @@ export function QualifyingResult({ rows, loading, error }: Props) {
   const table: TableSpec = {
     columns: [
       { key: "position", label: "Pos" },
-      { key: "driver_name", label: "Driver" },
+      {
+        key: "driver_name",
+        label: "Driver",
+        render: (row) => (
+          <>
+            <TeamDot teamName={row.constructor_name as string | null} />
+            {String(row.driver_name ?? "—")}
+          </>
+        ),
+      },
       { key: "constructor_name", label: "Team" },
-      { key: "q1", label: "Q1" },
-      { key: "q2", label: "Q2" },
-      { key: "q3", label: "Q3" },
+      { key: "q1", label: "Q1", align: "right" },
+      { key: "q2", label: "Q2", align: "right" },
+      { key: "q3", label: "Q3", align: "right" },
     ],
     rows: rows as unknown as Record<string, unknown>[],
   };
