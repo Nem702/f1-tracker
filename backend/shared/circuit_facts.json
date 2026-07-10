@@ -1,0 +1,193 @@
+{
+  "albert_park": {
+    "length_km": 5.278,
+    "turns": 14,
+    "laps": 58,
+    "first_gp": 1996,
+    "lap_record": { "time": "1:19.813", "driver": "Charles Leclerc", "year": 2024 },
+    "note": "A parkland circuit around Albert Park Lake, reprofiled in 2022 for faster, closer racing."
+  },
+  "shanghai": {
+    "length_km": 5.451,
+    "turns": 16,
+    "laps": 56,
+    "first_gp": 2004,
+    "lap_record": { "time": "1:32.238", "driver": "Michael Schumacher", "year": 2004 },
+    "note": "The Turn 1–2 'snail' keeps tightening through more than 270 degrees."
+  },
+  "suzuka": {
+    "length_km": 5.807,
+    "turns": 18,
+    "laps": 53,
+    "first_gp": 1987,
+    "lap_record": { "time": "1:30.983", "driver": "Lewis Hamilton", "year": 2019 },
+    "note": "The calendar's only figure-eight — the back straight crosses over the pit straight."
+  },
+  "miami": {
+    "length_km": 5.412,
+    "turns": 19,
+    "laps": 57,
+    "first_gp": 2022,
+    "lap_record": { "time": "1:29.708", "driver": "Max Verstappen", "year": 2023 },
+    "note": "A temporary circuit looped around Hard Rock Stadium's campus."
+  },
+  "villeneuve": {
+    "length_km": 4.361,
+    "turns": 14,
+    "laps": 70,
+    "first_gp": 1978,
+    "lap_record": { "time": "1:13.078", "driver": "Valtteri Bottas", "year": 2019 },
+    "note": "The wall on the final chicane's exit is the infamous Wall of Champions."
+  },
+  "monaco": {
+    "length_km": 3.337,
+    "turns": 19,
+    "laps": 78,
+    "first_gp": 1950,
+    "lap_record": { "time": "1:12.909", "driver": "Lewis Hamilton", "year": 2021 },
+    "note": "The slowest, tightest lap of the year — and the shortest circuit on the calendar."
+  },
+  "catalunya": {
+    "length_km": 4.657,
+    "turns": 14,
+    "laps": 66,
+    "first_gp": 1991,
+    "lap_record": { "time": "1:16.330", "driver": "Max Verstappen", "year": 2023 },
+    "note": "F1's long-time test track — every driver knows it corner by corner."
+  },
+  "red_bull_ring": {
+    "length_km": 4.318,
+    "turns": 10,
+    "laps": 71,
+    "first_gp": 1970,
+    "lap_record": { "time": "1:05.619", "driver": "Carlos Sainz", "year": 2020 },
+    "note": "Just ten corners — the shortest lap time of the whole season."
+  },
+  "silverstone": {
+    "length_km": 5.891,
+    "turns": 18,
+    "laps": 52,
+    "first_gp": 1950,
+    "lap_record": { "time": "1:27.097", "driver": "Max Verstappen", "year": 2020 },
+    "note": "Hosted the first world-championship grand prix in 1950."
+  },
+  "spa": {
+    "length_km": 7.004,
+    "turns": 19,
+    "laps": 44,
+    "first_gp": 1950,
+    "lap_record": { "time": "1:46.286", "driver": "Valtteri Bottas", "year": 2018 },
+    "note": "Eau Rouge–Raidillon is taken flat out at close to 300 km/h."
+  },
+  "hungaroring": {
+    "length_km": 4.381,
+    "turns": 14,
+    "laps": 70,
+    "first_gp": 1986,
+    "lap_record": { "time": "1:16.627", "driver": "Lewis Hamilton", "year": 2020 },
+    "note": "Tight and twisty — often called 'Monaco without the walls'."
+  },
+  "zandvoort": {
+    "length_km": 4.259,
+    "turns": 14,
+    "laps": 72,
+    "first_gp": 1952,
+    "lap_record": { "time": "1:11.097", "driver": "Lewis Hamilton", "year": 2021 },
+    "note": "The final corner is banked at 18 degrees — steeper than Indianapolis."
+  },
+  "monza": {
+    "length_km": 5.793,
+    "turns": 11,
+    "laps": 53,
+    "first_gp": 1950,
+    "lap_record": { "time": "1:21.046", "driver": "Rubens Barrichello", "year": 2004 },
+    "note": "The Temple of Speed — the highest average lap speed of the season."
+  },
+  "madring": {
+    "length_km": 5.474,
+    "turns": 22,
+    "first_gp": 2026,
+    "lap_record": null,
+    "note": "Brand new for 2026, built around Madrid's IFEMA fairgrounds — no race lap record yet."
+  },
+  "baku": {
+    "length_km": 6.003,
+    "turns": 20,
+    "laps": 51,
+    "first_gp": 2016,
+    "lap_record": { "time": "1:43.009", "driver": "Charles Leclerc", "year": 2019 },
+    "note": "A 2.2 km flat-out blast past the old city walls closes the lap."
+  },
+  "marina_bay": {
+    "length_km": 4.94,
+    "turns": 19,
+    "laps": 62,
+    "first_gp": 2008,
+    "lap_record": { "time": "1:34.486", "driver": "Daniel Ricciardo", "year": 2024 },
+    "note": "F1's first night race, lit by around 1,500 floodlights."
+  },
+  "americas": {
+    "length_km": 5.513,
+    "turns": 20,
+    "laps": 56,
+    "first_gp": 2012,
+    "lap_record": { "time": "1:36.169", "driver": "Charles Leclerc", "year": 2019 },
+    "note": "Turn 1 sits atop a 40-metre hill built specifically for the circuit."
+  },
+  "rodriguez": {
+    "length_km": 4.304,
+    "turns": 17,
+    "laps": 71,
+    "first_gp": 1963,
+    "lap_record": { "time": "1:17.774", "driver": "Valtteri Bottas", "year": 2021 },
+    "note": "At 2,285 m altitude, the thin air costs the cars about a quarter of their downforce."
+  },
+  "interlagos": {
+    "length_km": 4.309,
+    "turns": 15,
+    "laps": 71,
+    "first_gp": 1973,
+    "lap_record": { "time": "1:10.540", "driver": "Valtteri Bottas", "year": 2018 },
+    "note": "Counter-clockwise and carved into a hillside — the Senna S opens the lap."
+  },
+  "vegas": {
+    "length_km": 6.201,
+    "turns": 17,
+    "laps": 50,
+    "first_gp": 2023,
+    "lap_record": { "time": "1:34.876", "driver": "Lando Norris", "year": 2024 },
+    "note": "Blasts down the Strip past the Sphere at around 340 km/h."
+  },
+  "losail": {
+    "length_km": 5.419,
+    "turns": 16,
+    "laps": 57,
+    "first_gp": 2021,
+    "lap_record": { "time": "1:22.384", "driver": "Lando Norris", "year": 2024 },
+    "note": "Built for MotoGP — fast, flowing, and famously brutal on tyres."
+  },
+  "yas_marina": {
+    "length_km": 5.281,
+    "turns": 16,
+    "laps": 58,
+    "first_gp": 2009,
+    "lap_record": { "time": "1:26.103", "driver": "Max Verstappen", "year": 2021 },
+    "note": "The season finale under lights, with a hotel straddling the track."
+  },
+  "bahrain": {
+    "length_km": 5.412,
+    "turns": 15,
+    "laps": 57,
+    "first_gp": 2004,
+    "lap_record": { "time": "1:31.447", "driver": "Pedro de la Rosa", "year": 2005 },
+    "note": "A desert circuit that races from dusk into night."
+  },
+  "jeddah": {
+    "length_km": 6.174,
+    "turns": 27,
+    "laps": 50,
+    "first_gp": 2021,
+    "lap_record": { "time": "1:30.734", "driver": "Lewis Hamilton", "year": 2021 },
+    "note": "The fastest street circuit in F1 — 27 corners, most of them taken flat."
+  }
+}

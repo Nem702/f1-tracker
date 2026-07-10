@@ -3,11 +3,10 @@ import type {
   PreviousRaceRecap as PreviousRaceRecapData,
 } from "../api/types";
 import { SectionHeading } from "./SectionHeading";
-import { PreviousRaceRecap } from "./PreviousRaceRecap";
 import { OfficialResult } from "./OfficialResult";
 import { QualifyingResult } from "./QualifyingResult";
+import { TeamDot } from "./TeamDot";
 import { Reveal } from "./Reveal";
-import { Skeleton } from "./Skeleton";
 
 interface Props {
   recap: PreviousRaceRecapData | null;
@@ -22,12 +21,41 @@ interface Props {
   raceLabel: string;
 }
 
-/** #last-race section body — the merge of the old #last-race recap and the
- *  old #last-race-results tables into one section. A compact previous-race
- *  recap card (podium + fastest lap) opens the section, then the full-width
- *  result tables get the whole content column each — the race classification,
- *  then qualifying + sprint under their own sub-heading. These tables carry
- *  ~20 rows, so each ships a 5 / 10 / All row-limit control (see DataTable) and
+/** The podium + fastest lap as the section header's right-column payload —
+ *  the old standalone recap card said nothing the Official Result table
+ *  below doesn't; as a header aside the same facts stop costing a card.
+ *  (The sprint podium it also carried is rows 1–3 of the Sprint Result
+ *  table below — dropped, not lost.) */
+function PodiumAside({ recap }: { recap: PreviousRaceRecapData }) {
+  return (
+    <div className="podium-aside glass">
+      <ol className="podium-aside__list">
+        {recap.top3.map((row) => (
+          <li key={row.position} className="podium-aside__row">
+            <span className="podium-aside__pos">{row.position}</span>
+            <span className="podium-aside__name">
+              <TeamDot teamName={row.constructor_name} />
+              {row.driver_code ?? row.driver_name}
+            </span>
+            <span className="podium-aside__gap">{row.time ?? "—"}</span>
+          </li>
+        ))}
+      </ol>
+      {recap.fastest_lap && (
+        <p className="podium-aside__fastest">
+          Fastest lap: {recap.fastest_lap.driver_code ?? recap.fastest_lap.driver_name}
+          {recap.fastest_lap.fastest_lap_time ? ` · ${recap.fastest_lap.fastest_lap_time}` : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** #last-race section body — the full-width result tables: the race
+ *  classification, then qualifying + sprint under their own sub-heading.
+ *  The podium/fastest-lap recap lives in the section header's aside, so
+ *  the tables get the whole content column. These tables carry ~20 rows,
+ *  so each ships a 5 / 10 / All row-limit control (see DataTable) and
  *  defaults to the top 10. All from the same Jolpica data #next-race reads. */
 export function LastRace({
   recap,
@@ -43,28 +71,13 @@ export function LastRace({
         index={3}
         eyebrow="Last race"
         title={recap?.race_name ?? "Most recent race"}
-        description="The most recently completed race: podium and fastest lap at a glance, and the full finishing order for the tracked field — gaps to the leader, laps completed, and points scored."
+        description="Podium at a glance, then the full classification — qualifying and sprint included."
         meta={<p className="section-meta">{raceLabel}</p>}
+        aside={recap ? <PodiumAside recap={recap} /> : undefined}
       />
 
       {!recap && !recapLoading && (
         <p className="section-empty">No completed race found yet this season.</p>
-      )}
-
-      {/* First load: stand in for the compact recap card (the result tables
-          below render their own skeletons via ChartCard). */}
-      {!recap && recapLoading && (
-        <div className="last-race__recap" aria-hidden="true">
-          <Skeleton height={220} />
-        </div>
-      )}
-
-      {recap && (
-        <div className="last-race__recap">
-          <Reveal variant="wipe">
-            <PreviousRaceRecap recap={recap} />
-          </Reveal>
-        </div>
       )}
 
       <div className="last-race__results">

@@ -109,6 +109,25 @@ export interface WeekendSession {
   date_start: string; // ISO 8601 with UTC offset
 }
 
+export interface CircuitLapRecord {
+  time: string;
+  driver: string;
+  year: number;
+}
+
+/** Hand-curated per-circuit facts (backend/shared/circuit_facts.json),
+ *  joined onto the race-weekend payload by circuit_id. Every field is
+ *  optional — the Circuit card renders only what exists, and a circuit
+ *  missing from the file arrives as facts: null. */
+export interface CircuitFacts {
+  length_km?: number;
+  turns?: number;
+  laps?: number;
+  first_gp?: number;
+  lap_record?: CircuitLapRecord | null;
+  note?: string;
+}
+
 export interface CircuitInfo {
   circuit_id: string;
   name: string | null;
@@ -116,6 +135,7 @@ export interface CircuitInfo {
   country: string | null;
   lat: number;
   long: number;
+  facts: CircuitFacts | null;
 }
 
 export interface LastYearWinner {

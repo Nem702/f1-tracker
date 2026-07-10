@@ -1,7 +1,7 @@
 import type { RaceWeekend } from "../api/types";
 import { SectionHeading } from "./SectionHeading";
 import { RaceWeekendSchedule } from "./RaceWeekendSchedule";
-import { CircuitImage } from "./CircuitImage";
+import { CircuitCard } from "./CircuitCard";
 import { Countdown } from "./Countdown";
 import { Reveal } from "./Reveal";
 import { Skeleton } from "./Skeleton";
@@ -12,7 +12,7 @@ interface Props {
   error: string | null;
 }
 
-/** #next-race section body: round progress, circuit map (+ last-year
+/** #next-race section body: round progress, circuit fast facts (+ last-year
  *  winner), and the weekend session schedule for the upcoming race. Reads
  *  from the same /api/race-weekend payload App.tsx already fetches for
  *  #last-race's recap — one request serves both sections, no fetch of its
@@ -26,13 +26,31 @@ export function NextRace({ data, loading, error }: Props) {
         index={2}
         eyebrow="Next race"
         title={data?.race_name ?? "Up next on the calendar"}
-        description="Pulled straight off the season calendar — every practice, qualifying and race session converted to your local time, plus circuit context and a note on who won here last year."
+        description="Every session in your local time, plus circuit context and who won here last year."
         meta={
           data && (
             <p className="section-meta">
-              Round {data.round} of {data.total_rounds} ·{" "}
               {[data.circuit.locality, data.circuit.country].filter(Boolean).join(", ")}
             </p>
+          )
+        }
+        aside={
+          data && (
+            <div className="round-progress">
+              <p className="round-progress__label">
+                Round <strong>{data.round}</strong> of {data.total_rounds}
+              </p>
+              <div
+                className="round-progress__track"
+                role="img"
+                aria-label={`Season progress: round ${data.round} of ${data.total_rounds}`}
+              >
+                <div
+                  className="round-progress__fill"
+                  style={{ width: `${Math.round((data.round / data.total_rounds) * 100)}%` }}
+                />
+              </div>
+            </div>
           )
         }
       />
@@ -66,7 +84,7 @@ export function NextRace({ data, loading, error }: Props) {
             <RaceWeekendSchedule sessions={data.sessions} />
           </Reveal>
           <Reveal delay={0.08}>
-            <CircuitImage circuit={data.circuit} lastYearWinner={data.last_year_winner} />
+            <CircuitCard circuit={data.circuit} lastYearWinner={data.last_year_winner} />
           </Reveal>
         </div>
       )}
