@@ -38,14 +38,27 @@ from the repo root (that's where `venv/` and `.env` live), using
   - `db.py` — Postgres connection handling (credentials from `.env`).
   - `logger.py` — the one shared logger instance.
   - `next_race.py` — soonest upcoming session (used by `/api/next-race`).
+  - `jolpica_client.py` — transport layer for the [Jolpica F1
+    API](https://github.com/jolpica/jolpica-f1) (a free, unauthenticated,
+    Ergast-schema-compatible season/standings/results API), paced under its
+    published rate limit. Same job as `openf1_client.py`, for a different API.
+  - `jolpica_lookup.py` — season schedule + round lookups against Jolpica.
+  - `jolpica_results.py` — official race/qualifying result parsing.
+  - `race_weekend.py` — builds the aggregate race-weekend payload (next
+    race, weekend session times, last year's winner at that circuit, a
+    recap of the most recently completed race, top-5 standings) from
+    Jolpica, independent of OpenF1.
 - **`backend/tools/`** — local one-off DB utilities (untracked).
 - **`backend/schema.sql`** — table definitions.
-- **`frontend/`** — the Part 6 dashboard: a sidebar-shell layout (Overview /
-  Race Analysis / About, hash-synced, no router) built with Vite + React +
-  TypeScript. Recharts for the 2D charts, react-three-fiber for the 3D
-  lap-time hero, Framer Motion for transitions. A team switcher picks any
-  head-to-head pair across the four tracked teams; `theme.ts` retints the
-  whole page — charts included — to the selected pair's validated colors.
+- **`frontend/`** — the Part 6 dashboard: a scroll-spy navbar layout
+  (Overview / Race Weekend / Standings / Race Analysis / About, hash-synced,
+  no router) built with Vite + React + TypeScript. Recharts for the 2D
+  charts, react-three-fiber for the 3D lap-time hero, Framer Motion for
+  transitions. A team switcher picks any head-to-head pair across the four
+  tracked teams; `theme.ts` retints the whole page — charts included — to
+  the selected pair's validated colors. Race Weekend and Standings are
+  Jolpica-backed (schedule, circuit, standings, historical results); the
+  rest of the dashboard stays OpenF1-backed (lap times, telemetry).
 - **`dev.ps1`** — starts API + frontend, one terminal window each.
 
 ## Status
@@ -69,11 +82,14 @@ from the repo root (that's where `venv/` and `.env` live), using
       layer (`api/`) plus a React frontend (`frontend/`) with lap time
       trends, per-lap teammate delta, tire strategy, pit stops, track
       position, weather, and the race control feed. Since the initial build:
-      a full visual redesign (sidebar shell, "liquid glass" surfaces), a
-      4-team head-to-head pair switcher with validated per-team palettes,
-      and a performance pass (route-scoped code-splitting, gzip/cache
-      headers, a scroll-jank fix). Built and running locally; deploying it
-      (Vercel + Render) is the remaining step.
+      a full visual redesign (sidebar shell → scroll-spy navbar, "liquid
+      glass" surfaces), a 4-team head-to-head pair switcher with validated
+      per-team palettes, a performance pass (route-scoped code-splitting,
+      gzip/cache headers, a scroll-jank fix), and an app-wide Jolpica F1
+      integration adding Race Weekend (schedule, circuit, last-year winner,
+      recap) and Standings pages alongside the existing OpenF1-backed views.
+      Built and running locally; deploying it (Vercel + Render) is the
+      remaining step.
 
 This is a skill-building project, not a finished product.
 
@@ -252,6 +268,34 @@ use a solid, non-blurred fill (`card--solid`) instead of the shared `.glass` rec
 same border/shadow language, no `backdrop-filter` — while the sidebar and Overview keep
 the full frosted treatment.
 
+**Jolpica F1 (Ergast-schema) added alongside OpenF1, not instead of it.**
+OpenF1 has no concept of season schedules, standings, or historical
+results — it's a live/session-timing API. Race Weekend and Standings need
+exactly those concepts, so `race_weekend.py` calls the free
+[Jolpica F1 API](https://github.com/jolpica/jolpica-f1) directly, deliberately
+independent of `next_race.py`/OpenF1: it finds "the next race" itself by
+scanning the season schedule for the soonest date >= now, rather than
+depending on OpenF1 being reachable or trusting an undocumented Ergast
+round-selector keyword. Unlike OpenF1, an empty Jolpica result is a `200`
+with an empty array, never a `404` — so `jolpica_client.py` has no
+"no results" special case, only real transport/server errors.
+
+**Three different cache shapes for three different kinds of Jolpica data.**
+All three follow the same disk-persisted, never-5xx pattern as
+`/api/next-race`'s countdown cache, but the TTL differs by how often the
+underlying data can actually change: `/api/race-weekend` and `/api/standings`
+get a 6-hour TTL (schedule/circuit/standings move at most weekly);
+`/api/races/{session_key}/official-result` gets no TTL at all, because a
+finished race's result is immutable forever and re-fetching it on a timer
+would just be wasted requests against the rate limit.
+
+**Circuit card is an empty placeholder frame, not a map or image.**
+`CircuitImage.tsx` originally rendered a lat/long pin map; that was dropped
+in favor of a plain framed placeholder plus the circuit name/location and a
+"who won here last year" footnote. Simpler, doesn't depend on a mapping
+library or circuit imagery that Jolpica doesn't provide, and keeps the
+card's real job (circuit identity + last-year context) front and center.
+
 ## Known data quirks (not bugs)
 
 - **Empty result sets arrive as 404, and entire races can be missing.**
@@ -386,10 +430,12 @@ install on Windows occupying 5432.
 ## Stack
 
 - Python + `requests` — OpenF1 REST API client (`backend/shared/openf1_client.py`)
+- Python + `requests` — Jolpica F1 (Ergast-schema) API client (`backend/shared/jolpica_client.py`)
 - `psycopg2` + Postgres — persistence (`backend/pipeline/store.py`, `backend/schema.sql`)
 - Neon — managed Postgres, reachable by scheduled cloud runs (Part 5)
 - GitHub Actions — scheduling (Part 5)
-- FastAPI + uvicorn — read-only JSON API over the database (Part 6, `backend/api/`)
+- FastAPI + uvicorn — read-only JSON API over the database, plus live-cached
+  OpenF1/Jolpica passthrough endpoints (Part 6, `backend/api/`)
 - Vite + React + TypeScript — dashboard frontend (Part 6, `frontend/`)
 - Recharts (2D charts) · react-three-fiber/three.js (3D hero) · Framer Motion (transitions)
 
