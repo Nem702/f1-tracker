@@ -26,12 +26,14 @@ Run from the repo root:  py -m uvicorn backend.api.main:app --reload --reload-di
 import json
 import os
 import time
+from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, Depends, HTTPException, Response
+from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse
 from psycopg2.extras import RealDictCursor
 
 from backend.shared.db import get_connection
@@ -42,6 +44,76 @@ from backend.shared.next_race import get_next_session
 from backend.shared.race_weekend import get_race_weekend, get_standings
 
 app = FastAPI(title="f1-tracker API", version="0.1.0")
+
+# Per-client rate limiting: an in-process sliding window, no external
+# dependency — a single uvicorn process serves everything at this scale, so
+# process-local state is the whole truth. It protects two things: free-tier
+# Render/Neon capacity on the bulk endpoints, and the OpenF1/Jolpica
+# upstreams reached on the cache-miss paths (without a cap, a request flood
+# while a cache is cold turns this server into an amplifier against them).
+# The ceiling is deliberately generous: a page load fires ~12 API calls and
+# each race switch ~7 more, so a person flipping through races legitimately
+# spikes well past 60/min. 120/min only stops scripted hammering.
+_RATE_LIMIT_MAX_REQUESTS = 120
+_RATE_LIMIT_WINDOW_SECONDS = 60.0
+_RATE_SWEEP_EVERY = 1000
+_rate_buckets: dict[str, deque] = defaultdict(deque)  # client -> request timestamps (monotonic)
+_rate_sweep_countdown = _RATE_SWEEP_EVERY
+
+
+def _client_id(request: Request) -> str:
+    """Render terminates TLS at its proxy, so request.client holds the
+    proxy's address — the real caller is the first X-Forwarded-For hop. A
+    direct connection (local dev) has no such header. The leftmost entry is
+    client-controllable in principle, but spoofing it only rotates buckets,
+    which is no worse than the same flood from genuinely distinct IPs."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+# Registered before the CORS middleware below, which makes CORS the outer
+# layer — that ordering matters: a 429 produced here still passes through
+# CORSMiddleware on the way out, so the browser lets the frontend read the
+# status instead of surfacing an opaque CORS failure.
+@app.middleware("http")
+async def rate_limit(request: Request, call_next):
+    # /health is exempt so Render's health checker can never be locked out
+    # by (or counted toward) visitor traffic.
+    if request.url.path == "/health":
+        return await call_next(request)
+
+    global _rate_sweep_countdown
+    now = time.monotonic()
+    bucket = _rate_buckets[_client_id(request)]
+    while bucket and now - bucket[0] > _RATE_LIMIT_WINDOW_SECONDS:
+        bucket.popleft()
+    if len(bucket) >= _RATE_LIMIT_MAX_REQUESTS:
+        retry_after = max(1, round(_RATE_LIMIT_WINDOW_SECONDS - (now - bucket[0])))
+        logger.warning("rate limit exceeded by %s on %s", _client_id(request), request.url.path)
+        return JSONResponse(
+            {"detail": "Too many requests"},
+            status_code=429,
+            headers={"Retry-After": str(retry_after), "X-Content-Type-Options": "nosniff"},
+        )
+    bucket.append(now)
+
+    # Every _RATE_SWEEP_EVERY requests, drop clients idle for a full window
+    # so the bucket dict can't grow unbounded across weeks of uptime.
+    _rate_sweep_countdown -= 1
+    if _rate_sweep_countdown <= 0:
+        _rate_sweep_countdown = _RATE_SWEEP_EVERY
+        stale = [c for c, b in _rate_buckets.items() if not b or now - b[-1] > _RATE_LIMIT_WINDOW_SECONDS]
+        for c in stale:
+            del _rate_buckets[c]
+
+    response = await call_next(request)
+    # nosniff on every response: near-zero cost, and stops a browser from
+    # ever second-guessing the JSON content type.
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
 
 # The Vite dev server is always allowed; add the deployed frontend's origin
 # (e.g. the Vercel URL) via ALLOWED_ORIGINS, comma-separated, without a

@@ -6,14 +6,21 @@ on:
     - cron: "17 6 * * 4" # Thursday 06:17 UTC — redundancy; upserts make it a no-op
   workflow_dispatch: # manual runs from the Actions tab
 
+# The job never writes to the repo, so drop the GITHUB_TOKEN to read-only —
+# least privilege in case anything `pip install`ed here is ever compromised.
+permissions:
+  contents: read
+
 jobs:
   fetch:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      # Actions pinned to commit SHAs (tag comments alongside) so a moved or
+      # compromised tag can't swap the code this job runs with the DB secret.
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.14"
 
