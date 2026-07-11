@@ -167,6 +167,25 @@ export const NAV_PILL_LAYOUT_ID = "navbar-nav-active-pill";
 export const navPillTransition: Transition = { duration: duration.base, ease: EASE };
 
 /* ---------------------------------------------------------------------------
+ * Navbar drawer (collapsed nav, ≤ the nav breakpoint in breakpoints.ts):
+ * the panel slides in from the right while the scrim fades. Item rows inside
+ * cascade with staggerContainer + navItemEntrance — no drawer-specific item
+ * variant needed.
+ * ------------------------------------------------------------------------- */
+
+export const drawerPanel: Variants = {
+  hidden: { x: "100%" },
+  show: { x: 0, transition: { duration: duration.base, ease: EASE } },
+  exit: { x: "100%", transition: { duration: duration.fast, ease: EASE_EXIT } },
+};
+
+export const drawerBackdrop: Variants = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1, transition: { duration: duration.fast, ease: EASE } },
+  exit: { opacity: 0, transition: { duration: duration.fast, ease: EASE_EXIT } },
+};
+
+/* ---------------------------------------------------------------------------
  * Digit-roll transitions — see components/DigitRoll.tsx for the primitive
  * (used by the countdown, per-digit vertical roll, tabular numerals).
  * ------------------------------------------------------------------------- */

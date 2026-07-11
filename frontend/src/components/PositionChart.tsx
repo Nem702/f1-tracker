@@ -11,6 +11,7 @@ import {
 import type { PositionRow } from "../api/types";
 import type { DriverPair } from "../teams";
 import { useTheme } from "../hooks/useTheme";
+import { useIsPhone } from "../hooks/useMediaQuery";
 import { useDrawInOnce } from "../hooks/useDrawInOnce";
 import { fmtClock } from "../format";
 import { ChartCard } from "./ChartCard";
@@ -32,6 +33,8 @@ interface PosPoint {
 
 export function PositionChart({ positions, pair, loading, error }: Props) {
   const theme = useTheme();
+  // Phone tier: shorter plot, fewer x ticks.
+  const narrow = useIsPhone();
   const aNumber = pair?.[0].number ?? null;
   const bNumber = pair?.[1].number ?? null;
   const aName = pair?.[0].lastName ?? "Driver A";
@@ -120,15 +123,16 @@ export function PositionChart({ positions, pair, loading, error }: Props) {
         rows: pairRows as unknown as Record<string, unknown>[],
       }}
     >
-      <ResponsiveContainer width="100%" height={240}>
+      <ResponsiveContainer width="100%" height={narrow ? 200 : 240}>
         {/* extra headroom so the P1 tick label isn't clipped at the plot edge */}
-        <LineChart data={data} margin={{ top: 16, right: 16, bottom: 4, left: 8 }}>
+        <LineChart data={data} margin={{ top: 16, right: narrow ? 8 : 16, bottom: 4, left: 8 }}>
           <CartesianGrid stroke={theme.grid} strokeWidth={1} vertical={false} />
           <XAxis
             dataKey="t"
             type="number"
             domain={["dataMin", "dataMax"]}
             tickFormatter={(t: number) => `+${elapsedMin(t)}'`}
+            tickCount={narrow ? 6 : undefined}
             tickLine={false}
             axisLine={{ stroke: theme.axis }}
             tick={{ fill: theme.inkMuted, fontSize: 11 }}

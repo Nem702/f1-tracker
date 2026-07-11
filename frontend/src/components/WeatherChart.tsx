@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import type { WeatherRow } from "../api/types";
 import { useTheme } from "../hooks/useTheme";
+import { useIsPhone } from "../hooks/useMediaQuery";
 import { useDrawInOnce } from "../hooks/useDrawInOnce";
 import { fmtClock } from "../format";
 import { ChartCard, LegendList } from "./ChartCard";
@@ -33,6 +34,8 @@ interface WeatherPoint {
  *  categorical hues; track vs air temp are the same kind of thing). */
 export function WeatherChart({ weather, loading, error }: Props) {
   const theme = useTheme();
+  // Phone tier: shorter plot, fewer of the wide HH:MM x ticks.
+  const narrow = useIsPhone();
 
   const data: WeatherPoint[] = useMemo(
     () =>
@@ -99,14 +102,15 @@ export function WeatherChart({ weather, loading, error }: Props) {
         rows: weather as unknown as Record<string, unknown>[],
       }}
     >
-      <ResponsiveContainer width="100%" height={240}>
-        <LineChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 8 }}>
+      <ResponsiveContainer width="100%" height={narrow ? 200 : 240}>
+        <LineChart data={data} margin={{ top: 8, right: narrow ? 8 : 16, bottom: 4, left: 8 }}>
           <CartesianGrid stroke={theme.grid} strokeWidth={1} vertical={false} />
           <XAxis
             dataKey="t"
             type="number"
             domain={["dataMin", "dataMax"]}
             tickFormatter={(t: number) => fmtClock(new Date(t).toISOString())}
+            tickCount={narrow ? 4 : undefined}
             tickLine={false}
             axisLine={{ stroke: theme.axis }}
             tick={{ fill: theme.inkMuted, fontSize: 11 }}

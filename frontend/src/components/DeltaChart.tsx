@@ -2,6 +2,7 @@ import { Bar, BarChart, Cell, CartesianGrid, ReferenceLine, ResponsiveContainer,
 import type { DriverPair } from "../teams";
 import type { PairDelta } from "../lib/delta";
 import { useTheme } from "../hooks/useTheme";
+import { useIsPhone } from "../hooks/useMediaQuery";
 import { useDrawInOnce } from "../hooks/useDrawInOnce";
 import { fmtDelta, fmtLapTime } from "../format";
 import { ChartCard } from "./ChartCard";
@@ -25,6 +26,8 @@ interface Props {
  */
 export function DeltaChart({ rows, pair, loading, error }: Props) {
   const theme = useTheme();
+  // Phone tier: shorter plot, narrower y-axis gutter, fewer x ticks.
+  const narrow = useIsPhone();
   const drawIn = useDrawInOnce(rows.length > 0);
   const aName = pair?.[0].lastName ?? "Driver A";
   const bName = pair?.[1].lastName ?? "Driver B";
@@ -87,10 +90,10 @@ export function DeltaChart({ rows, pair, loading, error }: Props) {
         rows: rows as unknown as Record<string, unknown>[],
       }}
     >
-      <ResponsiveContainer width="100%" height={260}>
+      <ResponsiveContainer width="100%" height={narrow ? 210 : 260}>
         <BarChart
           data={rows}
-          margin={{ top: 8, right: 16, bottom: 4, left: 8 }}
+          margin={{ top: 8, right: narrow ? 8 : 16, bottom: 4, left: 8 }}
           barCategoryGap="20%"
         >
           <CartesianGrid stroke={theme.grid} strokeWidth={1} vertical={false} />
@@ -99,6 +102,7 @@ export function DeltaChart({ rows, pair, loading, error }: Props) {
             type="number"
             domain={[1, "dataMax"]}
             allowDecimals={false}
+            tickCount={narrow ? 6 : undefined}
             tickLine={false}
             axisLine={false}
             tick={{ fill: theme.inkMuted, fontSize: 11 }}
@@ -110,7 +114,7 @@ export function DeltaChart({ rows, pair, loading, error }: Props) {
             tickLine={false}
             axisLine={false}
             tick={{ fill: theme.inkMuted, fontSize: 11 }}
-            width={52}
+            width={narrow ? 40 : 52}
           />
           <Tooltip content={renderTooltip} cursor={{ fill: theme.grid, fillOpacity: 0.4 }} />
           <ReferenceLine y={0} stroke={theme.axis} strokeWidth={1} />

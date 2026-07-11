@@ -11,6 +11,7 @@ import {
 import type { Lap } from "../api/types";
 import type { DriverPair } from "../teams";
 import { useTheme } from "../hooks/useTheme";
+import { useIsPhone } from "../hooks/useMediaQuery";
 import { useDrawInOnce } from "../hooks/useDrawInOnce";
 import { fmtLapTime } from "../format";
 import { ChartCard } from "./ChartCard";
@@ -67,6 +68,10 @@ function mergeLaps(
 
 export function LapTimeChart({ laps, pair, loading, error }: Props) {
   const theme = useTheme();
+  // Phone tier: shorter plot, compact margins/axis, fewer ticks — and no
+  // in-plot acronym end-labels (the header PairLegend already names the two
+  // lines; the wide right margin exists solely for those labels).
+  const narrow = useIsPhone();
   const aNumber = pair?.[0].number ?? null;
   const bNumber = pair?.[1].number ?? null;
   const merged = useMemo(
@@ -214,14 +219,15 @@ export function LapTimeChart({ laps, pair, loading, error }: Props) {
         rows: merged as unknown as Record<string, unknown>[],
       }}
     >
-      <ResponsiveContainer width="100%" height={300}>
-        <LineChart data={data} margin={{ top: 8, right: 46, bottom: 4, left: 8 }}>
+      <ResponsiveContainer width="100%" height={narrow ? 240 : 300}>
+        <LineChart data={data} margin={{ top: 8, right: narrow ? 12 : 46, bottom: 4, left: 8 }}>
           <CartesianGrid stroke={theme.grid} strokeWidth={1} vertical={false} />
           <XAxis
             dataKey="lap"
             type="number"
             domain={[1, "dataMax"]}
             allowDecimals={false}
+            tickCount={narrow ? 6 : undefined}
             tickLine={false}
             axisLine={{ stroke: theme.axis }}
             tick={{ fill: theme.inkMuted, fontSize: 11 }}
@@ -232,7 +238,7 @@ export function LapTimeChart({ laps, pair, loading, error }: Props) {
             tickLine={false}
             axisLine={false}
             tick={{ fill: theme.inkMuted, fontSize: 11 }}
-            width={44}
+            width={narrow ? 38 : 44}
           />
           <Tooltip
             content={renderTooltip}
@@ -247,7 +253,7 @@ export function LapTimeChart({ laps, pair, loading, error }: Props) {
             connectNulls={false}
             dot={pitDot("a", theme.driver1)}
             activeDot={{ r: 4, stroke: theme.surface, strokeWidth: 2 }}
-            label={endLabel("a", pair?.[0].acronym ?? "")}
+            label={narrow ? undefined : endLabel("a", pair?.[0].acronym ?? "")}
             {...drawIn}
           />
           <Line
@@ -259,7 +265,7 @@ export function LapTimeChart({ laps, pair, loading, error }: Props) {
             connectNulls={false}
             dot={pitDot("b", theme.driver2)}
             activeDot={{ r: 4, stroke: theme.surface, strokeWidth: 2 }}
-            label={endLabel("b", pair?.[1].acronym ?? "")}
+            label={narrow ? undefined : endLabel("b", pair?.[1].acronym ?? "")}
             {...drawIn}
           />
         </LineChart>

@@ -37,8 +37,10 @@ export function OfficialResult({ title, subtitle, rows, loading, error, emptyTex
           </>
         ),
       },
-      { key: "constructor_name", label: "Team" },
-      { key: "grid", label: "Grid", align: "right" },
+      /* Phone drops: the TeamDot beside the driver keeps team identity, and
+         Grid is the lowest-value number here next to Result/Pts. */
+      { key: "constructor_name", label: "Team", hideOnPhone: true },
+      { key: "grid", label: "Grid", align: "right", hideOnPhone: true },
       {
         key: "time",
         label: "Result",

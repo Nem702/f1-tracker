@@ -13,6 +13,7 @@ import {
 import type { PitStop } from "../api/types";
 import type { DriverPair } from "../teams";
 import { useTheme } from "../hooks/useTheme";
+import { useIsPhone } from "../hooks/useMediaQuery";
 import { useDrawInOnce } from "../hooks/useDrawInOnce";
 import { fmtSeconds } from "../format";
 import { ChartCard } from "./ChartCard";
@@ -37,6 +38,9 @@ interface StopRow {
 /** Total pit-lane time per stop (entry to exit), both drivers on one lap axis. */
 export function PitStopChart({ pit, pair, loading, error }: Props) {
   const theme = useTheme();
+  // Phone tier: shorter plot, slimmer bars, and lap-only ticks ("L48", not
+  // "ACR · L48") — the bar's color + header legend already say who.
+  const narrow = useIsPhone();
   const aNumber = pair?.[0].number ?? null;
   const bNumber = pair?.[1].number ?? null;
 
@@ -125,8 +129,8 @@ export function PitStopChart({ pit, pair, loading, error }: Props) {
         rows: allStops as unknown as Record<string, unknown>[],
       }}
     >
-      <ResponsiveContainer width="100%" height={240}>
-        <BarChart data={stops} margin={{ top: 20, right: 16, bottom: 4, left: 8 }}>
+      <ResponsiveContainer width="100%" height={narrow ? 210 : 240}>
+        <BarChart data={stops} margin={{ top: 20, right: narrow ? 8 : 16, bottom: 4, left: 8 }}>
           <CartesianGrid stroke={theme.grid} strokeWidth={1} vertical={false} />
           <XAxis
             dataKey="key"
@@ -134,7 +138,8 @@ export function PitStopChart({ pit, pair, loading, error }: Props) {
             // print two identical "Lap 48" ticks.
             tickFormatter={(_: string, i: number) => {
               const s = stops[i];
-              return s ? `${acronym(s.driverNumber)} · L${s.lap}` : "";
+              if (!s) return "";
+              return narrow ? `L${s.lap}` : `${acronym(s.driverNumber)} · L${s.lap}`;
             }}
             tickLine={false}
             axisLine={{ stroke: theme.axis }}
@@ -150,7 +155,7 @@ export function PitStopChart({ pit, pair, loading, error }: Props) {
           <Tooltip content={renderTooltip} cursor={{ fill: theme.grid, fillOpacity: 0.4 }} />
           <Bar
             dataKey="duration"
-            barSize={22}
+            barSize={narrow ? 16 : 22}
             radius={[4, 4, 0, 0]}
             {...drawIn}
           >
@@ -159,7 +164,7 @@ export function PitStopChart({ pit, pair, loading, error }: Props) {
               dataKey="duration"
               position="top"
               formatter={(v) => fmtSeconds(typeof v === "number" ? v : null)}
-              style={{ fill: theme.inkSecondary, fontSize: 11 }}
+              style={{ fill: theme.inkSecondary, fontSize: narrow ? 10 : 11 }}
             />
             {stops.map((row) => (
               <Cell key={row.key} fill={color(row.driverNumber)} />
