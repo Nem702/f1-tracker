@@ -83,8 +83,10 @@
 }
 
 .countdown__sep {
-  padding-bottom: 0.9rem;
-  font-size: 1.5rem;
+  /* em, not rem, so the colon tracks the fluid digit size (0.9rem at the
+     old fixed 1.5rem ≈ 0.6em). */
+  padding-bottom: 0.6em;
+  font-size: clamp(1.1rem, 3.5vw, 1.5rem);
   font-weight: 600;
   opacity: 0.4;
 }
@@ -102,9 +104,11 @@
 .countdown__digits {
   display: flex;
   gap: 0.1rem;
-  font-size: 1.75rem;
+  font-size: var(--fs-countdown-digit);
   font-weight: 700;
-  line-height: 1.9rem;
+  /* em, not rem: DigitRoll animates in em and frames digits at 1ch, so the
+     roll geometry scales with the fluid font-size instead of clipping. */
+  line-height: 1.1em;
 }
 
 .countdown__unit-label {
@@ -119,4 +123,17 @@
   margin: var(--space-4) 0 0;
   font-size: 0.8rem;
   opacity: 0.6;
+}
+
+/* Phone tier (640, see index.css's breakpoint contract): tighter card
+   padding and clock gaps — the digits themselves already shrink via
+   --fs-countdown-digit. */
+@media (max-width: 640px) {
+  .countdown {
+    padding: var(--space-4) var(--space-5);
+  }
+
+  .countdown__clock {
+    gap: var(--space-2);
+  }
 }

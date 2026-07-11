@@ -48,7 +48,8 @@ export function Standings() {
           </>
         ),
       },
-      { key: "team_name", label: "Team" },
+      /* Phone drop: the TeamDot beside the driver keeps team identity. */
+      { key: "team_name", label: "Team", hideOnPhone: true },
       { key: "points", label: "Points", align: "right" },
       { key: "gap", label: "Gap", align: "right", render: gapCell },
     ],

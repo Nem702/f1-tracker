@@ -1,6 +1,8 @@
-import type { MouseEvent, ReactElement } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useRef, useState, type MouseEvent, type ReactElement } from "react";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import { setMode, useMode } from "../hooks/useTheme";
+import { useIsNavCollapsed } from "../hooks/useMediaQuery";
 import type { Mode } from "../theme";
 import { type SectionId } from "../viewState";
 import {
@@ -10,6 +12,10 @@ import {
   navItemEntrance,
   scaleIn,
   homeCascade,
+  staggerContainer,
+  stagger,
+  drawerPanel,
+  drawerBackdrop,
 } from "../motion";
 
 const navItems: { id: SectionId; label: string; icon: (props: { active: boolean }) => ReactElement }[] = [
@@ -151,6 +157,22 @@ function MoonIcon() {
   );
 }
 
+function MenuIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 interface Props {
   /** The section currently most in view (see hooks/useScrollSpy.ts) —
    *  drives which nav item wears the active pill. Not the same thing as
@@ -164,17 +186,89 @@ interface Props {
  *  every other surface in the app. The page is one continuous scroll —
  *  nav items scroll-into-view instead of swapping mounted content, and the
  *  active item comes from scroll position (useScrollSpy), not a router.
- *  The nav list scrolls horizontally if it doesn't fit (same pattern as
- *  TeamSwitcher's chip row) rather than wrapping to a second line or
- *  needing a hamburger menu. */
+ *
+ *  At and below the nav breakpoint (breakpoints.ts) the inline row is
+ *  swapped for a hamburger + right-side drawer. Swapped, not CSS-hidden:
+ *  a hidden row would still mount a second NAV_PILL_LAYOUT_ID element
+ *  (framer-motion shared layout must be unique) and leave phantom tab
+ *  stops. The drawer portals into .app-shell because the navbar's
+ *  backdrop-filter creates a containing block that would trap
+ *  position:fixed descendants inside the bar — and the theme's CSS vars
+ *  live on .app-shell, so document.body won't do. */
 export function Navbar({ active }: Props) {
   const mode = useMode();
   const nextMode: Mode = mode === "dark" ? "light" : "dark";
+  const collapsed = useIsNavCollapsed();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [drawerHost, setDrawerHost] = useState<Element | null>(null);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setDrawerHost(document.querySelector(".app-shell"));
+  }, []);
+
+  // Growing past the breakpoint while the drawer is open would strand an
+  // orphaned overlay (its hamburger is gone) — close it.
+  useEffect(() => {
+    if (!collapsed) setMenuOpen(false);
+  }, [collapsed]);
+
+  // Dialog behavior while open: focus moves in, Tab wraps, Escape closes,
+  // page scroll locks. Cleanup restores scroll and hands focus back.
+  useEffect(() => {
+    if (!menuOpen) return;
+    // Captured at open time: if the viewport grows past the breakpoint the
+    // hamburger unmounts and focusing the detached node is a no-op.
+    const menuBtn = menuBtnRef.current;
+    const focusables = () =>
+      Array.from(
+        drawerRef.current?.querySelectorAll<HTMLElement>("a[href], button:not([disabled])") ?? [],
+      );
+    focusables()[0]?.focus();
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const list = focusables();
+      if (list.length === 0) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = prevOverflow;
+      menuBtn?.focus();
+    };
+  }, [menuOpen]);
 
   const onNavClick = (e: MouseEvent<HTMLAnchorElement>, id: SectionId) => {
     e.preventDefault();
     scrollToSection(id);
+    setMenuOpen(false);
   };
+
+  const themeToggleContent = (
+    <>
+      {mode === "dark" ? <SunIcon /> : <MoonIcon />}
+      <span className="navbar__nav-label">{mode === "dark" ? "Light" : "Dark"}</span>
+    </>
+  );
 
   return (
     <motion.header
@@ -197,48 +291,135 @@ export function Navbar({ active }: Props) {
         <span className="navbar__brand-word">F1 Tracker</span>
       </a>
 
-      <nav className="navbar__nav" aria-label="Primary">
-        {navItems.map(({ id, label, icon: Icon }, i) => {
-          const isActive = active === id;
-          return (
-            <motion.a
-              key={id}
-              href={`#${id}`}
-              className={`navbar__nav-item${isActive ? " navbar__nav-item--active" : ""}`}
-              aria-current={isActive ? "page" : undefined}
-              onClick={(e) => onNavClick(e, id)}
-              variants={navItemEntrance}
-              custom={homeCascade.nav[i]}
-            >
-              {isActive && (
-                <motion.div
-                  layoutId={NAV_PILL_LAYOUT_ID}
-                  className="navbar__nav-pill"
-                  transition={navPillTransition}
-                />
-              )}
-              <span className="navbar__nav-icon">
-                <Icon active={isActive} />
-              </span>
-              <span className="navbar__nav-label">{label}</span>
-            </motion.a>
-          );
-        })}
-      </nav>
+      {!collapsed && (
+        <>
+          <nav className="navbar__nav" aria-label="Primary">
+            {navItems.map(({ id, label, icon: Icon }, i) => {
+              const isActive = active === id;
+              return (
+                <motion.a
+                  key={id}
+                  href={`#${id}`}
+                  className={`navbar__nav-item${isActive ? " navbar__nav-item--active" : ""}`}
+                  aria-current={isActive ? "page" : undefined}
+                  onClick={(e) => onNavClick(e, id)}
+                  variants={navItemEntrance}
+                  custom={homeCascade.nav[i]}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId={NAV_PILL_LAYOUT_ID}
+                      className="navbar__nav-pill"
+                      transition={navPillTransition}
+                    />
+                  )}
+                  <span className="navbar__nav-icon">
+                    <Icon active={isActive} />
+                  </span>
+                  <span className="navbar__nav-label">{label}</span>
+                </motion.a>
+              );
+            })}
+          </nav>
 
-      <motion.button
-        type="button"
-        className="navbar__theme-toggle"
-        aria-label={`Switch to ${nextMode} mode`}
-        onClick={() => setMode(nextMode)}
-        variants={navItemEntrance}
-        custom={homeCascade.themeToggle}
-      >
-        {mode === "dark" ? <SunIcon /> : <MoonIcon />}
-        <span className="navbar__nav-label">
-          {mode === "dark" ? "Light" : "Dark"}
-        </span>
-      </motion.button>
+          <motion.button
+            type="button"
+            className="navbar__theme-toggle"
+            aria-label={`Switch to ${nextMode} mode`}
+            onClick={() => setMode(nextMode)}
+            variants={navItemEntrance}
+            custom={homeCascade.themeToggle}
+          >
+            {themeToggleContent}
+          </motion.button>
+        </>
+      )}
+
+      {collapsed && (
+        <motion.button
+          ref={menuBtnRef}
+          type="button"
+          className="navbar__menu-btn"
+          aria-expanded={menuOpen}
+          aria-controls="navbar-drawer"
+          aria-label={menuOpen ? "Close navigation" : "Open navigation"}
+          onClick={() => setMenuOpen((open) => !open)}
+          variants={navItemEntrance}
+          custom={homeCascade.themeToggle}
+        >
+          {menuOpen ? <CloseIcon /> : <MenuIcon />}
+        </motion.button>
+      )}
+
+      {drawerHost &&
+        createPortal(
+          <AnimatePresence>
+            {collapsed && menuOpen && (
+              <>
+                <motion.div
+                  className="navbar-drawer__backdrop"
+                  variants={drawerBackdrop}
+                  initial="hidden"
+                  animate="show"
+                  exit="exit"
+                  onClick={() => setMenuOpen(false)}
+                />
+                <motion.div
+                  ref={drawerRef}
+                  id="navbar-drawer"
+                  className="navbar-drawer"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Navigation"
+                  variants={drawerPanel}
+                  initial="hidden"
+                  animate="show"
+                  exit="exit"
+                >
+                  <motion.nav
+                    className="navbar-drawer__nav"
+                    aria-label="Primary"
+                    variants={staggerContainer(stagger.tight)}
+                  >
+                    {navItems.map(({ id, label, icon: Icon }) => {
+                      const isActive = active === id;
+                      return (
+                        <motion.a
+                          key={id}
+                          href={`#${id}`}
+                          className={`navbar__nav-item navbar__nav-item--drawer${isActive ? " navbar__nav-item--active" : ""}`}
+                          aria-current={isActive ? "page" : undefined}
+                          onClick={(e) => onNavClick(e, id)}
+                          variants={navItemEntrance}
+                        >
+                          {/* Plain pill, no layoutId: the morph is invisible
+                              inside a transient drawer, and the shared id
+                              must stay unique to the desktop row. */}
+                          {isActive && <div className="navbar__nav-pill" />}
+                          <span className="navbar__nav-icon">
+                            <Icon active={isActive} />
+                          </span>
+                          <span className="navbar__nav-label">{label}</span>
+                        </motion.a>
+                      );
+                    })}
+                  </motion.nav>
+
+                  <motion.button
+                    type="button"
+                    className="navbar__theme-toggle navbar__theme-toggle--drawer"
+                    aria-label={`Switch to ${nextMode} mode`}
+                    onClick={() => setMode(nextMode)}
+                    variants={navItemEntrance}
+                  >
+                    {themeToggleContent}
+                  </motion.button>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>,
+          drawerHost,
+        )}
     </motion.header>
   );
 }

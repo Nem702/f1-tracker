@@ -6,6 +6,7 @@ import { TeamSwitcher } from "./TeamSwitcher";
 import { RaceSelector } from "./RaceSelector";
 import { RotatingWord } from "./RotatingWord";
 import { entrance, homeCascade, staggerContainer, stagger } from "../motion";
+import { useIsPhone } from "../hooks/useMediaQuery";
 
 // three.js/r3f/drei is only ever needed for this one section — lazy-loading
 // keeps it out of the initial bundle otherwise. Stays mounted near the top
@@ -37,6 +38,11 @@ interface Props {
  *  selected-race insight card and stat tiles stay in #telemetry, the
  *  section that actually drives those numbers. */
 export function Hero({ laps, pair, rosters, onSelectPair, races, selected, onSelectRace }: Props) {
+  // On phones the WebGL stage never mounts — and because the lazy import
+  // lives inside the conditional, the three.js/r3f/drei chunk is never even
+  // downloaded. The hero degrades to intro + pickers, centered in the same
+  // near-viewport min-height (see .hero-section's phone query).
+  const isPhone = useIsPhone();
   return (
     <>
       <motion.div
@@ -54,11 +60,13 @@ export function Hero({ laps, pair, rosters, onSelectPair, races, selected, onSel
         </motion.p>
       </motion.div>
 
-      <div className="hero-stage">
-        <Suspense fallback={null}>
-          <Hero3D laps={laps} pair={pair} />
-        </Suspense>
-      </div>
+      {!isPhone && (
+        <div className="hero-stage">
+          <Suspense fallback={null}>
+            <Hero3D laps={laps} pair={pair} />
+          </Suspense>
+        </div>
+      )}
 
       <div className="hero-body">
         <motion.div

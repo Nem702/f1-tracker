@@ -26,9 +26,13 @@ export function QualifyingResult({ rows, loading, error }: Props) {
           </>
         ),
       },
-      { key: "constructor_name", label: "Team" },
+      /* Phone drops: TeamDot keeps team identity, and Q2 is the session
+         whose absence hurts least — every driver has a Q1 time and the top
+         ten a Q3, so no row goes time-less (dropping Q1 instead would leave
+         P16-20 showing only dashes). */
+      { key: "constructor_name", label: "Team", hideOnPhone: true },
       { key: "q1", label: "Q1", align: "right" },
-      { key: "q2", label: "Q2", align: "right" },
+      { key: "q2", label: "Q2", align: "right", hideOnPhone: true },
       { key: "q3", label: "Q3", align: "right" },
     ],
     rows: rows as unknown as Record<string, unknown>[],

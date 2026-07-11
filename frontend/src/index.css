@@ -16,11 +16,24 @@
 :root {
   color-scheme: light dark;
 
+  /* ---- breakpoints (single source of truth, mirrored in breakpoints.ts) ----
+     Media queries can't read custom properties, so these live as a contract:
+     every @media in this app uses one of these three numbers.
+       phone  640px — phone tier: column drops, chart simplification, no Hero3D
+       nav    840px — navbar drawer replaces the inline row; .view__header collapse
+       tablet 900px — the long-standing main collapse tier (grids → 1 col)
+     Keep breakpoints.ts in sync when changing any of them. */
+
   /* ---- type scale ---- */
   --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
   --fs-display: clamp(2rem, 1.35rem + 2.6vw, 3.25rem); /* view/page titles */
   --fs-heading: clamp(1.35rem, 1.15rem + 0.8vw, 1.85rem); /* hero banner headline */
   --fs-card-title: 0.95rem;
+  /* Fluid component sizes — each clamp resolves to its old fixed value at
+     desktop widths, so nothing changes above the tablet tier. */
+  --fs-stat-value: clamp(1.3rem, 0.9rem + 1.8vw, 1.7rem); /* stat-tile numbers */
+  --fs-countdown-digit: clamp(1.15rem, 4.5vw + 0.2rem, 1.75rem);
+  --fs-fact-value: clamp(1.1rem, 0.8rem + 1.4vw, 1.4rem); /* circuit-card facts */
   --weight-display: 560; /* oversized but light-weight, per the references */
   --weight-heading: 650;
   --weight-body: 400;
@@ -65,6 +78,12 @@
 @media (max-width: 900px) {
   :root {
     --content-pad-x: 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --content-pad-x: 16px;
   }
 }
 
@@ -204,6 +223,30 @@ body {
 .aurora__blob--c {
   background: color-mix(in srgb, var(--driver2) var(--aurora-tint), white);
   opacity: var(--aurora-c);
+}
+
+/* Phone tier: same three-blob composition (the tri-color wash is the theme
+   identity) at ~1/3 the pixel area — three 920px masked layers is a lot of
+   compositor memory for a 375px screen. Offsets pull in proportionally so
+   each blob still washes its corner. */
+@media (max-width: 640px) {
+  .aurora__blob {
+    width: 560px;
+    height: 560px;
+  }
+
+  .aurora__blob-wrap--a {
+    top: -190px;
+    left: -160px;
+  }
+
+  .aurora__blob-wrap--b {
+    right: -210px;
+  }
+
+  .aurora__blob-wrap--c {
+    bottom: -220px;
+  }
 }
 
 /* ---------- app shell: navbar + content ---------- */
@@ -359,6 +402,83 @@ body {
   border-color: var(--ink-muted);
 }
 
+/* Hamburger — replaces the inline nav + theme toggle at the nav breakpoint
+   (Navbar.tsx swaps them; nothing here is display:none'd). Same pill recipe
+   as the theme toggle, squared down to just the icon. */
+.navbar__menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 9px 11px;
+  color: var(--ink-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.navbar__menu-btn:hover {
+  color: var(--ink-primary);
+  border-color: var(--ink-muted);
+}
+
+/* ---------- navbar drawer (collapsed nav) ---------- */
+/* Portaled to .app-shell (see Navbar.tsx): the navbar's backdrop-filter is
+   a containing block that would trap position:fixed descendants inside the
+   bar, and the theme vars live on .app-shell so body won't do. A transient
+   top-level overlay — the sanctioned category for a frosted surface (never
+   scrolled-over cards). Like .glass-select__popup it floats over arbitrary
+   content, so it wears the same near-solid --glass-menu fill + stronger
+   blur rather than the bare .glass recipe. */
+
+.navbar-drawer__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  background: color-mix(in srgb, var(--page-base) 45%, transparent);
+}
+
+.navbar-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 7;
+  display: flex;
+  flex-direction: column;
+  width: min(320px, 85vw);
+  padding: var(--space-6) var(--space-4) var(--space-5);
+  background: var(--glass-menu);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(24px) saturate(160%);
+  border-left: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-raised);
+}
+
+.navbar-drawer__nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* Drawer rows: same item recipe, grown to full-width 44px touch targets. */
+.navbar__nav-item--drawer {
+  width: 100%;
+  padding: 12px var(--space-4);
+  font-size: 14px;
+}
+
+.navbar__theme-toggle--drawer {
+  justify-content: center;
+  margin-top: auto;
+  padding: 12px var(--space-4);
+}
+
 /* Below 640px, the brand wordmark drops to just the mark — the nav list
    and theme toggle already handle narrow widths on their own (scroll,
    icon+label at a smaller gap), this just buys the nav row more room. */
@@ -482,6 +602,18 @@ body {
   padding-bottom: var(--space-6);
 }
 
+/* Phone tier: Hero.tsx never mounts the WebGL stage here, so instead of
+   top-aligned content with a dead void where .hero-stage used to stretch,
+   the intro + pickers center vertically in the same near-viewport
+   min-height — the hero still owns the first screen and #next-race starts
+   below the fold. */
+@media (max-width: 640px) {
+  .hero-section {
+    justify-content: center;
+    gap: var(--space-6);
+  }
+}
+
 .hero-intro {
   flex: 0 0 auto;
   text-align: center;
@@ -555,6 +687,14 @@ body {
    as one column roughly as wide as the chart above, not edge to edge. */
 .hero-body {
   flex: 0 0 auto;
+  /* Explicit width, not just auto margins: as a flex item, `margin: 0 auto`
+     cancels the default cross-axis stretch and drops the box to fit-content
+     sizing — the chip row's intrinsic width (wider than a phone) then
+     inflates the whole body past the viewport, because the switcher's
+     percentage max-width can never resolve against an intrinsically-sized
+     ancestor. width: 100% restores the constraint chain that lets the
+     chips actually scroll. */
+  width: 100%;
   max-width: 1100px;
   margin: 0 auto;
   display: flex;
@@ -565,6 +705,12 @@ body {
 
 /* Centers the team switcher under the hero. */
 .hero-body__selectors {
+  /* Same explicit-width story as .hero-body above: the parent's
+     align-items: center would size this to its intrinsic width (the full
+     unscrolled chip row), overflowing phones. A definite 100% lets the
+     switcher's max-width resolve so the chip row scrolls; desktop looks
+     identical because justify-content already centers the content. */
+  width: 100%;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
@@ -629,6 +775,17 @@ body {
 
 .team-switcher__chips::-webkit-scrollbar {
   display: none;
+}
+
+/* Phone tier: wrap into two centered rows instead of horizontal scroll —
+   a chip row that scrolls sideways has no affordance on a phone and reads
+   as "only three teams". Wrap wins over the overflow-x above (nothing left
+   to scroll). */
+@media (max-width: 640px) {
+  .team-switcher__chips {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
 }
 
 .team-chip {
@@ -811,6 +968,15 @@ body {
   border-radius: var(--radius-tile);
 }
 
+/* Phone tier: the row stays 2x2 (1-col would make the section needlessly
+   tall) — the value scales via --fs-stat-value, the chrome tightens. */
+@media (max-width: 640px) {
+  .stat-tile {
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+}
+
 .stat-tile__icon {
   display: inline-flex;
   align-items: center;
@@ -825,7 +991,7 @@ body {
 
 .stat-tile__value {
   margin: 0;
-  font-size: 1.7rem;
+  font-size: var(--fs-stat-value);
   font-weight: var(--weight-emphasis);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
@@ -953,6 +1119,15 @@ body {
   padding-top: var(--space-8);
   padding-bottom: var(--space-8);
   scroll-margin-top: var(--navbar-clearance);
+}
+
+/* Phone tier: a step down in rhythm — 128px of band air reads as empty
+   scrolling on a phone. */
+@media (max-width: 640px) {
+  .page-section {
+    padding-top: var(--space-7);
+    padding-bottom: var(--space-7);
+  }
 }
 
 /* Full-bleed section band: a 100vw pseudo-element centered on the section
@@ -1290,6 +1465,13 @@ body {
   border-radius: var(--radius-plate);
   padding: 10px;
   transition: var(--tint-transition);
+}
+
+/* Phone tier: every plate pixel is plot width at 375px. */
+@media (max-width: 640px) {
+  .card__plate {
+    padding: 6px;
+  }
 }
 
 .card__state {
@@ -1637,6 +1819,19 @@ body {
   color: var(--ink-secondary);
 }
 
+/* Phone tier: time + tag share the first line, the message wraps onto its
+   own — three baseline-aligned columns don't fit 375px. */
+@media (max-width: 640px) {
+  .rc-feed__item {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .rc-feed__message {
+    flex-basis: 100%;
+  }
+}
+
 /* ---------- footer ---------- */
 
 .footer {
@@ -1649,6 +1844,7 @@ body {
 
 .footer__social {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-bottom: var(--space-4);
 }
@@ -1870,7 +2066,9 @@ body {
    the old .previous-race-recap card (same row anatomy, no card chrome
    beyond a small glass tile; race name/date live in the header text). */
 .podium-aside {
-  min-width: 240px;
+  /* min() so the floor yields on viewports narrower than the floor itself
+     (same for .round-progress / .leaders-aside). */
+  min-width: min(240px, 100%);
   padding: var(--space-4) var(--space-5);
   border-radius: var(--radius-tile);
 }
@@ -1923,7 +2121,7 @@ body {
 
 /* Season-progress payload in #next-race's header aside. */
 .round-progress {
-  min-width: 220px;
+  min-width: min(220px, 100%);
 }
 
 .round-progress__label {
@@ -1952,7 +2150,7 @@ body {
 
 /* Championship-leaders payload in #season-standings' header aside. */
 .leaders-aside {
-  min-width: 260px;
+  min-width: min(260px, 100%);
   padding: var(--space-4) var(--space-5);
   border-radius: var(--radius-tile);
   display: flex;

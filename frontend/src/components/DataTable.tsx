@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useIsPhone } from "../hooks/useMediaQuery";
 
 export interface TableColumn {
   key: string;
@@ -10,6 +11,11 @@ export interface TableColumn {
   /** Custom cell over the whole row (e.g. a team dot beside a name).
    *  Wins over `format`; a null/undefined return still shows the em dash. */
   render?: (row: Record<string, unknown>) => ReactNode;
+  /** Drop this column entirely on the phone tier (≤640px, breakpoints.ts) —
+   *  for the wide standalone tables that can't fit 5-6 columns at 375px.
+   *  A real drop, not visual hiding: the DOM table stays consistent for
+   *  screen readers. Never set on a chart's accessible-twin columns. */
+  hideOnPhone?: boolean;
 }
 
 export interface TableSpec {
@@ -47,6 +53,8 @@ interface Props {
  *  sprint results) opt into a row-limit control via `limits`. */
 export function DataTable({ spec, limits, defaultLimit, fitContent }: Props) {
   const [limit, setLimit] = useState<RowLimit>(defaultLimit ?? limits?.[0] ?? "all");
+  const isPhone = useIsPhone();
+  const columns = isPhone ? spec.columns.filter((col) => !col.hideOnPhone) : spec.columns;
 
   // Only worth a control if the shortest limit would actually hide rows.
   const smallest = limits?.reduce<number | null>(
@@ -63,7 +71,7 @@ export function DataTable({ spec, limits, defaultLimit, fitContent }: Props) {
       <table className="data-table">
         <thead>
           <tr>
-            {spec.columns.map((col) => (
+            {columns.map((col) => (
               <th
                 key={col.key}
                 scope="col"
@@ -77,7 +85,7 @@ export function DataTable({ spec, limits, defaultLimit, fitContent }: Props) {
         <tbody>
           {visibleRows.map((row, i) => (
             <tr key={i}>
-              {spec.columns.map((col) => (
+              {columns.map((col) => (
                 <td
                   key={col.key}
                   className={col.align === "right" ? "data-table__num" : undefined}
