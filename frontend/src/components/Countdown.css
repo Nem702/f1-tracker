@@ -12,6 +12,12 @@
   overflow: hidden;
   font-variant-numeric: tabular-nums;
   color: var(--ink-primary);
+  /* Dark emphasis card: Countdown.tsx pins the DARK theme's vars on this
+     element in both modes. The shared .glass fill (dark --glass, 0.44 alpha)
+     would frost to muddy mid-gray over the light page, so the fill steps up
+     to the near-opaque tier — dark in light mode is the point, and in dark
+     mode it just sits a touch more solid than sibling cards (emphasis). */
+  background: var(--glass-opaque);
   animation: countdown-glow 4.5s ease-in-out infinite;
 }
 

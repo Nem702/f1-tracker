@@ -3,6 +3,8 @@ import { motion } from "framer-motion";
 import { api } from "../api/client";
 import { useApi } from "../hooks/useApi";
 import { useCountdown } from "../hooks/useCountdown";
+import { useTint } from "../hooks/useTheme";
+import { cssVars, getTheme } from "../theme";
 import { entranceX } from "../motion";
 import { DigitRoll } from "./DigitRoll";
 import "./Countdown.css";
@@ -42,6 +44,12 @@ export function Countdown() {
   // key, which re-runs the fetch, following the app's existing
   // keyless-endpoint pattern (see App.tsx's races/drivers calls).
   const [fetchEpoch, setFetchEpoch] = useState(0);
+  // Dark emphasis card: this surface wears the DARK theme's tokens in both
+  // modes (in light mode it's the page's one dark anchor — the reference
+  // design's "dark inset emphasis card" trick). Re-deriving from the live
+  // tint keeps the team accent correct, in dark's vivid variants.
+  const tint = useTint();
+  const darkVars = cssVars(getTheme("dark", tint));
   const nextRace = useApi((_k) => api.nextRace(), fetchEpoch);
   const session = nextRace.data?.next_session ?? null;
   const countdown = useCountdown(session?.date_start ?? null);
@@ -62,6 +70,7 @@ export function Countdown() {
   return (
     <motion.div
       className="countdown glass"
+      style={darkVars}
       variants={entranceX}
       custom={{ x: 16 }}
       initial="hidden"
