@@ -77,6 +77,15 @@ export function useMode(): Mode {
   return useSyncExternalStore(subscribe, getMode);
 }
 
+/** The active tint itself, for the one surface that themes AGAINST the mode:
+ *  the countdown card stays dark in light mode (the reference design's "dark
+ *  inset emphasis card"), so it needs the tint to build the dark theme's
+ *  vars locally. `tint` is replaced wholesale by setTint, so the snapshot
+ *  reference is stable between updates. */
+export function useTint(): Tint {
+  return useSyncExternalStore(subscribe, () => tint);
+}
+
 export function useTheme(): Theme {
   return useSyncExternalStore(subscribe, () => getTheme(getMode(), tint));
 }

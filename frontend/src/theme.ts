@@ -202,6 +202,10 @@ export interface Theme {
   auroraA: string; // per-mode blob opacities (decorative, validator-exempt)
   auroraB: string;
   auroraC: string;
+  auroraTint: string; // color-mix % of the blob color kept vs white — light
+  // runs pastel blobs (translucent saturated red over a white page reads as
+  // a pink stain, not a glow; over near-black the same recipe reads as
+  // atmosphere, so dark keeps 100%)
 
   // ---- ink & chart chrome ----
   inkPrimary: string;
@@ -230,15 +234,22 @@ type BaseTokens = Omit<
 
 const base: Record<Mode, BaseTokens> = {
   light: {
-    pageBase: "#ececec",
+    // Light layer stack, 2026-07-11 separation pass: page nudged darker and
+    // every card fill re-based on WHITE so cards sit clearly ABOVE the page
+    // (cardSolid used to be darker than the page — elevation read backwards),
+    // and the card hairline flipped from a white highlight (invisible on a
+    // light page) to an ink-toned border. Glass-over-base flattens to ~#f6f6f5
+    // vs the #F7F4F1 the header's accentInk AA checks used — same lightness,
+    // claims hold. `spec` keeps the frosted white top edge.
+    pageBase: "#e6e5e2",
     surface: "#faf8f5",
     plate: "rgba(240, 240, 242, 0.80)",
     plateBorder: "rgba(23, 25, 34, 0.08)",
-    glass: "rgba(255, 255, 255, 0.40)",
-    glass2: "rgba(255, 255, 255, 0.58)",
-    glassBorder: "rgba(255, 255, 255, 0.62)",
-    glassOpaque: "rgba(255, 255, 255, 0.85)",
-    cardSolid: "rgba(224, 226, 230, 0.94)",
+    glass: "rgba(255, 255, 255, 0.66)",
+    glass2: "rgba(255, 255, 255, 0.85)",
+    glassBorder: "rgba(23, 25, 34, 0.10)",
+    glassOpaque: "rgba(255, 255, 255, 0.92)",
+    cardSolid: "rgba(252, 252, 253, 0.94)",
     glassMenu: "rgba(255, 255, 255, 1)",
     spec: "rgba(255, 255, 255, 0.8)",
     shadowCard: "0 24px 48px -28px rgba(23, 25, 34, 0.35)",
@@ -246,13 +257,14 @@ const base: Record<Mode, BaseTokens> = {
     glowBorderPct: "70%",
     glowRingPct: "50%",
     glowBlurPct: "78%",
-    // A (top-left, hero) keeps its strength; B (mid-right) and especially
-    // C (bottom-left — it sits behind the Standings/Telemetry tables) are
-    // toned down so light mode's decoration stops competing with data.
-    // Dark mode's values were already subordinate and stay unchanged.
-    auroraA: "0.42",
-    auroraB: "0.30",
-    auroraC: "0.22",
+    // Light blobs run pastel (see auroraTint) AND lower-opacity than dark's
+    // raw values: at the old 0.42 the hero blob read as a pink smear across
+    // the navbar and left half of every section, and tinted the leftmost
+    // stat tile while its siblings stayed white.
+    auroraA: "0.30",
+    auroraB: "0.20",
+    auroraC: "0.15",
+    auroraTint: "45%",
     inkPrimary: "#171922",
     inkSecondary: "#585b66",
     inkMuted: "#716e67",
@@ -293,6 +305,7 @@ const base: Record<Mode, BaseTokens> = {
     auroraA: "0.20",
     auroraB: "0.18",
     auroraC: "0.16",
+    auroraTint: "100%",
     inkPrimary: "#ffffff",
     inkSecondary: "#c3c2b7",
     inkMuted: "#898781",
@@ -373,6 +386,7 @@ export function cssVars(t: Theme): Record<string, string> {
     "--aurora-a": t.auroraA,
     "--aurora-b": t.auroraB,
     "--aurora-c": t.auroraC,
+    "--aurora-tint": t.auroraTint,
     "--ink-primary": t.inkPrimary,
     "--ink-secondary": t.inkSecondary,
     "--ink-muted": t.inkMuted,

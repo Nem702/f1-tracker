@@ -85,7 +85,7 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   /* pre-mount fallback — must match theme.ts's pageBase (aurora base) */
-  background: #ececec;
+  background: #e6e5e2;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -187,18 +187,22 @@ body {
   transition: background-color 0.25s ease, opacity 0.25s ease;
 }
 
+/* --aurora-tint pastels the blob toward white in light mode (100% keeps it
+   a no-op in dark): translucent saturated color over a near-white page reads
+   as a stain, not a glow. color-mix resolves to one computed color, so the
+   250ms retint background-color crossfade is untouched. */
 .aurora__blob--a {
-  background: var(--accent);
+  background: color-mix(in srgb, var(--accent) var(--aurora-tint), white);
   opacity: var(--aurora-a);
 }
 
 .aurora__blob--b {
-  background: var(--driver1);
+  background: color-mix(in srgb, var(--driver1) var(--aurora-tint), white);
   opacity: var(--aurora-b);
 }
 
 .aurora__blob--c {
-  background: var(--driver2);
+  background: color-mix(in srgb, var(--driver2) var(--aurora-tint), white);
   opacity: var(--aurora-c);
 }
 
