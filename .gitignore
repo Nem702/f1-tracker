@@ -1,6 +1,13 @@
 venv/
 __pycache__/
+# env files anywhere in the tree, except committed *.example templates
 .env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+# local security-audit report (kept out of the public repo on purpose)
+SECURITY-REVIEW.md
 .claude/
 CLAUDE.md
 CONTEXT-HYGIENE.md
