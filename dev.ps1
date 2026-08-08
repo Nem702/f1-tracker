@@ -17,9 +17,13 @@ $shell = if (Test-Path "$env:ProgramFiles\PowerShell\7\pwsh.exe") {
     "powershell"
 }
 
+# ALLOW_DEV_ORIGINS opts the localhost origins into the API's CORS allow-list -
+# they're off by default so production never ships them. The single quotes are
+# load-bearing: in a double-quoted string PowerShell would expand $env:... here,
+# in this shell (where it's unset), and pass an empty assignment to the new one.
 Start-Process $shell -WorkingDirectory $root -ArgumentList @(
     "-NoExit", "-Command",
-    ".\venv\Scripts\python.exe -m uvicorn backend.api.main:app --reload --reload-dir backend"
+    '$env:ALLOW_DEV_ORIGINS=1; .\venv\Scripts\python.exe -m uvicorn backend.api.main:app --reload --reload-dir backend'
 )
 
 Start-Process $shell -WorkingDirectory (Join-Path $root "frontend") -ArgumentList @(

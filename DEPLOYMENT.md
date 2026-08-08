@@ -55,7 +55,8 @@ API before deploying should re-verify `/health` returns 200 first.
 | Variable | Value | Notes |
 |---|---|---|
 | `NEON_DATABASE_URL` | the same Neon connection string already used by the GitHub Actions fetch job (stored there as a repo secret) | `.env` is gitignored and never committed — copy the value manually into Render's env var UI. |
-| `ALLOWED_ORIGINS` | the deployed Vercel URL(s), comma-separated, e.g. `https://f1-tracker.vercel.app` | Read by `backend/api/main.py` (`os.environ.get("ALLOWED_ORIGINS", "")`) and appended to the CORS allow-list alongside the hardcoded `localhost:5173`/`127.0.0.1:5173` dev origins. **Without this set, the deployed frontend's API calls will fail CORS** — this is the one deploy-config step most likely to be forgotten, since it works fine locally with no env var at all. Set it to the production Vercel domain; preview-deploy subdomains are covered separately by `allow_origin_regex` (see §3) and don't need to be listed here. |
+| `ALLOWED_ORIGINS` | the deployed frontend origin(s), comma-separated — currently `https://f1-tracker.dev` | Read by `backend/api/main.py` (`os.environ.get("ALLOWED_ORIGINS", "")`) and used as the CORS allow-list. **This is the whole allow-list in production** — nothing else is allowed implicitly (see §3), so without it every browser request fails CORS. The API logs a warning at startup when the resolved list is empty, so a forgotten value shows up in Render's log tab rather than only in a visitor's console. |
+| `ALLOW_DEV_ORIGINS` | leave **unset** on Render | Local dev only: when set to `1`/`true`/`yes` (case-insensitive) the API also allows `http://localhost:5173` and `http://127.0.0.1:5173`. Anything else — including unset — leaves them out, so the gate fails closed. `dev.ps1` sets it for the local API window. |
 
 No `render.yaml` exists yet. One isn't strictly required — the above build
 command / start command / health check path / env vars can all be entered
@@ -101,23 +102,27 @@ additional config.
 
 ## 3. CORS: origin matching between the two deployed domains
 
-`backend/api/main.py`'s CORS middleware uses an exact-match allow-list plus a regex
-for Vercel preview subdomains:
+`backend/api/main.py`'s CORS middleware is an exact-match allow-list and
+nothing else:
 ```python
-allow_origins=_default_origins + _extra_origins,
-allow_origin_regex=r"https://f1-tracker-[a-z0-9-]+\.vercel\.app",
+allow_origins=_allowed_origins,   # ALLOWED_ORIGINS, + localhost iff ALLOW_DEV_ORIGINS
 ```
-An origin is allowed if it matches either. Practical implications:
-- The Vercel **production** URL must still be added to `ALLOWED_ORIGINS`
-  exactly (scheme + host, no trailing slash, e.g.
-  `https://f1-tracker.vercel.app`). The regex does not cover the bare prod
-  host (no dash after the `f1-tracker` slug), so prod stays an explicit
-  env-var step.
-- Vercel **preview deployments** (`f1-tracker-git-<branch>-<user>.vercel.app`
-  or a hash-based `f1-tracker-<hash>-<user>.vercel.app`) are now matched
-  automatically by the regex — no per-deploy `ALLOWED_ORIGINS` entry needed.
-  The pattern is anchored to the `f1-tracker-` project slug; if the Vercel
-  project slug changes, update the regex.
+Practical implications:
+- The **production** origin must be in `ALLOWED_ORIGINS` exactly (scheme +
+  host, no trailing slash): `https://f1-tracker.dev`.
+- Vercel **preview deployments** are *not* allowed automatically. There used to
+  be an `allow_origin_regex` matching `f1-tracker-*.vercel.app`, and it was
+  removed on purpose: `*.vercel.app` names are globally unique across every
+  Vercel account and the whole project slug is chosen by whoever registers it,
+  so any pattern over that domain is claimable by a stranger. Requiring the
+  team-scope suffix doesn't fix it either — a project named
+  `f1-tracker-<anything>-xct-f1-tracker` produces a matching origin. The data
+  here is public and read-only and `allow_credentials` is False, so the
+  exposure was small, but an exact list costs nothing to maintain at this size.
+- To let one preview hit the live API, add its exact origin to
+  `ALLOWED_ORIGINS` in Render (comma-separated), then remove it when done.
+  Note this also means `https://f1-tracker-mu.vercel.app` — the old
+  `.vercel.app` production alias — is no longer allowed; prod is `f1-tracker.dev`.
 - `allow_methods=["GET"]` is correct and intentionally narrow — every
   endpoint in this API is read-only, so there's no need to allow
   POST/PUT/DELETE.
@@ -172,8 +177,8 @@ backend teammate while this QA pass was in progress)
 
 ### Remaining pre-deploy checklist
 - [ ] Set `NEON_DATABASE_URL` in Render's environment (copy from local `.env` or the GitHub Actions secret — don't commit it).
-- [ ] Set `ALLOWED_ORIGINS` in Render to the production Vercel URL once it's known (chicken-and-egg: deploy backend first, get its URL, set `VITE_API_URL` in Vercel, deploy frontend, get its URL, set `ALLOWED_ORIGINS` in Render, redeploy backend or just update the env var — Render redeploys automatically on env var change).
+- [x] `ALLOWED_ORIGINS` set in Render to `https://f1-tracker.dev` (the live frontend domain). Render redeploys automatically when the value changes, so adding or dropping an origin needs no code deploy.
 - [ ] Set `VITE_API_URL` in Vercel to the production Render URL.
 - [ ] Verify `GET /health` returns `200 {"status":"ok"}` against a freshly-restarted server (the process running locally during this QA pass predates the `/health` addition and returned a stale `404` — not a real bug, just needs a restart to confirm).
-- [x] Preview-deployment CORS resolved: `backend/api/main.py` now matches Vercel preview subdomains via `allow_origin_regex` (see §3), so previews can reach the live API without per-deploy config.
+- [x] Preview-deployment CORS settled — the opposite way round from how it was first solved. The `allow_origin_regex` that auto-matched `f1-tracker-*.vercel.app` previews was removed, because any pattern over `*.vercel.app` is claimable by a stranger (see §3). Previews are not allowed by default; give one a temporary exact `ALLOWED_ORIGINS` entry if it needs the live API.
 - [ ] Pin the Python runtime version on Render to match CI (`3.14`, per `.github/workflows/fetch.yml`).

@@ -19,8 +19,11 @@ ever raising a 5xx:
     at all (see that endpoint's docstring for why a plain TTL cache isn't
     the right shape here).
 
-Run from the repo root:  py -m uvicorn backend.api.main:app --reload --reload-dir backend
-(or just run dev.ps1, which starts this and the frontend together)
+Run from the repo root:
+  $env:ALLOW_DEV_ORIGINS=1; .\\venv\\Scripts\\python.exe -m uvicorn backend.api.main:app --reload --reload-dir backend
+(or just run dev.ps1, which starts this and the frontend together). The env var
+opts the localhost dev origins into CORS — without it the API starts but
+refuses the Vite dev server; see the CORS block below.
 """
 
 import json
@@ -115,20 +118,39 @@ async def rate_limit(request: Request, call_next):
     return response
 
 
-# The Vite dev server is always allowed; add the deployed frontend's origin
-# (e.g. the Vercel URL) via ALLOWED_ORIGINS, comma-separated, without a
-# code change or redeploy.
-_default_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+# Every allowed origin is named exactly, via ALLOWED_ORIGINS (comma-separated),
+# so the deployed frontend's domain can change without a code change.
+#
+# Deliberately no allow_origin_regex for Vercel preview deploys, even though
+# their per-branch subdomains can't be enumerated ahead of time: *.vercel.app
+# names are globally unique across every Vercel account, and the whole project
+# slug is chosen by whoever registers it. Any pattern over that domain is
+# therefore claimable by a stranger — including one requiring the team-scope
+# suffix, since a project named f1-tracker-<anything>-xct-f1-tracker produces a
+# matching origin. A preview that genuinely needs the live API gets a temporary
+# ALLOWED_ORIGINS entry instead. This is also why f1-tracker-mu.vercel.app is
+# no longer allowed: production is served from f1-tracker.dev, which arrives
+# through ALLOWED_ORIGINS like everything else.
 _extra_origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
-# Vercel preview deploys get a unique per-branch/per-commit subdomain
-# (e.g. https://f1-tracker-git-<branch>-<user>.vercel.app), which can't be
-# enumerated in ALLOWED_ORIGINS ahead of time. Match those by pattern; the
-# exact production domain still comes in via ALLOWED_ORIGINS.
-_preview_origin_regex = r"https://f1-tracker-[a-z0-9-]+\.vercel\.app"
+
+# The Vite dev origins are opt-in and fail closed, so production never carries
+# allow-list entries only a developer's laptop can use. dev.ps1 sets the var;
+# anything but an explicit yes leaves them out.
+_default_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+_allow_dev_origins = os.environ.get("ALLOW_DEV_ORIGINS", "").strip().lower() in {"1", "true", "yes"}
+_allowed_origins = _extra_origins + (_default_origins if _allow_dev_origins else [])
+if not _allowed_origins:
+    # An empty list is a silent misconfiguration: the API starts fine and
+    # refuses every browser, and the only symptom is a CORS error in someone
+    # else's console. Say so in the logs Render captures.
+    logger.warning(
+        "CORS allow-list is empty - set ALLOWED_ORIGINS (or ALLOW_DEV_ORIGINS=1 for local dev); "
+        "every browser origin will be refused"
+    )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_default_origins + _extra_origins,
-    allow_origin_regex=_preview_origin_regex,
+    allow_origins=_allowed_origins,
     allow_methods=["GET"],
     allow_headers=["*"],
 )

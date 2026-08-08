@@ -133,7 +133,7 @@ root; first-time installs commented):
 
 ```powershell
 # .\venv\Scripts\python.exe -m pip install -r backend\api\requirements.txt
-.\venv\Scripts\python.exe -m uvicorn backend.api.main:app --reload --reload-dir backend
+$env:ALLOW_DEV_ORIGINS=1; .\venv\Scripts\python.exe -m uvicorn backend.api.main:app --reload --reload-dir backend
 ```
 
 ```powershell
@@ -143,11 +143,12 @@ npm run dev
 ```
 
 The frontend expects the API on `http://localhost:8000` (override with
-`VITE_API_URL`, see `frontend/.env.example`); the API's CORS only allows the
-frontend on port 5173 — if Vite picks another port, some other dev server is
-already running. First load after the database has been idle can take a few
-seconds — Neon's free tier scales to zero and cold-starts on the first
-connection.
+`VITE_API_URL`, see `frontend/.env.example`); the API's CORS allows the
+localhost dev origins only when `ALLOW_DEV_ORIGINS=1` is set (`dev.ps1` does
+this for you), and only on port 5173 — if Vite picks another port, some other
+dev server is already running. First load after the database has been idle can
+take a few seconds — Neon's free tier scales to zero and cold-starts on the
+first connection.
 
 ### The fetch pipeline (what the GitHub Actions cron runs)
 
