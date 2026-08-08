@@ -54,9 +54,94 @@ API before deploying should re-verify `/health` returns 200 first.
 ### Environment variables (Render dashboard → Environment)
 | Variable | Value | Notes |
 |---|---|---|
-| `NEON_DATABASE_URL` | the same Neon connection string already used by the GitHub Actions fetch job (stored there as a repo secret) | `.env` is gitignored and never committed — copy the value manually into Render's env var UI. |
+| `NEON_DATABASE_URL_RO` | the connection string for the read-only Neon role — see "Neon read-only role" below | **Required.** The API connects as a role with SELECT and nothing else, so a compromise of the public-facing service can't write to the database. Without this var the service still starts and `/health` still returns 200 (it never touches the DB), but *every* DB-backed endpoint returns `503 {"detail": "Database unavailable"}` with a `KeyError: 'NEON_DATABASE_URL_RO'` traceback in Render's logs. Worth knowing, because a 503 from this API otherwise reads as a Neon cold start. There is deliberately no fallback to `NEON_DATABASE_URL`. |
+| `NEON_DATABASE_URL` | ~~read-write connection string~~ — **no longer read by the API** | Nothing under `backend/api/` calls the read-write connection any more (`get_db()` uses `get_readonly_connection()`). It remains required as the **GitHub Actions repo secret** for the fetch pipeline (`.github/workflows/fetch.yml`) — that is a separate store and is unaffected. Delete it from *Render* once the read-only role is verified; see the ordering below. |
 | `ALLOWED_ORIGINS` | the deployed frontend origin(s), comma-separated — currently `https://f1-tracker.dev` | Read by `backend/api/main.py` (`os.environ.get("ALLOWED_ORIGINS", "")`) and used as the CORS allow-list. **This is the whole allow-list in production** — nothing else is allowed implicitly (see §3), so without it every browser request fails CORS. The API logs a warning at startup when the resolved list is empty, so a forgotten value shows up in Render's log tab rather than only in a visitor's console. |
 | `ALLOW_DEV_ORIGINS` | leave **unset** on Render | Local dev only: when set to `1`/`true`/`yes` (case-insensitive) the API also allows `http://localhost:5173` and `http://127.0.0.1:5173`. Anything else — including unset — leaves them out, so the gate fails closed. `dev.ps1` sets it for the local API window. |
+
+### Neon read-only role for the API
+
+The API is read-only by design — every endpoint is a `SELECT` — but until this
+change it connected with the same read-write credentials as the fetch
+pipeline, so the public-facing service held write access it never used. It now
+connects as a dedicated role that Postgres will not let write at all.
+
+> ⚠️ **Create the role with SQL in the Neon SQL Editor — not the Console's
+> Roles UI / "New Role" button.** Roles created via the Neon Console, CLI, or
+> API are granted membership in `neon_superuser`, which confers CREATEDB,
+> CREATEROLE, BYPASSRLS, and read *and write* on every table, view, and
+> sequence. Clicking "New Role" produces a read-write role wearing a read-only
+> name, and silently defeats this entire change. Roles created with SQL get
+> only the default privileges of a new role in a standalone Postgres install.
+
+Run as the role in `NEON_DATABASE_URL` (the table owner, e.g. `neondb_owner`).
+Neon requires the password to be 12+ characters with mixed case, a number, and
+a symbol. Substitute the real database and owner names.
+
+```sql
+CREATE ROLE f1_api_ro WITH LOGIN PASSWORD '<generate-a-strong-one>';
+GRANT CONNECT ON DATABASE neondb TO f1_api_ro;
+GRANT pg_read_all_data TO f1_api_ro;
+```
+
+`pg_read_all_data` is a predefined Postgres role conferring SELECT on all
+tables, views, and sequences plus USAGE on all schemas. It's evaluated at
+query time, so tables added to `backend/schema.sql` later are covered
+automatically with no follow-up grant.
+
+**Fallback, if that last statement returns `permission denied to grant role`.**
+Postgres 16 changed `CREATEROLE` so it no longer implies the ability to grant
+arbitrary predefined roles — you need ADMIN OPTION on the specific role, and a
+`CREATEROLE` user gets that automatically only for roles it creates itself, not
+for built-ins. Neon's docs list `neon_superuser` as a *member* of
+`pg_read_all_data` but note `WITH ADMIN OPTION` only for `pg_monitor` and
+`pg_signal_backend`. Whether the grant works is project-specific; the one
+statement tells you. If it's refused:
+
+```sql
+GRANT USAGE ON SCHEMA public TO f1_api_ro;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO f1_api_ro;
+-- FOR ROLE is load-bearing. Default privileges attach to the CREATING role,
+-- and without it they'd attach to whoever ran this statement. The pipeline
+-- connects as the owner and is the only thing that ever creates tables, so
+-- naming the owner explicitly is what makes future tables readable.
+ALTER DEFAULT PRIVILEGES FOR ROLE neondb_owner IN SCHEMA public
+  GRANT SELECT ON TABLES TO f1_api_ro;
+```
+
+Unlike `pg_read_all_data`, `GRANT SELECT ON ALL TABLES` is a snapshot of the
+tables that exist right now — the `ALTER DEFAULT PRIVILEGES` line is what
+covers the next one. If that line ever names the wrong owner, everything keeps
+working until the pipeline adds a table, and then the API loses access to it
+silently.
+
+Sequence write privileges are deliberately not granted: `race_control.id` is a
+`SERIAL`, and a read-only API never calls `nextval`.
+
+Do **not** add `ALTER ROLE f1_api_ro SET default_transaction_read_only = on`.
+It makes writes fail with SQLSTATE 25006 (read-only transaction) instead of
+42501 (insufficient privilege), which masks whether the grants themselves are
+actually correct — and the grants are the thing worth being sure about.
+
+### Rollout order
+
+The role must exist and `NEON_DATABASE_URL_RO` must be set **before** the code
+change deploys, or the API 503s on every DB-backed endpoint.
+
+1. Create the role with SQL in the Neon SQL Editor (above).
+2. Set `NEON_DATABASE_URL_RO` in Render.
+3. Deploy the code change.
+4. Verify the API serves real data on the read-only connection.
+5. Before deleting anything, check Render's **One-Off Jobs** and any cron on
+   this service for other references to `NEON_DATABASE_URL`. The fetch
+   pipeline runs in GitHub Actions on its own secret, so there shouldn't be
+   any — but a job that loses an env var it depends on fails at *run* time,
+   not deploy time, so confirm rather than assume.
+6. Delete `NEON_DATABASE_URL` from Render. This triggers its own redeploy;
+   expect a second cold start, and don't read the brief unavailability as the
+   change having broken something.
+
+The rollback window stays open through step 4 and only closes at step 6.
 
 No `render.yaml` exists yet. One isn't strictly required — the above build
 command / start command / health check path / env vars can all be entered
@@ -66,10 +151,11 @@ config checked into source control (infra-as-code), not a blocker for a
 first deploy.
 
 ### Python version
-The GitHub Actions fetch workflow (`.github/workflows/fetch.yml`) pins
-`python-version: "3.14"`. Set the same on Render (env var `PYTHON_VERSION=3.14`
-or a `runtime.txt` containing `3.14`, per Render's Python docs) so behavior
-matches what's already tested in CI.
+Confirmed set on Render: `PYTHON_VERSION=3.14`, matching the
+`python-version: "3.14"` pin in the GitHub Actions fetch workflow
+(`.github/workflows/fetch.yml`), so runtime behavior matches what CI already
+tests. (Render also accepts a `runtime.txt` containing `3.14` for this; the env
+var is what's in use here.)
 
 ## 2. Frontend on Vercel (`frontend/`)
 
@@ -123,6 +209,11 @@ Practical implications:
   `ALLOWED_ORIGINS` in Render (comma-separated), then remove it when done.
   Note this also means `https://f1-tracker-mu.vercel.app` — the old
   `.vercel.app` production alias — is no longer allowed; prod is `f1-tracker.dev`.
+- Measured against the deployed service before this change shipped: only
+  `https://f1-tracker.dev` came back with an `Access-Control-Allow-Origin`
+  header. No `*.vercel.app` origin did, preview-shaped or otherwise — so the
+  running build was not applying the regex, and removing it changes nothing
+  about what production actually allows today.
 - `allow_methods=["GET"]` is correct and intentionally narrow — every
   endpoint in this API is read-only, so there's no need to allow
   POST/PUT/DELETE.
@@ -175,10 +266,20 @@ backend teammate while this QA pass was in progress)
 3. A DB-independent `GET /health` endpoint was added for Render's health
    check.
 
-### Remaining pre-deploy checklist
-- [ ] Set `NEON_DATABASE_URL` in Render's environment (copy from local `.env` or the GitHub Actions secret — don't commit it).
+### Pre-deploy checklist (all done — the service is live)
+- [x] `NEON_DATABASE_URL` set in Render's environment (copied manually; never committed).
 - [x] `ALLOWED_ORIGINS` set in Render to `https://f1-tracker.dev` (the live frontend domain). Render redeploys automatically when the value changes, so adding or dropping an origin needs no code deploy.
-- [ ] Set `VITE_API_URL` in Vercel to the production Render URL.
-- [ ] Verify `GET /health` returns `200 {"status":"ok"}` against a freshly-restarted server (the process running locally during this QA pass predates the `/health` addition and returned a stale `404` — not a real bug, just needs a restart to confirm).
+- [x] `VITE_API_URL` set in Vercel — the deployed bundle calls `https://f1-tracker-api.onrender.com`.
+- [x] `GET /health` verified against the deployed service: `200 {"status":"ok"}`.
 - [x] Preview-deployment CORS settled — the opposite way round from how it was first solved. The `allow_origin_regex` that auto-matched `f1-tracker-*.vercel.app` previews was removed, because any pattern over `*.vercel.app` is claimable by a stranger (see §3). Previews are not allowed by default; give one a temporary exact `ALLOWED_ORIGINS` entry if it needs the live API.
-- [ ] Pin the Python runtime version on Render to match CI (`3.14`, per `.github/workflows/fetch.yml`).
+- [x] Python runtime pinned on Render to match CI: `PYTHON_VERSION=3.14` (per `.github/workflows/fetch.yml`).
+
+### Read-only role rollout (outstanding)
+Ordering matters — see "Rollout order" above. Steps 1–2 must happen before the
+code change deploys.
+- [ ] `f1_api_ro` created **with SQL in the Neon SQL Editor**, not the Console's Roles UI (a Console-created role inherits `neon_superuser` and can write).
+- [ ] Record which grant form was accepted: `pg_read_all_data`, or the `GRANT SELECT ON ALL TABLES` + `ALTER DEFAULT PRIVILEGES FOR ROLE` fallback. This determines whether future tables are covered automatically.
+- [ ] `NEON_DATABASE_URL_RO` set in Render.
+- [ ] Code change deployed; a DB-backed endpoint verified returning real rows on the read-only connection.
+- [ ] Render One-Off Jobs / cron checked for any other reference to `NEON_DATABASE_URL`.
+- [ ] `NEON_DATABASE_URL` deleted from Render (the GitHub Actions repo secret stays — the fetch pipeline needs it).

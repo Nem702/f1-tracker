@@ -39,7 +39,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from psycopg2.extras import RealDictCursor
 
-from backend.shared.db import get_connection
+from backend.shared.db import get_readonly_connection
 from backend.shared.logger import logger
 from backend.shared.jolpica_lookup import find_jolpica_round
 from backend.shared.jolpica_results import get_official_result
@@ -167,9 +167,15 @@ def health():
 
 
 def get_db():
-    """One connection per request, always closed — no pooling needed at this scale."""
+    """One connection per request, always closed — no pooling needed at this scale.
+
+    Read-only by construction: this connects as a Postgres role with SELECT and
+    nothing else, so the API cannot write even if a future endpoint tries to.
+    A missing NEON_DATABASE_URL_RO surfaces here as a 503 with a KeyError in
+    the logs — never as a quiet fall back to the pipeline's write connection.
+    """
     try:
-        conn = get_connection()
+        conn = get_readonly_connection()
     except Exception:
         logger.exception("Failed to connect to the database")
         raise HTTPException(status_code=503, detail="Database unavailable")

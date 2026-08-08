@@ -165,8 +165,18 @@ versions can't collide with any other project's. Activate with
 `.\venv\Scripts\Activate.ps1` — the prompt shows `(venv)` when it worked.
 (Windows: use `py`, not `python`, to avoid the Windows Store alias.)
 
-**Local Postgres (optional — production uses Neon).** Copy `.env.example`
-to `.env` (gitignored, never committed), then:
+**Environment.** Copy `.env.example` to `.env` (gitignored, never committed)
+and fill it in. Two of its keys are what the application itself reads:
+`NEON_DATABASE_URL` for the fetch pipeline (read-write) and
+`NEON_DATABASE_URL_RO` for the API, which connects as a read-only Postgres
+role so the public-facing service can't write — see `DEPLOYMENT.md` for the
+grants. The API needs that second one specifically, and there's no fallback to
+the first: without it the server still starts and `/health` still answers, but
+every database-backed endpoint returns a 503, which is easy to misread as a
+Neon cold start. The `POSTGRES_*` keys are unrelated to Neon — they exist only
+for the local container below.
+
+**Local Postgres (optional — production uses Neon).** With `.env` in place:
 
 ```bash
 docker compose up -d
@@ -179,10 +189,24 @@ Get-Content backend\schema.sql -Raw | docker exec -i f1_tracker_db psql -U f1use
 ```
 
 (PowerShell reserves the `<` redirection operator — piping via `Get-Content`
-is the workaround; Git Bash supports `<` natively.) Postgres always listens
-on 5432 *inside* the container; the host-side port is the left half of the
-`"5432:5432"` mapping in `docker-compose.yml` and is yours to change if 5432
-is taken.
+is the workaround; Git Bash supports `<` natively. The `-U`/`-d` flags match
+the `POSTGRES_USER`/`POSTGRES_DB` values in `.env.example`; change those and
+you have to change this command too.) Postgres always listens on 5432 *inside*
+the container; the host-side port is the left half of the `"5432:5432"`
+mapping in `docker-compose.yml` and is yours to change if 5432 is taken.
+
+To run the app against this container instead of Neon, point **both** `NEON_*`
+variables at it — there's no read-only role locally unless you create one, and
+the API won't start serving without `NEON_DATABASE_URL_RO`:
+
+```
+NEON_DATABASE_URL=postgresql://f1user:<POSTGRES_PASSWORD>@127.0.0.1:5432/f1tracker
+NEON_DATABASE_URL_RO=postgresql://f1user:<POSTGRES_PASSWORD>@127.0.0.1:5432/f1tracker
+```
+
+(`DEPLOYMENT.md`'s read-only role SQL works against this container too if you
+want the real split locally — substitute `f1tracker`/`f1user` for the Neon
+database and owner names.)
 
 ## Stack
 
