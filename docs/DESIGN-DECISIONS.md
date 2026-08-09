@@ -235,6 +235,141 @@ registered *before* the CORS middleware, which makes CORS the outer layer:
 a 429 still passes through CORSMiddleware on the way out, so the browser
 lets the frontend read the status instead of an opaque CORS failure.
 
+**Light mode separates by value step, edge and contact shadow — not by emitted
+light.**
+Light had been built on dark's grammar. Dark separates surfaces by *emitted
+light*: a glow, a bright hairline, blobs of atmosphere. White has no headroom
+above it, so every one of those degrades — the glow becomes a smudge, the
+hairline a whisper, and the aurora a salmon stain that got clipped along section
+boundaries into a visible seam. Light now separates by **value step + edge weight
++ contact shadow**, and the three are sized as a composite rather than any one
+carrying it. Concretely: the page dropped `#e6e5e2` → `#dedcd9` to open room
+under the cards; four near-identical fills collapsed to three visible tiers;
+`shadowCard`/`shadowRaised` each gained a tight contact layer ahead of the
+ambient one (on a pale ground the contact shadow does nearly all the perceptual
+work, and bundling it into the same token means the consumers that drop or
+re-declare `--shadow-card` inherit it for free); hairlines were promoted; and
+`spec` — a white specular top edge measuring **1.01–1.05:1** on a near-white
+card — was retired to transparent. Dark keeps `spec` at 0.14, where it renders
+1.53:1 and genuinely reads. The blobs are off in light, replaced by a vertical
+wash painted by the same *fixed* `.aurora` layer, which is why the seam cannot
+come back: nothing clips it, so there is no boundary to reveal.
+
+**The accent is split by job, because one value was doing five.**
+A single full-chroma hex served as fill, border, glow, text and icon. On black a
+saturated red is the brightest thing in frame and reads as energy; on white it is
+the darkest, most saturated thing and reads as *urgency*. So `accent` is now the
+**fill** — the lighter, more chromatic step for small solid areas — and
+`accentInk` is the deeper, less chromatic step for text and icons. Ferrari's red
+comes down in lightness *and* chroma together (L .563→.512, C .229→.204); moving
+only one of the two keeps it reading as an alert. Ferrari and Red Bull previously
+collapsed both roles onto one hex and no longer do. Teams whose `onAccent` is
+dark ink (Mercedes, McLaren, neutral) keep a bright fill — deepening it would
+break the dark-on-accent direction — so only their ink moves. Driver/series
+colours are untouched throughout: accent is a UI identity, never a data identity.
+
+**The glow tier is gone in light, and each use was replaced rather than dimmed.**
+Glow is additive, so on white it can only render as a tint spreading outward —
+read as blur or bleed — and running it hotter just enlarges the smudge. Because
+the app has *no* CSS mode branches (every per-mode difference is a token on
+`.app-shell`), the whole tier switches off by setting the ring and blur
+percentages to `0%`: `color-mix` at 0% is fully transparent, so all three glow
+consumers need no CSS branch at all. The work moved to a heavier border plus a
+tinted fill mixed **into** the existing fill rather than layered over it — one
+translucency instead of two stacked, and at 0% the mix resolves to exactly the
+original fill, leaving dark untouched. The active chip, the insight card, the
+swatch halo and the countdown's outer bloom all went through this.
+
+**Hero3D's pace ramp is compressed in light, never flattened — it is data.**
+The wide faint duplicate under the crisp lap trace encodes pace on *opacity*
+(faster laps glow more), so a constant would delete information. The 3:1 check
+the original code documents as having "failed for real" failed again: at the old
+0.07–0.22 ramp the glow dragged **three** drivers' crisp lines below the floor
+against their own glow-brightened surround (ferrari0 3.78→2.62, mercedes1
+3.61→2.78, redbull1 3.20→2.47). Light now runs 0.03–0.13 at `lineWidth` 5 — only
+redbull1 still dips, and it starts from just 3.20 bare. The floor dropped
+alongside the ceiling so the fast-vs-slow ramp stays perceptible (ΔE 2.8), and
+width came down because width and opacity both feed the smudge while only one is
+doing encoding work. Dark keeps 0.07–0.22 at width 7.
+
+**The countdown commits to its inversion; its overrides split by what the token
+describes.**
+It reads as unthemed in light not because it lacks a theme but because pinning
+dark wholesale also pins dark's *page-relative* values onto a light page. Three
+compounding causes: its `--glass-opaque` fill at 0.85 let the light page bleed
+through and flattened it to ≈`#38383a`, a muddy mid-charcoal; its accent ring
+resolved to dark's 30% scaled ×0.4–0.85, landing at **1.49:1** against the card's
+own fill; and its shadow was a black-on-black one tuned for a near-black page. So
+the override set is split by **what the token describes** — tokens describing the
+card's *own dark surface* (ink ramp, fills, accent) come from dark, and tokens
+describing its *relationship to the page beneath it* (elevation, outer bloom,
+accent edge weight) come from the active mode. The accent edge is a static border
+rather than part of the breathing ring, because the keyframes scale by ×0.4 at
+the trough and even a 100% token would go invisible for half of every cycle.
+
+**One floor governs driver-colour separation: ΔE 8. Twelve is a target, not a
+second floor.**
+Three numbers were in play across `theme.ts`'s header and the dataviz method it
+was validated against — 6, 8 and 12 — with nothing saying which governed what.
+The settled rule: **ΔE 8** (OKLab ×100, worst of protan/deutan) is the only
+*floor*. It is what `CVD_COLLISIONS` has always used as its inclusion criterion,
+and it matches the dataviz categorical CVD target. **12** is a *target* applying
+to exactly one case — a team's own two drivers, the pair the default view shows.
+That pair has no remedy available (a team's drivers must wear their team's two
+slot colours), so 8–12 reports WARN and leans on the secondary encoding every
+chart carries: legend, acronym end-labels, tooltip, and table. Cross-team
+head-to-head pairs get *no* relief band, because they do have a remedy — below 8
+the pair belongs in `CVD_COLLISIONS`, which routes it through the documented
+slot-swap. **6 is retired from this project's vocabulary**; it was the dataviz
+absolute floor and this project holds a stricter line.
+
+**The theme validator declares its accepted exceptions instead of remembering
+them.**
+`frontend/scripts/validate-theme.ts` carries an `ACCEPTED` table keyed
+`<group>|<check>`, each entry holding the measured value at the time of
+acceptance and the reason. A listed FAIL reports WARN and doesn't fail the run.
+The reason it's a table rather than a relaxed threshold: an exception encoded as
+a loosened floor silently forgives the *next* regression too, and an exception
+that lives only in someone's memory gets re-broken. Entries that stop firing are
+reported as **stale**, so a fixed exception gets deleted rather than quietly
+outliving the problem it excused.
+
+_Currently accepted:_ `dark · inkMuted on chip` at 4.42:1 — `--glass2` over the
+dark page leaves inkMuted too little to work with. Pre-existing, and the dark
+palette was frozen for the light-mode pass. **Known outstanding work.**
+
+**Contrast floors are scoped to the consumer, not to the token.**
+`--accent-ink` renders in seven places at three different floors. The hero's
+`.rotating-word` is `clamp(2.2rem, …, 3.75rem)` at display weight, so it earns
+the 3:1 large-text floor; a `:focus-visible` outline is a graphical object at
+3:1; the 12px eyebrows take the full 4.5:1. Writing that as "accentInk on page ≥
+3:1" would be true today and wrong the moment someone adds small text on the
+page — it would inherit an allowance it doesn't qualify for. So the validator
+enumerates the consumers by selector and attaches a floor to each: the floor is
+a property of the rendered text, decided where the text is specified.
+
+**The `[data-band]` veil darkens in light and lightens in dark, on purpose.**
+It paints `--surface`, which in light is near-white — so it *lifted* alternate
+sections toward the card colour and shrank the page-to-card step on half the
+page, working directly against the thing the light stack separates by. Light now
+paints a slight darkening wash instead, which keeps the same section rhythm dark
+has *and* helps elevation: band-b's page-to-card step is 0.108 ΔL against
+band-a's 0.090. The cost is that band-b becomes the darkest ground on the page,
+so `inkMuted` is solved against the veiled band rather than the bare page. It's
+stored as one complete `rgba()` per mode rather than a `color-mix` off
+`--surface`, which is both simpler than what it replaced and the only way the
+two modes can run in opposite directions.
+
+**A design review's finding was a misread, and is recorded rather than dropped.**
+The review that drove this work called for removing a halo on the chart lines and
+replacing it with plate-coloured casing strokes. No such halo existed: all five
+recharts charts draw a single flat `strokeWidth={2}` line — no `<defs>`, no
+filters, no duplicated wide stroke — and `activeDot` already carried a 2px
+`stroke={theme.surface}` separation ring. The review worked from screenshots and
+had identified **`Hero3D.tsx`'s lap trace** as a chart line. The fix landed there
+instead (see the pace-ramp entry above) and the charts were left alone. Logged
+because a silently-dropped review item looks identical to an overlooked one.
+
 ## Known data quirks (not bugs)
 
 - **Empty result sets arrive as 404, and entire races can be missing.**
