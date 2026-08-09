@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { motion } from "framer-motion";
 import { api } from "../api/client";
 import { useApi } from "../hooks/useApi";
 import { useCountdown } from "../hooks/useCountdown";
-import { useTint } from "../hooks/useTheme";
+import { useMode, useTint } from "../hooks/useTheme";
 import { cssVars, getTheme } from "../theme";
 import { entranceX } from "../motion";
 import { DigitRoll } from "./DigitRoll";
@@ -48,8 +49,31 @@ export function Countdown() {
   // modes (in light mode it's the page's one dark anchor — the reference
   // design's "dark inset emphasis card" trick). Re-deriving from the live
   // tint keeps the team accent correct, in dark's vivid variants.
+  //
+  // But pinning dark wholesale also pins dark's PAGE-RELATIVE values onto a
+  // light page, which is what made this card read as unthemed: its elevation
+  // was a black-on-black shadow tuned for a near-black page, and its accent
+  // ring resolved to dark's 30% scaled ×0.4-0.85 — 1.49:1 against the card's
+  // own fill, i.e. invisible. So the override set below is split by WHAT THE
+  // TOKEN DESCRIBES:
+  //
+  //   · the card's OWN dark surface — ink ramp, fills, accent — comes from
+  //     dark. That inversion is the entire point of this card.
+  //   · the card's RELATIONSHIP TO THE PAGE BENEATH IT — elevation, outer
+  //     bloom, accent edge weight — comes from the ACTIVE mode, because that
+  //     page is light half the time.
+  //
+  // Anyone adding a token here should be able to place it from that sentence.
   const tint = useTint();
-  const darkVars = cssVars(getTheme("dark", tint));
+  const mode = useMode();
+  const active = getTheme(mode, tint);
+  const darkVars = {
+    ...cssVars(getTheme("dark", tint)),
+    "--shadow-card": active.shadowCard, // elevation reads against the page
+    "--shadow-raised": active.shadowRaised,
+    "--glow-blur-pct": active.glowBlurPct, // outer bloom spills onto the page
+    "--countdown-edge-pct": active.countdownEdgePct, // edge weight vs the page
+  } as CSSProperties;
   const nextRace = useApi((_k) => api.nextRace(), fetchEpoch);
   const session = nextRace.data?.next_session ?? null;
   const countdown = useCountdown(session?.date_start ?? null);
