@@ -18,3 +18,4 @@ backend/.next_race_cache.json
 backend/.race_weekend_cache.json
 backend/.standings_cache.json
 backend/.official_result_cache.json
+PLAN-*.md

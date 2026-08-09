@@ -70,6 +70,14 @@ export type Mode = "light" | "dark";
 
 // ---- team palettes (validated — see header) --------------------------------
 
+// PROVENANCE. Every value below is DERIVED — none is a brand hex. The
+// real-world colour each team's palette was seeded off (OpenF1 `team_colour`)
+// is recorded separately, in theme.seeds.ts, which nothing in the app imports:
+// a raw brand hex has been through no contrast, CVD or compositing check, and
+// the validator FAILs if that module is ever named under src/. The validator
+// measures two things against it — how far each derived accent has drifted off
+// its own brand, and whether it has drifted onto someone ELSE'S brand.
+
 interface TeamColors {
   accent: string; // vivid brand accent: fills, glow, aurora, swatches
   accentInk: string; // text/icon-safe accent (≥ 4.5:1 on glass)

@@ -2,6 +2,11 @@
  * Validates the shipped theme against the numeric claims theme.ts's header
  * makes. Run it: `npm run validate:theme`.
  *
+ * For a digest instead of the full report: `npm run validate:theme -- --summary`.
+ * The bare `--` is REQUIRED. Without it npm parses `--summary` as one of its own
+ * config flags, never passes it through, and silently prints the full report —
+ * which looks exactly like the flag not being implemented.
+ *
  * It imports `src/theme.ts` DIRECTLY (node --experimental-strip-types) rather
  * than re-declaring any colour, so there is exactly one source of truth and the
  * checks can never drift from what renders. Every surface below is COMPOSITED
@@ -23,10 +28,36 @@
  *   WARN  inside a documented relief/floor band: legal only because the
  *         mandated secondary encoding is present
  *   FAIL  below the floor — the only status that exits non-zero
+ *
+ * A status may carry a LABEL, rendered inside the cell as `[WARN drift]`. It
+ * sub-classes a status without being one: counting and the exit code switch on
+ * the status alone, so a label can never move a total.
+ *
+ * BRAND SEEDS. Everything above compares derived colours against other DERIVED
+ * colours, which cannot see a team's plate landing on another team's real-world
+ * brand. `src/theme.seeds.ts` records the OpenF1 `team_colour` each palette was
+ * seeded off so two more things can be measured — see `checkBrandSeeds` and
+ * `checkSeedIsolation`. That module is validator-only, and the `provenance`
+ * check FAILs if anything under src/ ever imports it.
+ *
+ * TWO ΔE METRICS LIVE HERE, ON PURPOSE. Driver/swatch separation uses worst-of-
+ * protan/deutan, because those colours render side by side and the task is
+ * telling them apart. Plate-vs-rival-seed uses PLAIN OKLab, because the task is
+ * brand confusion for ordinary colour vision and the seed is never rendered at
+ * all. Both numbers print on every seed row.
+ *
+ * The concrete trap: Ferrari against Audi is ΔE 1.7 plain and 0.9 CVD. This
+ * script prints 1.7; PLAN-full-grid-and-logos.md §3 records 0.9. Both are right
+ * — same pair, two metrics. Do not "reconcile" them by changing one.
  */
+
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { getTheme, teamSwatch, tintForPair } from "../src/theme.ts";
 import type { Mode, Theme, Tint } from "../src/theme.ts";
+import { TEAM_SEEDS } from "../src/theme.seeds.ts";
 import { TEAM_ORDER } from "../src/teams.ts";
 import type { DriverRef, TeamSlug } from "../src/teams.ts";
 
@@ -52,6 +83,13 @@ const THIN_MARGIN = 0.1; // "passing, but only just"
 // documented slot-swap. Nothing in this project uses a floor of 6.
 const CVD_FLOOR = 8;
 const CVD_TEAM_TARGET = 12;
+
+/** Same ΔE 8, different metric and different consequence: how close a team's
+ *  plate may come to a RIVAL's brand seed before it starts reading as that
+ *  rival's colour. Plain OKLab (see the header), and WARN-only — the seeds
+ *  collide with each other at source, so no derivation can clear this for every
+ *  pair and a FAIL would be unsatisfiable. */
+const SEED_FLOOR = 8;
 
 /** Failures the project has explicitly accepted, keyed `<group>|<check>`. Each
  *  carries its measured value at acceptance and the reason. A FAIL listed here
@@ -184,25 +222,37 @@ interface Row {
   check: string;
   value: string;
   status: Status;
+  /** Optional sub-class, rendered inside the status cell as `[WARN drift]`.
+   *  Deliberately a label rather than a Status member: two kinds of WARN need
+   *  telling apart in the report, but neither the counts nor the exit code
+   *  should have to learn a new case to do it. */
+  label?: string;
 }
 
 const rows: Row[] = [];
 const acceptedFired = new Set<string>();
 
-function add(group: string, check: string, value: string, status: Status): void {
+function add(group: string, check: string, value: string, status: Status, label?: string): void {
   const id = `${group}|${check}`;
   if (status === "FAIL" && id in ACCEPTED) {
     acceptedFired.add(id);
-    rows.push({ group, check, value: `${value} — ACCEPTED: ${ACCEPTED[id]}`, status: "WARN" });
+    rows.push({ group, check, value: `${value} — ACCEPTED: ${ACCEPTED[id]}`, status: "WARN", label });
     return;
   }
-  rows.push({ group, check, value, status });
+  rows.push({ group, check, value, status, label });
 }
 
 /** Every contrast margin seen, so the tightest can be reported at the end.
  *  A check that passes at 4.52 and one that passes at 17.2 read identically in
  *  the table; the difference is which one the next token nudge breaks. */
 const margins: { id: string; value: number; floor: number }[] = [];
+
+/** How far each plate sits from its OWN brand seed. Collected, not checked:
+ *  there is no floor and no status, because drift is the BILL for clearing the
+ *  contrast and CVD floors, not a defect. McLaren's light accent is 0.8 off its
+ *  brand; Mercedes' is 13.3. Printed so that bill stays visible rather than
+ *  accumulating silently, one palette pass at a time. */
+const drift: { mode: Mode; team: TeamSlug; plate: string; seed: string; value: number }[] = [];
 
 /** Contrast against a floor, with the "passing but only just" band. */
 function ratio(group: string, check: string, fg: string, bg: string, floor = AA): number {
@@ -469,6 +519,111 @@ function checkDataColours(mode: Mode, t: Theme, s: Surfaces): void {
   for (const [slug, hex] of swatches) mark(g, `swatch ${slug} on chip`, hex, s.chip);
 }
 
+/** A team's plate must not land on ANOTHER team's real-world brand colour.
+ *
+ *  "Plate" here is the team's BADGE GROUND — `teamSwatch()`, i.e. the team
+ *  accent — NOT `s.plate`, the chart inset surface every other check in this
+ *  file measures ink against. Same word, two things; this is the badge one.
+ *  (The badge itself is still a design proposal; the accent is what stands in
+ *  for its ground until then, which is what the design project measures too.)
+ *
+ *  WARN, never FAIL, because the check is not satisfiable as a failure: the
+ *  seeds collide with EACH OTHER before any derivation happens, so a plate
+ *  sitting exactly on its own brand can already violate this against a rival's.
+ *
+ *  Which is why the WARN is SPLIT. `seedsApart` — the distance between the two
+ *  teams' own seeds — separates two populations that look identical in a list:
+ *    drift     the plates collide but the BRANDS do not. Derivation moved a
+ *              plate onto a brand it started clear of. Fixable, and the only
+ *              reason this check is worth running.
+ *    inherent  the brands themselves collide. No derivation fixes it; the
+ *              letterform on the badge has to carry the distinction. */
+function checkBrandSeeds(mode: Mode): void {
+  const g = `${mode} · team plate vs rival seed`;
+  type Found = { check: string; value: string; status: Status; label?: string; rank: number; v: number };
+  const found: Found[] = [];
+
+  for (const team of TEAM_ORDER) {
+    const plate = teamSwatch(mode, team);
+    for (const rival of TEAM_ORDER) {
+      if (rival === team) continue; // distance to its OWN seed is drift, below
+      const seed = TEAM_SEEDS[rival];
+      const v = deltaE(plate, seed);
+      const seedsApart = deltaE(TEAM_SEEDS[team], seed);
+      const label = v >= SEED_FLOOR ? undefined : seedsApart >= SEED_FLOOR ? "drift" : "inherent";
+      found.push({
+        check: `${team} ↔ ${rival} seed`,
+        value:
+          `ΔE ${v.toFixed(1)} · cvd ${cvdDeltaE(plate, seed).toFixed(1)} (${plate} ↔ ${seed})` +
+          (label ? ` — seeds ${seedsApart.toFixed(1)} apart at source` : ""),
+        status: label ? "WARN" : "PASS",
+        label,
+        rank: label === "drift" ? 0 : label === "inherent" ? 1 : 2,
+        v,
+      });
+    }
+    drift.push({ mode, team, plate, seed: TEAM_SEEDS[team], value: deltaE(plate, TEAM_SEEDS[team]) });
+  }
+
+  // Actionable first, then unfixable, then clear — each ascending by ΔE. At 11
+  // teams this one group is 220 rows, and nobody reads 220 rows: the handful
+  // worth acting on have to be at the top of it, not scattered through it.
+  found.sort((a, b) => a.rank - b.rank || a.v - b.v);
+  for (const f of found) add(g, f.check, f.value, f.status, f.label);
+}
+
+/** The seeds are raw brand hexes: no contrast check, no CVD check, no
+ *  compositing. They exist for THIS script to measure against, and rendering one
+ *  would put an unvalidated colour on screen while bypassing every check in this
+ *  file — the precise failure the file was written to prevent.
+ *
+ *  Keeping that module out of the app is therefore a real invariant, and this is
+ *  what makes it one instead of a comment somebody has to notice in a diff. It
+ *  is also the only FAIL this pass adds: an unvalidated hex reaching the screen
+ *  is a defect, where a brand-fidelity collision is a warning.
+ *
+ *  `scripts/` is outside the scan, so this file's own import is out of scope by
+ *  construction rather than by exemption. */
+const SRC_DIR = fileURLToPath(new URL("../src/", import.meta.url));
+const SEEDS_MODULE = /(?:\bfrom|\bimport)\s*\(?\s*["'][^"']*theme\.seeds/;
+
+function walkSource(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walkSource(join(dir, e.name)) : [join(dir, e.name)],
+  );
+}
+
+function checkSeedIsolation(): void {
+  const g = "provenance";
+  const check = "theme.seeds.ts is validator-only";
+
+  let scanned: string[];
+  try {
+    scanned = walkSource(SRC_DIR).filter(
+      (f) => /\.tsx?$/.test(f) && !f.endsWith("theme.seeds.ts"),
+    );
+  } catch (err) {
+    add(g, check, `could not read ${SRC_DIR} — ${(err as Error).message}`, "FAIL");
+    return;
+  }
+
+  // A scan that matched nothing proves nothing. Without this, a moved directory
+  // or a broken path reports a clean bill of health for a check that never ran,
+  // which is worse than having no check at all.
+  if (scanned.length === 0) {
+    add(g, check, `scanned 0 files under ${SRC_DIR} — the scan did not run, so this is not a pass`, "FAIL");
+    return;
+  }
+
+  const leaks = scanned.filter((f) => SEEDS_MODULE.test(readFileSync(f, "utf8")));
+  add(g, check,
+    leaks.length
+      ? `imported by ${leaks.map((f) => relative(SRC_DIR, f)).join(", ")}` +
+        " — a brand seed has passed no contrast, CVD or compositing check"
+      : `no import across ${scanned.length} files under src/`,
+    leaks.length ? "FAIL" : "PASS");
+}
+
 function checkHero3D(mode: Mode, t: Theme, s: Surfaces): void {
   const g = `${mode} · hero3D pace ramp`;
   // The glow duplicate sits UNDER and AROUND the crisp line, so the crisp
@@ -510,6 +665,16 @@ function colorMixOpaque(fg: string, alpha: number, bg: string): string {
 
 const GLYPH: Record<Status, string> = { PASS: "PASS", THIN: "THIN", WARN: "WARN", FAIL: "FAIL" };
 
+/** `--summary` drops the per-row table and keeps the parts anyone actually
+ *  reads: the counts, the brand-seed triage, the two roll-up blocks, and any
+ *  FAIL verbatim. The full report is still one flag away — it just stops being
+ *  the default at ~275 rows today and ~700 after the grid expansion.
+ *
+ *  Pass it as `npm run validate:theme -- --summary`; see the header for why the
+ *  bare `--` is not optional. */
+const SUMMARY = process.argv.includes("--summary");
+
+checkSeedIsolation();
 for (const mode of ["light", "dark"] as Mode[]) {
   const t = getTheme(mode, tintFor("ferrari"));
   const s = surfacesOf(t);
@@ -519,27 +684,78 @@ for (const mode of ["light", "dark"] as Mode[]) {
   checkTintedFills(mode, t, s);
   checkDrivers(mode, s);
   checkDataColours(mode, t, s);
+  checkBrandSeeds(mode);
   checkHero3D(mode, t, s);
 }
 
-let group = "";
+// COUNT FIRST, PRINT SECOND. Two passes, so `--summary` is structurally unable
+// to change a total or an exit code by changing what it prints. Folding the
+// counting into the print loop (as this did) would mean two counting paths kept
+// in agreement by hand.
 let fails = 0;
 let thins = 0;
 let warns = 0;
 for (const r of rows) {
-  if (r.group !== group) {
-    group = r.group;
-    console.log(`\n  ── ${group} ${"─".repeat(Math.max(0, 58 - group.length))}`);
-  }
   if (r.status === "FAIL") fails++;
   else if (r.status === "THIN") thins++;
   else if (r.status === "WARN") warns++;
-  console.log(`  [${GLYPH[r.status]}] ${r.check.padEnd(34)} ${r.value}`);
 }
+const drifting = rows.filter((r) => r.label === "drift").length;
+const inherent = rows.filter((r) => r.label === "inherent").length;
+
+const rule = (title: string): string =>
+  `\n  ── ${title} ${"─".repeat(Math.max(0, 58 - title.length))}`;
+
+/** The status cell, padded to the widest one in its OWN group. A group with no
+ *  labels computes 6, so every pre-existing group renders exactly as it always
+ *  has and only the labelled group widens. */
+const cellOf = (r: Row): string => `[${GLYPH[r.status]}${r.label ? ` ${r.label}` : ""}]`;
+const cellWidth = new Map<string, number>();
+for (const r of rows) {
+  cellWidth.set(r.group, Math.max(cellWidth.get(r.group) ?? 0, cellOf(r).length));
+}
+
+if (!SUMMARY) {
+  let group = "";
+  for (const r of rows) {
+    if (r.group !== group) {
+      group = r.group;
+      console.log(rule(group));
+    }
+    console.log(`  ${cellOf(r).padEnd(cellWidth.get(r.group) ?? 6)} ${r.check.padEnd(34)} ${r.value}`);
+  }
+
+  console.log(rule("brand fidelity: plate ↔ its own seed"));
+  for (const d of drift) {
+    console.log(
+      `  ${d.mode.padEnd(5)} ${d.team.padEnd(12)} ΔE ${d.value.toFixed(1).padStart(5)}   ${d.plate} from ${d.seed}`,
+    );
+  }
+} else if (fails > 0) {
+  // A digest that hides the reason for a non-zero exit is not a digest.
+  console.log(rule("failures"));
+  for (const r of rows.filter((x) => x.status === "FAIL")) {
+    console.log(`  ${cellOf(r)} ${r.group} · ${r.check} — ${r.value}`);
+  }
+}
+
+// Both roll-ups print in BOTH modes: they are the two lines that say whether
+// anything needs doing, which is the whole job of the summary.
+const driftRollup = (m: Mode): string => {
+  const d = drift.filter((x) => x.mode === m);
+  const worst = d.reduce((a, b) => (b.value > a.value ? b : a));
+  const mean = d.reduce((a, b) => a + b.value, 0) / d.length;
+  return `${m} worst ${worst.value.toFixed(1)} (${worst.team}) · mean ${mean.toFixed(1)}`;
+};
+console.log(rule("brand seeds"));
+console.log(
+  `  plate ↔ rival seed   ${drifting} drift (fixable) · ${inherent} inherent (brands collide at source)`,
+);
+console.log(`  drift off own seed   ${driftRollup("light")}  ·  ${driftRollup("dark")}`);
 
 // The tightest margins are where the NEXT change breaks, and they are invisible
 // in a pass/fail table. Print them so theme.ts's header can name them.
-console.log(`\n  ── tightest contrast margins ${"─".repeat(33)}`);
+console.log(rule("tightest contrast margins"));
 for (const m of [...margins].sort((a, b) => a.value - a.floor - (b.value - b.floor)).slice(0, 6)) {
   console.log(
     `  ${(m.value - m.floor >= 0 ? "+" : "") + (m.value - m.floor).toFixed(2)} over ${m.floor.toFixed(1)}` +
@@ -551,7 +767,7 @@ for (const m of [...margins].sort((a, b) => a.value - a.floor - (b.value - b.flo
 // live caveat and hides the fact that the problem was solved. Surface it.
 const stale = Object.keys(ACCEPTED).filter((id) => !acceptedFired.has(id));
 if (stale.length) {
-  console.log(`\n  ── stale exceptions ${"─".repeat(41)}`);
+  console.log(rule("stale exceptions"));
   for (const id of stale) {
     console.log(`  [WARN] ${id.replace("|", " · ")}`);
     console.log("         no longer failing — delete this entry from ACCEPTED.");
