@@ -104,7 +104,7 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   /* pre-mount fallback — must match theme.ts's pageBase (aurora base) */
-  background: #e6e5e2;
+  background: #dedcd9;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -149,13 +149,20 @@ body {
    infinite drift was the site-wide sluggishness bug. Only the 250ms retint
    crossfade animates. Never per-card blobs. */
 
+/* The fill is a vertical wash rather than a flat color. In LIGHT this is the
+   whole atmosphere (the blobs are off — see theme.ts's auroraA/B/C) and it
+   works subtractively: because it's painted by this FIXED, full-viewport
+   layer, no section can clip it, so there is no boundary for a seam to show
+   up at — which is exactly how the old blob-plus-band-veil combination
+   produced a hard horizontal edge. In DARK, pageLift === pageBase, so the
+   gradient resolves to a flat fill and the blobs still carry the wash. */
 .aurora {
   position: fixed;
   inset: 0;
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  background: var(--page-base);
+  background: linear-gradient(180deg, var(--page-lift), var(--page-base));
   transition: var(--tint-transition);
 }
 
@@ -814,7 +821,9 @@ body {
   height: 12px;
   border-radius: 50%;
   background: var(--chip-color);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--chip-color) 20%, transparent);
+  /* Tokenised: this soft outer ring is a bloom, and light has no headroom for
+     one (--swatch-ring-pct 0% there, 20% in dark). */
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--chip-color) var(--swatch-ring-pct), transparent);
   transition: var(--tint-transition);
 }
 
@@ -841,9 +850,14 @@ body {
   color: var(--ink-secondary);
 }
 
-/* Active chip: brighter inner fill + a team-color glow. */
+/* Active chip: a fill tinted with the team's own color + a heavy same-family
+   border. The accent is mixed INTO --glass2 rather than layered over it, so
+   there's one translucency instead of two stacked; at --accent-wash-pct 0%
+   color-mix resolves to plain var(--glass2), which is dark's behaviour
+   unchanged. The two bloom layers stay in the rule but go transparent in light
+   (--glow-*-pct 0%) — dark still glows. */
 .team-chip--active {
-  background: var(--glass2);
+  background: color-mix(in srgb, var(--chip-color) var(--accent-wash-pct), var(--glass2));
   border-color: color-mix(in srgb, var(--chip-color) var(--glow-border-pct), var(--glass-border));
   box-shadow:
     inset 0 1px 0 var(--spec),
@@ -905,6 +919,13 @@ body {
   margin-bottom: var(--space-4);
   padding: var(--space-5) var(--space-6);
   border-radius: var(--radius-feature);
+  /* Tinted fill + a single accent edge. A thin red border plus a red outer
+     bloom on white is the grammar of a form validation error, so light drops
+     the bloom (--glow-*-pct 0%) and carries the accent in the fill and the
+     border instead. At 0% wash this resolves to plain var(--glass) and 45%
+     border — dark unchanged. */
+  background: color-mix(in srgb, var(--accent) var(--accent-wash-pct), var(--glass));
+  border-color: color-mix(in srgb, var(--accent) var(--glow-border-pct), var(--glass-border));
   box-shadow:
     inset 0 1px 0 var(--spec),
     var(--shadow-card),
@@ -984,7 +1005,7 @@ body {
   width: 38px;
   height: 38px;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  background: color-mix(in srgb, var(--accent) var(--well-pct), transparent);
   color: var(--accent-ink);
   transition: var(--tint-transition), color 0.25s ease;
 }
@@ -1075,7 +1096,7 @@ body {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  background: color-mix(in srgb, var(--accent) var(--well-pct), transparent);
   color: var(--accent-ink);
   font-size: 12.5px;
   font-weight: 700;
@@ -1150,8 +1171,15 @@ body {
   transition: var(--tint-transition);
 }
 
+/* One complete rgba fill per mode rather than a color-mix off --surface,
+   because the two modes need opposite DIRECTIONS: dark lightens the band,
+   light darkens it. A near-white veil on a light page lifts the band toward
+   the card color and shrinks the page-to-card step on half the sections —
+   i.e. it fights the thing the light stack separates by. Darkening instead
+   keeps the same section rhythm AND widens band-b's step to 0.108 L vs
+   band-a's 0.090. */
 .page-section[data-band="b"]::before {
-  background: color-mix(in srgb, var(--surface) 45%, transparent);
+  background: var(--band-veil);
 }
 
 /* Scroll-reveal wrappers are the grid items now, so they carry the wide

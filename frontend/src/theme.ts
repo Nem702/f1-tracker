@@ -1,39 +1,62 @@
 // Single source of truth for every color in the app: base tokens per mode,
 // plus a validated palette per TEAM (the whole site retints to the selected
-// pair — accent, aurora blobs, chart driver colors). All palettes were run
-// through the dataviz six-checks validator against this redesign's opaque
-// chart-plate surfaces — light rgba(255,253,249,.72) flattened over the
-// #ececec page base = #FAF8F5, dark rgba(18,18,20,.6) over #0a0a0c = #0F0F11
-// (page base was re-tinted from a warm #f2ede7 to this neutral gray after the
-// fact — lightness held constant, so none of the checks below shifted; light
-// shadowCard/shadowRaised were also re-tinted from a warm brown rgba(80,50,20,…)
-// to neutral rgba(23,25,34,…) — same alpha/blur/spread, decorative only, no
-// validator check touches shadow color):
-//   - per-team driver1↔driver2, worst of protan/deutan ΔE (target ≥ 12):
-//       ferrari  light 12.6 · dark 15.3  (dark seeds re-snapped: rosso
-//         L .66→.55, giallo L .80→.67 — the seed gold sat above the dark
-//         lightness band and equal-lightness rosso/giallo fell to ΔE 8.5)
-//       mercedes light 27.0 · dark 26.2  (ANT "silver" seeds failed the
-//         chroma floor — C .035/.027 reads gray — so slot 2 is a steel blue
-//         at C = .10, hue held; dark teal re-snapped into the L band)
-//       mclaren  light 96.6 · dark 89.4  (dark seeds re-snapped into band)
-//       redbull  light 71.6 · dark 61.9  (seeds passed unchanged)
-//   - head-to-head cross-team combos (--pairs all over the 8 driver colors,
-//     both modes): one collision — ferrari slot 2 (giallo) ↔ mclaren slot 1
-//     (papaya), ΔE 2.3 light / 1.5 dark — resolved via CVD_COLLISIONS below
-//     (the yielding driver takes their team's other slot; both directions
-//     re-validated ≥ 12). ANT↔PIA sits in the legal 8–12 floor band
-//     (18.5 light / 11.8 dark) — every chart carries legend + acronym
-//     end-labels + tooltip + table, the mandated secondary encoding.
-//   - WCAG AA via the validator's contrast(): onAccent-on-accent ≥ 4.5 for
-//     every team+mode (worst: redbull dark 4.96); accentInk (the text/icon
-//     variant of the accent) ≥ 4.5 on glass-over-base (#F7F4F1 / #131316) —
-//     light mercedes/mclaren/neutral accents fail even 3:1 there, so their
-//     accentInk is a darkened same-hue step (#007e74, #b25701, #c44502);
-//     light inkMuted darkened #898781 → #716e67 (3.28 → 4.64 on glass).
-//   - compounds/flags/temp colors unchanged from Part 6 (fixed semantic
-//     scales; MEDIUM's sub-3:1 WARN and the flag WARNs are the same
-//     pre-existing, documented exceptions).
+// pair — accent, aurora blobs, chart driver colors).
+//
+// EVERY NUMBER BELOW IS PRINTED BY `npm run validate:theme`. That script
+// imports this file directly and composites each surface from these tokens,
+// so nothing here is a remembered figure — re-run it after any change rather
+// than trusting this comment. (It replaced a header whose ΔE claims were off
+// by up to 4× and had been silently wrong through several passes, because
+// nothing verified them.)
+//
+// Metric: OKLab ΔE ×100, worst of protan/deutan, Machado-Oliveira-Fernandes
+// (2009) at severity 1.0. Contrast is WCAG relative luminance.
+//
+// ONE FLOOR governs driver separation: ΔE 8. Twelve is a TARGET, not a second
+// floor, and it applies only to a team's own duo — the pair the default view
+// shows, which has no remedy available because a team's drivers must wear
+// their team's two slot colors. 8–12 there reports WARN and leans on the
+// secondary encoding every chart carries (legend + acronym end-labels +
+// tooltip + table). Cross-team pairs get no relief band: they DO have a
+// remedy, so below 8 they belong in CVD_COLLISIONS.
+//
+//   - per-team driver1↔driver2 (target 12, floor 8):
+//       ferrari  light 10.5 · dark 11.1   <- both in the 8–12 WARN band
+//       mercedes light 13.8 · dark 12.3
+//       mclaren  light 23.6 · dark 21.7
+//       redbull  light 19.7 · dark 17.5
+//   - head-to-head: all 48 ordered cross-team pairings clear ΔE 8 in both
+//     modes once CVD_COLLISIONS is applied (10 slot-swap, 2 fall through to
+//     neutral, 36 render unchanged; worst rendered 8.3). See that table for
+//     the six colliding pairs and the lexicographic-key trap.
+//   - WCAG: onAccent-on-accent ≥ 4.5 for every team+mode (worst redbull dark
+//     4.96). accentInk is checked PER CONSUMER, not per surface — the floor
+//     is a property of the rendered text, so .rotating-word (hero h1, ≥35px)
+//     takes 3:1 while the 12px eyebrows take 4.5:1. inkPrimary/Secondary/Muted
+//     are checked on page, veiled band, card, cardSolid, plate and chip.
+//   - compounds/flags/temp are fixed semantic scales, re-measured against the
+//     NEW plate rather than inherited: MEDIUM (1.80), HARD (2.99), flag
+//     warning (1.74), flag serious (2.51) and tempAir (1.76) sit in the
+//     documented sub-3:1 relief band, as do four of the eight light driver
+//     colors — legal only because of the secondary encoding above.
+//   - one declared exception, dark inkMuted-on-chip at 4.42:1 (see the
+//     validator's ACCEPTED table). Everything else passes.
+//
+// WHERE THIS IS FRAGILE. Zero failures says nothing about how much room is
+// left, and these are the margins the next token nudge eats first. The
+// validator prints this list under "tightest contrast margins" — regenerate it
+// rather than editing by hand:
+//
+//     -0.08 over 4.5   4.42:1   dark inkMuted on chip     (declared exception)
+//     +0.12 over 4.5   4.62:1   light inkSecondary on page
+//     +0.23 over 4.5   4.73:1   dark neutral eyebrows (12px), all three
+//     +0.26 over 4.5   4.76:1   light inkMuted on page
+//
+// The light pair is the live constraint: both are solved against the veiled
+// band-b ground, which is the darkest surface on the page, so darkening
+// `pageBase` again spends that 0.12 first. One THIN status, dark's inkMuted
+// chroma at C .0092 against a .008 target — dark is frozen, so it stands.
+//
 // The active pair's two colors double as the delta chart's diverging poles,
 // so "slot color = driver" holds everywhere. Color follows the entity — a
 // driver keeps their slot color across every chart and mode; only the
@@ -55,28 +78,40 @@ interface TeamColors {
 }
 
 const TEAM_PALETTES: Record<Mode, Record<TeamSlug, TeamColors>> = {
+  // Light accents, 2026-08-08: split by JOB. One full-chroma value used to do
+  // five things (fill, border, glow, text, icon); on a pale ground that reads
+  // as an alert rather than a marque. `accent` is now the FILL — the lighter,
+  // more chromatic step, for small solid areas (row-count pill, team dots,
+  // progress bar). `accentInk` is the deeper, less chromatic step for text and
+  // icons. Ferrari's red comes down in lightness AND chroma together
+  // (L .563→.512, C .229→.204) — that pair of moves is what turns alarm into
+  // marque. Ferrari and Red Bull used to collapse both roles onto one hex.
+  // Teams whose onAccent is DARK ink (mercedes, mclaren, neutral) keep a bright
+  // fill — deepening it would break the dark-on-accent direction — so only
+  // their ink moves. Driver/series colors are untouched: accent is a UI
+  // identity, never a data identity.
   light: {
     ferrari: {
-      accent: "#dc0500",
-      accentInk: "#dc0500",
+      accent: "#c00d13",
+      accentInk: "#a8121a",
       onAccent: "#ffffff",
       drivers: ["#dc0500", "#c78a1e"],
     },
     mercedes: {
       accent: "#00a89b",
-      accentInk: "#007e74",
+      accentInk: "#00655d",
       onAccent: "#14100a",
       drivers: ["#00a89b", "#16799d"],
     },
     mclaren: {
       accent: "#f07800",
-      accentInk: "#b25701",
+      accentInk: "#8f4601",
       onAccent: "#14100a",
       drivers: ["#f07800", "#1f9ed8"],
     },
     redbull: {
       accent: "#2a5cb8",
-      accentInk: "#2a5cb8",
+      accentInk: "#234a90",
       onAccent: "#ffffff",
       drivers: ["#2a5cb8", "#d64545"],
     },
@@ -115,7 +150,7 @@ const NEUTRAL: Record<
   Mode,
   { accent: string; accentInk: string; onAccent: string; driver: string }
 > = {
-  light: { accent: "#eb6834", accentInk: "#c44502", onAccent: "#14100a", driver: "#2a78d6" },
+  light: { accent: "#e35f2c", accentInk: "#a03702", onAccent: "#14100a", driver: "#2a78d6" },
   dark: { accent: "#d95926", accentInk: "#d95926", onAccent: "#14100a", driver: "#3987e5" },
 };
 
@@ -139,11 +174,35 @@ export const DEFAULT_TINT: Tint = {
   b: { team: "ferrari", slot: 1 },
 };
 
-/** Precomputed from the validator's all-pairs run (union of both modes,
- *  worst of protan/deutan < 8): the only cross-team slot pair below the CVD
- *  floor is Ferrari giallo ↔ McLaren papaya. No runtime color math — a pair
- *  is either in this table or it isn't. */
-const CVD_COLLISIONS = new Set(["ferrari1|mclaren0"]);
+/** Every cross-team slot pair below the ΔE 8 floor in EITHER mode (worst of
+ *  protan/deutan, OKLab ×100), from `npm run validate:theme`. No runtime color
+ *  math — a pair is either in this table or it isn't.
+ *
+ *  KEYS MUST BE LEXICOGRAPHIC: `collides()` normalises with
+ *  `ka < kb ? ka|kb : kb|ka`, and "mclaren1" sorts BEFORE "mercedes1" — an
+ *  entry written in team order instead silently never matches.
+ *
+ *      pair                  light   dark
+ *      ferrari1|mclaren0       1.5    0.7
+ *      ferrari0|redbull1       4.2   12.0
+ *      ferrari1|redbull1       8.9    6.6
+ *      mclaren0|redbull1      11.9    6.7
+ *      mclaren1|redbull0      17.8    5.1
+ *      mclaren1|mercedes1     12.3    7.2
+ *
+ *  Five of these were added 2026-08-08; before that the table held only the
+ *  first and the rest shipped as live defects — two series a red-green
+ *  colorblind viewer could not tell apart. Verified against all 48 ordered
+ *  cross-team pairings: 10 slot-swap, 2 fall through to neutral, 36 render
+ *  unchanged, worst rendered ΔE 8.3. */
+const CVD_COLLISIONS = new Set([
+  "ferrari1|mclaren0",
+  "ferrari0|redbull1",
+  "ferrari1|redbull1",
+  "mclaren0|redbull1",
+  "mclaren1|redbull0",
+  "mclaren1|mercedes1",
+]);
 
 function collides(a: { team: TeamSlug; slot: 0 | 1 }, b: { team: TeamSlug; slot: 0 | 1 }): boolean {
   const ka = `${a.team}${a.slot}`;
@@ -180,7 +239,9 @@ function resolveSlot(mode: Mode, ref: SlotRef): string {
 
 export interface Theme {
   // ---- layer stack (aurora base < glass < plate) ----
-  pageBase: string; // aurora base / body pre-mount fallback
+  pageBase: string; // aurora base / body pre-mount fallback — the page wash's DARK stop, so it doubles as the worst-case ground every ink check is solved against
+  pageLift: string; // the wash's light stop, painted at the top of the fixed .aurora layer. Light runs a slight vertical value gradient INSTEAD of the blobs; dark sets this === pageBase so the gradient renders flat and the blobs carry the atmosphere (see auroraA/B/C)
+  bandVeil: string; // the alternating [data-band="b"] section veil, as a complete rgba fill. Direction is per-mode ON PURPOSE: dark lightens the band, light DARKENS it — a near-white veil on a light page shrinks the very page-to-card step the light stack depends on
   surface: string; // the chart plate flattened to an opaque hex (validator surface; mark rings, sticky table headers)
   plate: string; // near-opaque inset plate the chart marks draw on — rgba
   plateBorder: string; // hairline ring around the plate
@@ -190,12 +251,20 @@ export interface Theme {
   glassOpaque: string; // @supports fallback when backdrop-filter is missing
   cardSolid: string; // Race Analysis chart cards' non-blurred fill (see .card--solid) — its own tier, not the @supports fallback: a cool silver-gray in light mode reads better solid than glassOpaque's near-white did
   glassMenu: string; // fully opaque fill for floating interactive menus (GlassSelect popup) — its own tier, not the @supports fallback; legibility over arbitrary content wins over the glass look here
-  spec: string; // specular inset top-edge highlight — rgba
+  glassSolid: string; // fully opaque card fill for a surface that must NOT sample the page beneath it (.countdown, which wears the dark theme on a light page — at 85% the light page bled through and muddied it to a mid-charcoal)
+  spec: string; // specular inset top-edge highlight — rgba. Transparent in light: a white top edge on a near-white card measures 1.01-1.05:1, i.e. nothing. Dark keeps it at 0.14, where it renders 1.53:1
   shadowCard: string; // glass drop shadow
   shadowRaised: string; // stronger elevation: tooltips, hover
   glowBorderPct: string; // team-glow recipe (.team-chip--active, .overview__insight): border-color color-mix %
   glowRingPct: string; // …ring box-shadow color-mix %
   glowBlurPct: string; // …blur box-shadow color-mix % — light mode runs all three hotter than dark so translucent red reads as red, not pink, over a pale fill
+  accentWashPct: string; // tinted-fill color-mix %: how much accent is mixed INTO the fill beneath (.team-chip--active's glass2, .overview__insight's glass). Replaces the fill rather than layering over it, so there's one translucency, not two
+  wellPct: string; // the accent "well" behind a glyph (.stat-tile__icon, .pipeline__num) — color-mix % over transparent. Light runs this HOTTER than dark: a 16% wash of a pale-ground accent reads as an unfinished pink square, where dark's deep maroon well reads as intentional
+  swatchRingPct: string; // .team-chip__swatch's outer halo ring — 0% in light (it is an outer bloom, and light has no headroom for one), dark keeps its 20%
+  countdownEdgePct: string; // .countdown's accent border: color-mix % of accent into --glass-border. The card wears the DARK theme in both modes, so on a light page it needs a real edge; 0% in dark resolves to exactly --glass-border, leaving dark untouched
+  heroGlowMin: number; // Hero3D's pace ramp — the glow duplicate's opacity floor…
+  heroGlowMax: number; // …and ceiling. Faster laps glow more, so this is a DATA ENCODING, not decoration: compress the range in light, never flatten it
+  heroGlowWidth: number; // …and the duplicate's lineWidth. Width and opacity both feed the smudge on a pale ground
   accent: string; // team accent — chrome fills/glow only, never a series
   accentInk: string; // accent as TEXT or icon color (AA on glass)
   onAccent: string; // ink for text sitting on a solid `accent` fill
@@ -234,43 +303,89 @@ type BaseTokens = Omit<
 
 const base: Record<Mode, BaseTokens> = {
   light: {
-    // Light layer stack, 2026-07-11 separation pass: page nudged darker and
-    // every card fill re-based on WHITE so cards sit clearly ABOVE the page
-    // (cardSolid used to be darker than the page — elevation read backwards),
-    // and the card hairline flipped from a white highlight (invisible on a
-    // light page) to an ink-toned border. Glass-over-base flattens to ~#f6f6f5
-    // vs the #F7F4F1 the header's accentInk AA checks used — same lightness,
-    // claims hold. `spec` keeps the frosted white top edge.
-    pageBase: "#e6e5e2",
-    surface: "#faf8f5",
-    plate: "rgba(240, 240, 242, 0.80)",
-    plateBorder: "rgba(23, 25, 34, 0.08)",
-    glass: "rgba(255, 255, 255, 0.66)",
-    glass2: "rgba(255, 255, 255, 0.85)",
-    glassBorder: "rgba(23, 25, 34, 0.10)",
-    glassOpaque: "rgba(255, 255, 255, 0.92)",
-    cardSolid: "rgba(252, 252, 253, 0.94)",
+    // Light layer stack, 2026-08-08 pass — light stopped borrowing dark's
+    // mechanisms. Dark separates surfaces by EMITTED LIGHT (glow, bright
+    // hairline, blobs of atmosphere); white has no headroom above it, so each
+    // of those degrades into a smudge, a whisper, or a stain. Light now
+    // separates by VALUE STEP + EDGE + CONTACT SHADOW instead:
+    //   - page darkened #e6e5e2 → #dedcd9 to open room under the cards, and
+    //     the three blobs suppressed (auroraA/B/C = 0) in favour of a slight
+    //     vertical wash pageLift → pageBase. The wash is painted by the FIXED
+    //     .aurora layer, so unlike the old blobs nothing can clip it and
+    //     there is no section boundary for a seam to appear at.
+    //   - four near-identical fills collapsed to three visible tiers:
+    //     page #dedcd9 · plate #e7e7eb · card #fafafa-#fefefd. cardSolid keeps
+    //     its own token (it must stay un-blurred for scroll perf) but no
+    //     longer reads as a separate tier.
+    //   - shadowCard/shadowRaised each gained a TIGHT CONTACT layer ahead of
+    //     the ambient one; on a pale ground the contact shadow does nearly all
+    //     the perceptual work, and bundling it into the same token means the
+    //     consumers that drop or re-declare --shadow-card pick it up for free.
+    //   - hairlines promoted (glassBorder .10→.16, border .09→.14,
+    //     plateBorder .08→.12): on dark the border is the hero of the card, on
+    //     light it has to earn the same rank.
+    //   - `spec` retired to transparent. A white specular top edge on a
+    //     near-white card measures 1.01-1.05:1 — invisible. Dark keeps it at
+    //     0.14 on a dark fill, where it renders 1.53:1 and genuinely reads.
+    // inkMuted darkened+neutralised to hold AA against the new worst-case
+    // ground (it was already FAILING at 4.04:1 on the old page).
+    pageBase: "#dedcd9",
+    pageLift: "#e4e2df",
+    bandVeil: "rgba(23, 25, 34, 0.035)",
+    surface: "#fafafa",
+    plate: "rgba(232, 232, 237, 0.92)",
+    plateBorder: "rgba(23, 25, 34, 0.12)",
+    glass: "rgba(255, 255, 255, 0.86)",
+    glass2: "rgba(255, 255, 255, 0.96)",
+    glassBorder: "rgba(23, 25, 34, 0.16)",
+    glassOpaque: "rgba(255, 255, 255, 0.96)",
+    cardSolid: "rgba(255, 255, 255, 0.96)",
     glassMenu: "rgba(255, 255, 255, 1)",
-    spec: "rgba(255, 255, 255, 0.8)",
-    shadowCard: "0 24px 48px -28px rgba(23, 25, 34, 0.35)",
-    shadowRaised: "0 30px 60px -24px rgba(23, 25, 34, 0.4)",
-    glowBorderPct: "70%",
-    glowRingPct: "50%",
-    glowBlurPct: "78%",
-    // Light blobs run pastel (see auroraTint) AND lower-opacity than dark's
-    // raw values: at the old 0.42 the hero blob read as a pink smear across
-    // the navbar and left half of every section, and tinted the leftmost
-    // stat tile while its siblings stayed white.
-    auroraA: "0.30",
-    auroraB: "0.20",
-    auroraC: "0.15",
+    glassSolid: "#ffffff",
+    spec: "rgba(255, 255, 255, 0)",
+    shadowCard: "0 1px 2px rgba(23, 25, 34, 0.11), 0 24px 48px -28px rgba(23, 25, 34, 0.3)",
+    shadowRaised: "0 2px 4px rgba(23, 25, 34, 0.13), 0 30px 60px -24px rgba(23, 25, 34, 0.35)",
+    // The glow tier is GONE in light. Glow is additive and white has no
+    // headroom above it, so a bloom can only render as a tint spreading
+    // outward — read as blur or bleed, and running it hotter just enlarges the
+    // smudge. Both bloom layers go to 0% (color-mix at 0% is fully
+    // transparent, so the three consumers need no CSS branch), and the work
+    // they were doing moves to a heavier border plus a tinted fill.
+    glowBorderPct: "85%",
+    glowRingPct: "0%",
+    glowBlurPct: "0%",
+    accentWashPct: "14%",
+    wellPct: "26%",
+    swatchRingPct: "0%",
+    countdownEdgePct: "65%",
+    // Hero3D, light: ceiling down 0.22 → 0.13 and width 7 → 5. At the old
+    // ceiling the glow dragged THREE drivers' crisp lines below the 3:1 floor
+    // against their own glow-brightened surround (ferrari0 3.78→2.62,
+    // mercedes1 3.61→2.78, redbull1 3.20→2.47); at 0.13 only redbull1 still
+    // does, and it starts from only 3.20 bare. The min drops to 0.03 to keep
+    // the fast-vs-slow ramp perceptible (ΔE 2.8) at the lower ceiling.
+    heroGlowMin: 0.03,
+    heroGlowMax: 0.13,
+    heroGlowWidth: 5,
+    // Blobs off in light — the vertical pageLift→pageBase wash replaces them.
+    // They were the actual source of the "half-pink navbar" and the hard
+    // horizontal band edge: the fixed blob was still above the perceptual
+    // floor where the [data-band] veil cut across it.
+    auroraA: "0",
+    auroraB: "0",
+    auroraC: "0",
     auroraTint: "45%",
     inkPrimary: "#171922",
     inkSecondary: "#585b66",
-    inkMuted: "#716e67",
-    grid: "#ece4d8",
-    axis: "#d2c9ba",
-    border: "rgba(23, 25, 34, 0.09)",
+    inkMuted: "#59595d",
+    // Neutralised 2026-08-08. These were the last survivors of an earlier warm
+    // page base: at C .018/.023 against a C .004 page they laid a yellow cast
+    // over the largest flat area in every card. --grid also rules
+    // .data-table td and .rc-feed__item, where it sat next to the cool
+    // --border on the table header — that mismatch closes with it.
+    grid: "#e2e2e4",
+    axis: "#c8c8ca",
+    border: "rgba(23, 25, 34, 0.14)",
     tempTrack: "#2a78d6",
     tempAir: "#86b6ef",
     compounds: {
@@ -287,6 +402,12 @@ const base: Record<Mode, BaseTokens> = {
   },
   dark: {
     pageBase: "#0a0a0c",
+    // === dark is frozen ===
+    // pageLift === pageBase, so the wash gradient renders FLAT here and dark
+    // keeps its blobs as the atmosphere. bandVeil is the literal value the old
+    // color-mix(--surface 45%, transparent) computed to — byte-identical.
+    pageLift: "#0a0a0c",
+    bandVeil: "rgba(15, 15, 17, 0.45)",
     surface: "#0f0f11",
     plate: "rgba(18, 18, 20, 0.6)",
     plateBorder: "rgba(255, 255, 255, 0.07)",
@@ -296,12 +417,24 @@ const base: Record<Mode, BaseTokens> = {
     glassOpaque: "rgba(26, 26, 30, 0.85)",
     cardSolid: "rgba(26, 26, 30, 0.85)",
     glassMenu: "rgba(26, 26, 30, 1)",
+    glassSolid: "#1a1a1e", // glassOpaque's colour at full opacity
     spec: "rgba(255, 255, 255, 0.14)",
     shadowCard: "0 24px 48px -20px rgba(0, 0, 0, 0.65)",
     shadowRaised: "0 30px 56px -18px rgba(0, 0, 0, 0.75)",
     glowBorderPct: "45%",
     glowRingPct: "30%",
     glowBlurPct: "60%",
+    // Dark keeps the glow tier — it has headroom above the fill, which is the
+    // whole reason the mechanism works here and not in light. No wash, no
+    // countdown edge (0% resolves to plain --glass-border), swatch ring and
+    // well at their existing values, Hero3D ramp untouched.
+    accentWashPct: "0%",
+    wellPct: "16%",
+    swatchRingPct: "20%",
+    countdownEdgePct: "0%",
+    heroGlowMin: 0.07,
+    heroGlowMax: 0.22,
+    heroGlowWidth: 7,
     auroraA: "0.20",
     auroraB: "0.18",
     auroraC: "0.16",
@@ -365,6 +498,8 @@ export function teamSwatch(mode: Mode, slug: TeamSlug): string {
 export function cssVars(t: Theme): Record<string, string> {
   return {
     "--page-base": t.pageBase,
+    "--page-lift": t.pageLift,
+    "--band-veil": t.bandVeil,
     "--surface": t.surface,
     "--plate": t.plate,
     "--plate-border": t.plateBorder,
@@ -380,6 +515,11 @@ export function cssVars(t: Theme): Record<string, string> {
     "--glow-border-pct": t.glowBorderPct,
     "--glow-ring-pct": t.glowRingPct,
     "--glow-blur-pct": t.glowBlurPct,
+    "--accent-wash-pct": t.accentWashPct,
+    "--well-pct": t.wellPct,
+    "--swatch-ring-pct": t.swatchRingPct,
+    "--countdown-edge-pct": t.countdownEdgePct,
+    "--glass-solid": t.glassSolid,
     "--accent": t.accent,
     "--accent-ink": t.accentInk,
     "--on-accent": t.onAccent,

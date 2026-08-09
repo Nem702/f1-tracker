@@ -59,18 +59,26 @@ function decorativePoints(z: number, phase: number): Point[] {
 // instead: the crisp line stays exactly the flat validated hex in both
 // modes (no hue/lightness shift, nothing to re-validate), and "faster lap"
 // reads as "more glow" rather than "brighter line."
+// The ramp's floor/ceiling are per-mode theme tokens (heroGlowMin/Max) rather
+// than constants: on a pale ground the same opacities that read as atmosphere
+// over near-black read as a smudge, and the fix is to COMPRESS the range, never
+// to flatten it — the ramp is carrying pace, so a constant would delete data.
+// Light also narrows the duplicate (heroGlowWidth), because width and opacity
+// both feed the smudge and only one of them is doing encoding work.
 const GLOW_SEGMENTS = 12;
-const GLOW_OPACITY_MIN = 0.07;
-const GLOW_OPACITY_MAX = 0.22;
 
 /** Splits a ribbon into a handful of overlapping segments (sharing their
  *  boundary points so there's no visible seam) so the glow duplicate can
  *  carry a different opacity per segment — three.js's fat-line material
  *  only exposes opacity as a single per-line uniform, not per-vertex, so a
  *  smooth-reading ramp means multiple `<Line>`s instead of one. */
-function glowSegments(points: Point[]): { points: Point[]; opacity: number }[] {
+function glowSegments(
+  points: Point[],
+  lo: number,
+  hi: number,
+): { points: Point[]; opacity: number }[] {
   if (points.length < 2) {
-    return [{ points, opacity: (GLOW_OPACITY_MIN + GLOW_OPACITY_MAX) / 2 }];
+    return [{ points, opacity: (lo + hi) / 2 }];
   }
   const ys = points.map((p) => p[1]);
   const min = Math.min(...ys);
@@ -83,7 +91,7 @@ function glowSegments(points: Point[]): { points: Point[]; opacity: number }[] {
     const slice = points.slice(start, end + 1);
     const avgY = slice.reduce((sum, p) => sum + p[1], 0) / slice.length;
     const t = (avgY - min) / range;
-    segments.push({ points: slice, opacity: GLOW_OPACITY_MIN + t * (GLOW_OPACITY_MAX - GLOW_OPACITY_MIN) });
+    segments.push({ points: slice, opacity: lo + t * (hi - lo) });
   }
   return segments;
 }
@@ -154,8 +162,15 @@ function Ribbons({
     [b, revealB, still],
   );
 
-  const aGlow = useMemo(() => glowSegments(aVisible), [aVisible]);
-  const bGlow = useMemo(() => glowSegments(bVisible), [bVisible]);
+  const { heroGlowMin, heroGlowMax, heroGlowWidth } = theme;
+  const aGlow = useMemo(
+    () => glowSegments(aVisible, heroGlowMin, heroGlowMax),
+    [aVisible, heroGlowMin, heroGlowMax],
+  );
+  const bGlow = useMemo(
+    () => glowSegments(bVisible, heroGlowMin, heroGlowMax),
+    [bVisible, heroGlowMin, heroGlowMax],
+  );
 
   return (
     <group ref={group} rotation={[-0.3, 0, 0]} scale={[fit, fit, 1]}>
@@ -166,7 +181,7 @@ function Ribbons({
           key={`a-glow-${i}`}
           points={seg.points}
           color={theme.driver1}
-          lineWidth={7}
+          lineWidth={heroGlowWidth}
           transparent
           opacity={seg.opacity}
         />
@@ -176,7 +191,7 @@ function Ribbons({
           key={`b-glow-${i}`}
           points={seg.points}
           color={theme.driver2}
-          lineWidth={7}
+          lineWidth={heroGlowWidth}
           transparent
           opacity={seg.opacity}
         />

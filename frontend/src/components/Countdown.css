@@ -13,11 +13,17 @@
   font-variant-numeric: tabular-nums;
   color: var(--ink-primary);
   /* Dark emphasis card: Countdown.tsx pins the DARK theme's vars on this
-     element in both modes. The shared .glass fill (dark --glass, 0.44 alpha)
-     would frost to muddy mid-gray over the light page, so the fill steps up
-     to the near-opaque tier — dark in light mode is the point, and in dark
-     mode it just sits a touch more solid than sibling cards (emphasis). */
-  background: var(--glass-opaque);
+     element in both modes. FULLY opaque, not the 0.85 near-opaque tier —
+     at 85% the light page bled through and flattened this to ~#38383a, a
+     muddy mid-charcoal that read as unthemed rather than as a deliberate
+     dark anchor. Committing to the inversion means committing to the fill. */
+  background: var(--glass-solid);
+  /* The accent edge. It is a static border rather than part of the breathing
+     ring below because the keyframes scale by ×0.4 at the trough — even a
+     100% token would go invisible for half of every cycle, and on the light
+     page this edge is the only thing marking the card as themed. 0% in dark
+     resolves to exactly var(--glass-border), leaving dark untouched. */
+  border-color: color-mix(in srgb, var(--accent) var(--countdown-edge-pct), var(--glass-border));
   animation: countdown-glow 4.5s ease-in-out infinite;
 }
 
