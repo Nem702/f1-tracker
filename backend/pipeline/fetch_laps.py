@@ -59,6 +59,27 @@ def get_latest_completed_race_session(year=2026):
     return completed[-1]
 
 
+def _group_by_driver(rows, endpoint):
+    """Bucket a session-wide payload by driver_number.
+
+    Rows without one can't be attributed to anybody, so they're counted and
+    dropped rather than landing in some arbitrary driver's bucket."""
+    buckets = {}
+    unattributed = 0
+
+    for row in rows:
+        number = row.get("driver_number")
+        if number is None:
+            unattributed += 1
+            continue
+        buckets.setdefault(number, []).append(row)
+
+    if unattributed:
+        logger.warning("%d %s rows had no driver_number — skipped", unattributed, endpoint)
+
+    return buckets
+
+
 def process_session(conn, session):
     """Fetch and persist everything we track for one race session."""
     upsert_race(conn, session)
@@ -69,25 +90,36 @@ def process_session(conn, session):
     # the frontend decides how to present them.
     tracked = get_tracked_drivers(session["session_key"])
 
+    # One request per endpoint for the whole session, grouped by driver here.
+    # Fetching inside the loop instead cost four requests per driver for the
+    # exact same rows.
+    laps_by_driver = _group_by_driver(get_laps(session["session_key"]), "lap")
+    stints_by_driver = _group_by_driver(get_stints(session["session_key"]), "stint")
+    pit_by_driver = _group_by_driver(get_pit(session["session_key"]), "pit")
+    positions_by_driver = _group_by_driver(get_positions(session["session_key"]), "position")
+
+    # Iterate the tracked list, not the bucket keys: a tracked driver who set no
+    # laps still gets their upsert and log line, and the rest of the grid — now
+    # present in every payload — stays out of the database.
     for record in tracked:
         number = record["driver_number"]
         name = record.get("full_name") or record.get("name_acronym") or str(number)
 
         upsert_driver(conn, number, name, record.get("team_name"), record.get("name_acronym"))
 
-        laps = get_laps(session["session_key"], number)
+        laps = laps_by_driver.get(number, [])
         upsert_laps(conn, session["session_key"], number, laps)
         logger.info("%s (#%d) — %d laps upserted", name, number, len(laps))
 
-        stints = get_stints(session["session_key"], number)
+        stints = stints_by_driver.get(number, [])
         upsert_stints(conn, session["session_key"], number, stints)
         logger.info("%s (#%d) — %d stints upserted", name, number, len(stints))
 
-        pit_stops = get_pit(session["session_key"], number)
+        pit_stops = pit_by_driver.get(number, [])
         upsert_pit(conn, session["session_key"], number, pit_stops)
         logger.info("%s (#%d) — %d pit stops upserted", name, number, len(pit_stops))
 
-        positions = get_positions(session["session_key"], number)
+        positions = positions_by_driver.get(number, [])
         upsert_positions(conn, session["session_key"], number, positions)
         logger.info("%s (#%d) — %d positions upserted", name, number, len(positions))
 
