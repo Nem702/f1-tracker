@@ -20,3 +20,4 @@ backend/.standings_cache.json
 backend/.official_result_cache.json
 # Plan files are not tracked, except for the template files
 PLAN-*.md
+STATE.md
