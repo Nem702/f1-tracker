@@ -21,11 +21,10 @@
 // importer is scripts/validate-theme.ts, and that validator FAILs if anything
 // under src/ ever names this module. See its `provenance` check.
 //
-// The seven teams the app does not track yet (Aston, Williams, Audi, Alpine,
-// Haas, Racing Bulls, Cadillac) have their seeds recorded in
-// PLAN-full-grid-and-logos.md §3 until those teams exist in TeamSlug. Typing
-// this as Record<TeamSlug, string> is deliberate: adding a team is a type error
-// until its seed is recorded alongside its derived values.
+// Typing this as Record<TeamSlug, string> is deliberate: adding a team is a
+// type error until its seed is recorded alongside its derived values. All
+// eleven 2026 constructors are now present, fetched from /v1/drivers at
+// session_key=11342 (Budapest).
 
 import type { TeamSlug } from "./teams";
 
@@ -34,4 +33,11 @@ export const TEAM_SEEDS: Record<TeamSlug, string> = {
   mercedes: "#00d7b6",
   mclaren: "#f47600",
   redbull: "#4781d7",
+  astonmartin: "#229971",
+  williams: "#1868db",
+  audi: "#f50537",
+  alpine: "#00a1e8",
+  haas: "#9c9fa2",
+  racingbulls: "#6c98ff",
+  cadillac: "#909090",
 };

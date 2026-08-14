@@ -91,6 +91,13 @@ const CVD_TEAM_TARGET = 12;
  *  pair and a FAIL would be unsatisfiable. */
 const SEED_FLOOR = 8;
 
+/** Hero3D's pace ramp: how far a driver colour must travel between the ramp's
+ *  two alpha endpoints for the ramp to still encode pace. Named because the
+ *  THIN threshold is now load-bearing twice — it sets the status band AND
+ *  decides which colours get named in the check's key (see checkHero3D). */
+const RAMP_FLOOR = 2.5;
+const RAMP_THIN = 2.0;
+
 /** Failures the project has explicitly accepted, keyed `<group>|<check>`. Each
  *  carries its measured value at acceptance and the reason. A FAIL listed here
  *  reports WARN and does not fail the run.
@@ -103,6 +110,19 @@ const ACCEPTED: Record<string, string> = {
   "dark · ink|inkMuted on chip":
     "4.42:1, pre-existing. --glass2 over the dark page gives inkMuted too little to work with, " +
     "and the dark palette is frozen by the light-mode pass. Outstanding work, logged in docs/DESIGN-DECISIONS.md.",
+
+  // Scoped to these two colours BY NAME — see checkHero3D for why the check
+  // builds its own key. Exempting `pace ramp perceptible` as a bare check name
+  // would pass every future near-page-value colour silently, and near-neutral
+  // brands are exactly what trips it.
+  "light · hero3D pace ramp|pace ramp perceptible (audi1 #d69493, haas0 #a1a5aa)":
+    "ΔE 1.62 (haas0) and 1.79 (audi1) across the 0.03–0.13 light ramp. Both sit close to the light " +
+    "page (#dedcd9) in value, so compositing them at the ramp's two alphas barely moves them — Haas's " +
+    "near-neutral silver and Audi's pale rose are light BY BRAND, so darkening them to satisfy a " +
+    "secondary encoding would trade the thing being encoded for the encoding. Widening the ramp was " +
+    "rejected too: heroGlowMax is a shared mode token, so it would change Hero3D for the four shipped " +
+    "teams and reopen the light-mode pass's decision to compress the ramp rather than flatten it. " +
+    "Pace still reads from the line's shape and the hero legend. Logged in docs/STATE.md.",
 };
 
 // ---- colour maths (ported from dataviz validate_palette.js) -----------------
@@ -253,6 +273,19 @@ const margins: { id: string; value: number; floor: number }[] = [];
  *  brand; Mercedes' is 13.3. Printed so that bill stays visible rather than
  *  accumulating silently, one palette pass at a time. */
 const drift: { mode: Mode; team: TeamSlug; plate: string; seed: string; value: number }[] = [];
+
+/** How tintForPair actually ROUTED every cross-team ordering, per mode.
+ *
+ *  These counts used to live in theme.ts's header as prose ("2 fall through to
+ *  neutral") and drifted, because nothing recomputed them. They are the
+ *  honest measure of how much work the collision table is doing: at 4 teams
+ *  the reassignment was a rare exception, and the header's "colour follows the
+ *  entity" invariant read as true. Printing the numbers is what keeps that
+ *  claim answerable instead of remembered. */
+const routing: {
+  mode: Mode; total: number; swapped: number; neutral: number; unchanged: number;
+  worst: number; worstId: string;
+}[] = [];
 
 /** Contrast against a floor, with the "passing but only just" band. */
 function ratio(group: string, check: string, fg: string, bg: string, floor = AA): number {
@@ -471,18 +504,29 @@ function checkDrivers(mode: Mode, s: Surfaces): void {
   // CVD_COLLISIONS. Both directions are walked because tintForPair only ever
   // moves driver B — which of the two the user picks first changes the result.
   const unresolved: string[] = [];
+  let swapped = 0, neutral = 0, unchanged = 0, total = 0;
+  let worst = Infinity, worstId = "";
   for (const ta of TEAM_ORDER) {
     for (const tb of TEAM_ORDER) {
       if (ta === tb) continue;
       for (const sa of [0, 1] as const) {
         for (const sb of [0, 1] as const) {
-          const rendered = getTheme(mode, tintForPair(driverRef(ta, sa), driverRef(tb, sb)));
+          const tint = tintForPair(driverRef(ta, sa), driverRef(tb, sb));
+          const rendered = getTheme(mode, tint);
+          // How driver B was routed. A tells us nothing — tintForPair never
+          // moves A — so the routing IS what happened to B.
+          total++;
+          if (tint.b === "neutral") neutral++;
+          else if (tint.b.slot !== sb) swapped++;
+          else unchanged++;
           const d = cvdDeltaE(rendered.driver1, rendered.driver2);
+          if (d < worst) { worst = d; worstId = `${ta}${sa}+${tb}${sb}`; }
           if (d < CVD_FLOOR) unresolved.push(`${ta}${sa}+${tb}${sb} ΔE ${d.toFixed(1)}`);
         }
       }
     }
   }
+  routing.push({ mode, total, swapped, neutral, unchanged, worst, worstId });
   // Dedupe the a↔b / b↔a reporting so the count reads as pairs, not orderings.
   const uniq = [...new Set(unresolved)];
   add(g, "H2H pairs after slot-swap",
@@ -633,7 +677,7 @@ function checkHero3D(mode: Mode, t: Theme, s: Surfaces): void {
   // already under 3:1 bare is the pre-existing relief band and is reported
   // separately by checkDrivers.
   const pushed: string[] = [];
-  let worstRamp = Infinity;
+  const ramps: { id: string; hex: string; value: number }[] = [];
   for (const slug of TEAM_ORDER) {
     const th = getTheme(mode, tintFor(slug));
     for (const [i, d] of [th.driver1, th.driver2].entries()) {
@@ -642,18 +686,46 @@ function checkHero3D(mode: Mode, t: Theme, s: Surfaces): void {
       if (bare >= NON_TEXT && glowed < NON_TEXT) {
         pushed.push(`${slug}${i} ${bare.toFixed(2)}→${glowed.toFixed(2)}`);
       }
-      worstRamp = Math.min(
-        worstRamp,
-        deltaE(colorMixOpaque(d, t.heroGlowMin, s.page), colorMixOpaque(d, t.heroGlowMax, s.page)),
-      );
+      ramps.push({
+        id: `${slug}${i}`,
+        hex: d,
+        value: deltaE(colorMixOpaque(d, t.heroGlowMin, s.page), colorMixOpaque(d, t.heroGlowMax, s.page)),
+      });
     }
   }
   add(g, "glow pushes a mark below 3:1", pushed.length ? pushed.join(", ") : "none",
     pushed.length ? "WARN" : "PASS");
+
   // The ramp encodes pace, so it has to stay readable as a ramp. ~2.5 ΔE is
   // about where a slow-vs-fast segment stops being tellable apart.
-  add(g, "pace ramp perceptible", `worst ΔE ${worstRamp.toFixed(1)} across ${t.heroGlowMin}–${t.heroGlowMax}`,
-    worstRamp >= 2.5 ? "PASS" : worstRamp >= 2.0 ? "THIN" : "FAIL");
+  //
+  // THE CHECK NAME CARRIES ITS OFFENDERS, and that is what makes this
+  // exemptible without being disableable. `add()` matches ACCEPTED on
+  // `<group>|<check>`, so a check whose name is a constant string can only be
+  // exempted WHOLESALE — accepting today's two pale colours would silently
+  // pass every future colour that lands near page value too, which for a check
+  // that near-neutral brands trip is a live risk rather than a hypothetical.
+  // Naming the offending slots AND their hexes means the accepted key stops
+  // matching the moment the set changes: a third offender, or either of these
+  // two changing colour, produces a key that is not in ACCEPTED and the FAIL
+  // stands. (An entry that stops firing is reported as stale, so the exemption
+  // cannot quietly outlive the colours it was granted for either.)
+  //
+  // Built from the FAIL threshold, not the PASS floor: a colour landing in the
+  // 2.0–2.5 THIN band is not a FAIL, so it must not perturb the key.
+  const worstRamp = Math.min(...ramps.map((r) => r.value));
+  const offenders = ramps
+    .filter((r) => r.value < RAMP_THIN)
+    .sort((a, b) => (a.id < b.id ? -1 : 1));
+  add(
+    g,
+    offenders.length
+      ? `pace ramp perceptible (${offenders.map((r) => `${r.id} ${r.hex}`).join(", ")})`
+      : "pace ramp perceptible",
+    `worst ΔE ${worstRamp.toFixed(1)} across ${t.heroGlowMin}–${t.heroGlowMax}` +
+      (offenders.length ? ` — ${offenders.map((r) => `${r.id} ${r.value.toFixed(2)}`).join(", ")}` : ""),
+    worstRamp >= RAMP_FLOOR ? "PASS" : worstRamp >= RAMP_THIN ? "THIN" : "FAIL",
+  );
 }
 
 /** Composite an opaque colour onto an opaque ground at a given alpha. */
@@ -752,6 +824,21 @@ console.log(
   `  plate ↔ rival seed   ${drifting} drift (fixable) · ${inherent} inherent (brands collide at source)`,
 );
 console.log(`  drift off own seed   ${driftRollup("light")}  ·  ${driftRollup("dark")}`);
+
+// Where the collision table's work shows up. The three counts are IDENTICAL
+// across modes by construction — CVD_COLLISIONS is one mode-independent Set,
+// so a pair routes the same way in both — and printing them per mode is what
+// makes that structural, checkable, and obvious if it ever stops being true.
+// The worst rendered ΔE is the part that genuinely differs per mode, because
+// the routing is shared but the colours it lands on are not.
+console.log(rule("tintForPair routing"));
+for (const r of routing) {
+  console.log(
+    `  ${r.mode.padEnd(5)} ${String(r.swapped).padStart(3)} slot-swap · ${r.neutral} neutral fallback · ` +
+      `${r.unchanged} unchanged  of ${r.total} cross-team orderings`,
+  );
+  console.log(`        worst rendered ΔE ${r.worst.toFixed(1)} (${r.worstId})`);
+}
 
 // The tightest margins are where the NEXT change breaks, and they are invisible
 // in a pass/fail table. Print them so theme.ts's header can name them.
