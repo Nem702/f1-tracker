@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test": "node --test --experimental-strip-types --no-warnings \"scripts/**/*.test.ts\"",
     "validate:theme": "node --experimental-strip-types --no-warnings scripts/validate-theme.ts",
     "preview": "vite preview"
   },

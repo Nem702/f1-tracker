@@ -1,20 +1,45 @@
 // The team/driver domain model behind the team switcher and head-to-head
 // mode. Everything is derived from /api/drivers rows at runtime — driver
 // numbers, acronyms, and team membership are never hardcoded (same rule as
-// the backend pipeline). The only static data here is the four tracked
-// teams (slug, display name, display order) and which acronym anchors each
-// team's color slot 0.
+// the backend pipeline). The only static data here is the eleven tracked
+// teams (slug, display name, display order, three-letter code) and which
+// acronym anchors each team's color slot 0.
+//
+// NO COLORS LIVE HERE. theme.ts is the single source of truth for every hex
+// in the app, including each team's palette and badge. This file holds the
+// identity; that one holds the paint.
 
 import type { Driver } from "./api/types";
 
-export type TeamSlug = "ferrari" | "mercedes" | "mclaren" | "redbull";
+export type TeamSlug =
+  | "ferrari"
+  | "mercedes"
+  | "mclaren"
+  | "redbull"
+  | "astonmartin"
+  | "williams"
+  | "audi"
+  | "alpine"
+  | "haas"
+  | "racingbulls"
+  | "cadillac";
 
-/** Fixed display order everywhere teams are listed: chips, selects, About. */
+/** Fixed display order everywhere teams are listed: chips, selects, About.
+ *  FIXED, and deliberately not championship order — standings move week to
+ *  week and a switcher whose chips reorder themselves is unusable as muscle
+ *  memory. Never sort this at runtime. */
 export const TEAM_ORDER: readonly TeamSlug[] = [
   "ferrari",
   "mercedes",
   "mclaren",
   "redbull",
+  "astonmartin",
+  "williams",
+  "audi",
+  "alpine",
+  "haas",
+  "racingbulls",
+  "cadillac",
 ];
 
 export const TEAM_NAMES: Record<TeamSlug, string> = {
@@ -22,6 +47,30 @@ export const TEAM_NAMES: Record<TeamSlug, string> = {
   mercedes: "Mercedes",
   mclaren: "McLaren",
   redbull: "Red Bull",
+  astonmartin: "Aston Martin",
+  williams: "Williams",
+  audi: "Audi",
+  alpine: "Alpine",
+  haas: "Haas",
+  racingbulls: "Racing Bulls",
+  cadillac: "Cadillac",
+};
+
+/** Three-letter team codes, for surfaces too narrow for the full name.
+ *  RBR and BUL are the pair that matter: "Red Bull" and "Racing Bulls" are
+ *  the one collision in the grid, so their codes share no prefix. */
+export const TEAM_CODES: Record<TeamSlug, string> = {
+  ferrari: "FER",
+  mercedes: "MER",
+  mclaren: "MCL",
+  redbull: "RBR",
+  astonmartin: "AST",
+  williams: "WIL",
+  audi: "AUD",
+  alpine: "ALP",
+  haas: "HAA",
+  racingbulls: "BUL",
+  cadillac: "CAD",
 };
 
 /** Which driver anchors each team's color slot 0 (the slot that doubles as
@@ -34,6 +83,13 @@ const SLOT0_ACRONYM: Record<TeamSlug, string> = {
   mercedes: "RUS",
   mclaren: "NOR",
   redbull: "VER",
+  astonmartin: "ALO",
+  williams: "ALB",
+  audi: "HUL",
+  alpine: "GAS",
+  haas: "OCO",
+  racingbulls: "LAW",
+  cadillac: "PER",
 };
 
 export interface DriverRef {
@@ -58,14 +114,37 @@ export interface TeamRoster {
 }
 
 /** "Red Bull Racing" → "redbull", "Scuderia Ferrari" → "ferrari", … —
- *  substring match so OpenF1's sponsor-decorated names keep resolving. */
+ *  substring match so OpenF1's sponsor-decorated names keep resolving.
+ *
+ *  TWO VOCABULARIES. This is fed from OpenF1 (`/api/drivers` → `team_name`)
+ *  AND from Jolpica (`constructor_name`, via standings and official results).
+ *  They disagree on three teams, and on one of them they share no substring
+ *  at all: OpenF1 says "Racing Bulls", Jolpica says "RB F1 Team".
+ *
+ *  ORDER IS LOAD-BEARING. Racing Bulls is tested first, on both of its names,
+ *  because "Racing Bulls" contains "bulls" and a Red Bull test loose enough to
+ *  catch "bull" — or a Racing Bulls test loose enough to catch a bare "rb" —
+ *  swallows the other team entirely. The failure is silent: a wrong slug is
+ *  still truthy, so it renders as the wrong team's colour rather than as an
+ *  error. Keep both patterns specific, keep them above Red Bull, and keep
+ *  Red Bull's test the exact two-word form. scripts/teams.test.ts guards
+ *  this in both directions. */
 export function teamSlugFromName(teamName: string | null): TeamSlug | null {
   if (!teamName) return null;
   const lower = teamName.toLowerCase();
+  // Racing Bulls, both vocabularies, BEFORE any Red Bull test. See above.
+  if (lower.includes("racing bulls")) return "racingbulls";
+  if (lower.includes("rb f1")) return "racingbulls";
+  if (lower.includes("red bull")) return "redbull";
   if (lower.includes("ferrari")) return "ferrari";
   if (lower.includes("mercedes")) return "mercedes";
   if (lower.includes("mclaren")) return "mclaren";
-  if (lower.includes("red bull")) return "redbull";
+  if (lower.includes("aston martin")) return "astonmartin";
+  if (lower.includes("williams")) return "williams";
+  if (lower.includes("audi")) return "audi";
+  if (lower.includes("alpine")) return "alpine";
+  if (lower.includes("haas")) return "haas";
+  if (lower.includes("cadillac")) return "cadillac";
   return null;
 }
 
@@ -80,7 +159,7 @@ function lastNameFrom(name: string): string {
     .join(" ");
 }
 
-/** Group /api/drivers rows into the four tracked teams, in display order.
+/** Group /api/drivers rows into the eleven tracked teams, in display order.
  *  Teams with no rows (or a lone driver) simply don't produce a roster —
  *  chips render from whatever comes back, so a schema surprise degrades to
  *  fewer options, not a crash. */

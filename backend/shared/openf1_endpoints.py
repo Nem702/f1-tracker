@@ -35,10 +35,30 @@ def get_drivers(session_key: int) -> list[dict]:
     return data or []
 
 
-# Teams whose full driver lineup we persist. Matched as case-insensitive
-# substrings of the roster's team_name, which absorbs season-to-season naming
-# drift ("Red Bull Racing", "Scuderia Ferrari", plain "Mercedes", ...).
-TRACKED_TEAMS = ("ferrari", "mercedes", "mclaren", "red bull")
+# Teams whose full driver lineup we persist: the full 2026 grid. Matched as
+# case-insensitive substrings of the roster's team_name, which absorbs
+# season-to-season naming drift ("Red Bull Racing", "Scuderia Ferrari", plain
+# "Mercedes", ...).
+#
+# This is an ALLOWLIST, not a classifier — it only decides whether to keep a
+# record, never which team the record belongs to — so the order of these
+# entries cannot mis-assign anyone. "racing bulls" is still listed in full
+# rather than leaning on a bare "bull", because a loose entry here would start
+# admitting teams nobody chose, and because the frontend matcher that DOES
+# classify has to make the same distinction (see teams.ts teamSlugFromName).
+TRACKED_TEAMS = (
+    "ferrari",
+    "mercedes",
+    "mclaren",
+    "red bull",
+    "aston martin",
+    "williams",
+    "audi",
+    "alpine",
+    "haas",
+    "racing bulls",
+    "cadillac",
+)
 
 
 def get_tracked_drivers(session_key: int) -> list[dict]:

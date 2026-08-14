@@ -21,26 +21,35 @@
 // remedy, so below 8 they belong in CVD_COLLISIONS.
 //
 //   - per-team driver1↔driver2 (target 12, floor 8):
-//       ferrari  light 10.5 · dark 11.1   <- both in the 8–12 WARN band
-//       mercedes light 13.8 · dark 12.3
-//       mclaren  light 23.6 · dark 21.7
-//       redbull  light 19.7 · dark 17.5
-//   - head-to-head: all 48 ordered cross-team pairings clear ΔE 8 in both
-//     modes once CVD_COLLISIONS is applied (10 slot-swap, 2 fall through to
-//     neutral, 36 render unchanged; worst rendered 8.3). See that table for
-//     the six colliding pairs and the lexicographic-key trap.
-//   - WCAG: onAccent-on-accent ≥ 4.5 for every team+mode (worst redbull dark
-//     4.96). accentInk is checked PER CONSUMER, not per surface — the floor
+//       ferrari  light 10.5 · dark 11.1   <- the ONLY duo in the 8–12 WARN band
+//       mercedes light 13.8 · dark 12.3     audi     light 24.7 · dark 28.4
+//       mclaren  light 23.6 · dark 21.7     alpine   light 20.7 · dark 25.9
+//       redbull  light 19.7 · dark 17.5     haas     light 20.0 · dark 20.5
+//       aston    light 19.3 · dark 20.4     racingb. light 27.5 · dark 20.3
+//       williams light 20.0 · dark 25.4     cadillac light 20.0 · dark 31.8
+//   - head-to-head: all 440 ordered cross-team pairings clear ΔE 8 in both
+//     modes once CVD_COLLISIONS is applied. How they resolve — the slot-swap,
+//     neutral-fallback and unchanged counts, and the worst ΔE that survives —
+//     is PRINTED by the validator under "tintForPair routing", not recorded
+//     here: those numbers lived in this comment for one team-count and were
+//     wrong by the next. See CVD_COLLISIONS for the 31 colliding pairs and the
+//     lexicographic-key trap.
+//   - WCAG: onAccent-on-accent ≥ 4.5 for every team+mode (worst williams light
+//     4.88). accentInk is checked PER CONSUMER, not per surface — the floor
 //     is a property of the rendered text, so .rotating-word (hero h1, ≥35px)
 //     takes 3:1 while the 12px eyebrows take 4.5:1. inkPrimary/Secondary/Muted
 //     are checked on page, veiled band, card, cardSolid, plate and chip.
 //   - compounds/flags/temp are fixed semantic scales, re-measured against the
 //     NEW plate rather than inherited: MEDIUM (1.80), HARD (2.99), flag
 //     warning (1.74), flag serious (2.51) and tempAir (1.76) sit in the
-//     documented sub-3:1 relief band, as do four of the eight light driver
-//     colors — legal only because of the secondary encoding above.
-//   - one declared exception, dark inkMuted-on-chip at 4.42:1 (see the
-//     validator's ACCEPTED table). Everything else passes.
+//     documented sub-3:1 relief band, as do nine of the twenty-two light
+//     driver colors — legal only because of the secondary encoding above.
+//     Dark has none. The proportion is unchanged by the grid expansion: the
+//     eight-driver palette ran four of eight, this one runs nine of 22.
+//   - two declared exceptions, both in the validator's ACCEPTED table: dark
+//     inkMuted-on-chip at 4.42:1, and Hero3D's light pace ramp for haas0 and
+//     audi1 (ΔE 1.62/1.79 — both sit near page value, and that entry is keyed
+//     BY COLOUR so a third offender still FAILs). Everything else passes.
 //
 // WHERE THIS IS FRAGILE. Zero failures says nothing about how much room is
 // left, and these are the margins the next token nudge eats first. The
@@ -49,20 +58,39 @@
 //
 //     -0.08 over 4.5   4.42:1   dark inkMuted on chip     (declared exception)
 //     +0.12 over 4.5   4.62:1   light inkSecondary on page
-//     +0.23 over 4.5   4.73:1   dark neutral eyebrows (12px), all three
-//     +0.26 over 4.5   4.76:1   light inkMuted on page
+//     +0.20 over 4.5   4.70:1   dark audi eyebrows (12px), all three
+//     +0.20 over 4.5   4.70:1   dark insight audi: eyebrow (accentInk)
 //
-// The light pair is the live constraint: both are solved against the veiled
-// band-b ground, which is the darkest surface on the page, so darkening
-// `pageBase` again spends that 0.12 first. One THIN status, dark's inkMuted
-// chroma at C .0092 against a .008 target — dark is frozen, so it stands.
+// The live constraint is STILL the light ink pair, solved against the veiled
+// band-b ground — the darkest surface on the page — so darkening `pageBase`
+// again spends that 0.12 first. The grid expansion did not move it, which was
+// not free: the first cut of the eleven-team accents was derived for minimum
+// drift off brand, and a min-drift objective lands values exactly ON their
+// floor rather than past it. That put four derived accents at +0.01/+0.02 and
+// made a DERIVED value the tightest thing in the theme — the one category
+// where tightness is free to fix, because nothing is frozen. Re-deriving the
+// accentInks to a 4.7 target (a 4.5 floor plus margin) cost ΔE 0.7–2.1 of ink
+// shift apiece, moved no accent, and put every one of them at +0.20 or better.
+// Hold that rule for any team added later: derive ink to 4.7, not to 4.5.
+// THIN count fell 22 → 6 in the same pass. The remaining THIN of note is
+// dark's inkMuted chroma at C .0092 against a .008 target — dark is frozen,
+// so it stands.
 //
 // The active pair's two colors double as the delta chart's diverging poles,
-// so "slot color = driver" holds everywhere. Color follows the entity — a
-// driver keeps their slot color across every chart and mode; only the
-// documented collision fallback ever reassigns one, and it does so
-// consistently in both modes. Accent is a UI identity, never a data
-// identity: it never appears as a chart series color.
+// so "slot color = driver" holds everywhere. Accent is a UI identity, never a
+// data identity: it never appears as a chart series color.
+//
+// WHAT "COLOR FOLLOWS THE ENTITY" NOW MEANS. At four teams the collision
+// fallback was a rare exception and this header could fairly claim a driver
+// keeps their slot color everywhere. At eleven it reassigns 62 of 440 ordered
+// pairings — 14%, and the validator prints the exact split. Restating the old
+// claim would be false, so state the guarantee that is actually true and
+// actually needed: the app only ever renders TWO drivers, so what has to hold
+// is "any 2-of-22 render separably", not "22 globally distinct colors". The
+// second is not achievable in sRGB at these contrast floors, and implying it
+// is how a table with six entries went five defects unnoticed. A driver's
+// color is still stable for a GIVEN pairing across both modes and every chart
+// — the fallback is a function of the pair, not of the mode or the surface.
 
 import type { DriverRef, TeamSlug } from "./teams";
 
@@ -123,6 +151,48 @@ const TEAM_PALETTES: Record<Mode, Record<TeamSlug, TeamColors>> = {
       onAccent: "#ffffff",
       drivers: ["#2a5cb8", "#d64545"],
     },
+    astonmartin: {
+      accent: "#2b9267",
+      accentInk: "#377055",
+      onAccent: "#14100a",
+      drivers: ["#269e75", "#085f44"],
+    },
+    williams: {
+      accent: "#006ce7",
+      accentInk: "#115fc4",
+      onAccent: "#ffffff",
+      drivers: ["#2071fe", "#1e4b8d"],
+    },
+    audi: {
+      accent: "#910018",
+      accentInk: "#7e111a",
+      onAccent: "#ffffff",
+      drivers: ["#b00229", "#d69493"],
+    },
+    alpine: {
+      accent: "#43baef",
+      accentInk: "#2c708f",
+      onAccent: "#14100a",
+      drivers: ["#28b3ea", "#3f6f86"],
+    },
+    haas: {
+      accent: "#a6b8bb",
+      accentInk: "#5e6d70",
+      onAccent: "#14100a",
+      drivers: ["#a1a5aa", "#5c697a"],
+    },
+    racingbulls: {
+      accent: "#6f97fe",
+      accentInk: "#4162bf",
+      onAccent: "#14100a",
+      drivers: ["#6c9afb", "#2d4a8a"],
+    },
+    cadillac: {
+      accent: "#444346",
+      accentInk: "#3c3b3e",
+      onAccent: "#ffffff",
+      drivers: ["#534b44", "#94837b"],
+    },
   },
   dark: {
     ferrari: {
@@ -149,7 +219,87 @@ const TEAM_PALETTES: Record<Mode, Record<TeamSlug, TeamColors>> = {
       onAccent: "#14100a",
       drivers: ["#4d82d8", "#e66767"],
     },
+    astonmartin: {
+      accent: "#279669",
+      accentInk: "#279669",
+      onAccent: "#14100a",
+      drivers: ["#349c76", "#31e35f"],
+    },
+    williams: {
+      accent: "#1568dc",
+      accentInk: "#4d81d1",
+      onAccent: "#ffffff",
+      drivers: ["#1a64e5", "#99bbff"],
+    },
+    audi: {
+      accent: "#c20f33",
+      accentInk: "#cd5e61",
+      onAccent: "#ffffff",
+      drivers: ["#b4303b", "#e1b2ae"],
+    },
+    alpine: {
+      accent: "#43baef",
+      accentInk: "#43baef",
+      onAccent: "#14100a",
+      drivers: ["#20bbf6", "#4f6570"],
+    },
+    haas: {
+      accent: "#999c9e",
+      accentInk: "#999c9e",
+      onAccent: "#14100a",
+      drivers: ["#a1a5a9", "#64686c"],
+    },
+    racingbulls: {
+      accent: "#6498ff",
+      accentInk: "#6498ff",
+      onAccent: "#14100a",
+      drivers: ["#789cfa", "#4d5cad"],
+    },
+    cadillac: {
+      accent: "#66696b",
+      accentInk: "#7f8183",
+      onAccent: "#ffffff",
+      drivers: ["#676460", "#d1c4b6"],
+    },
   },
+};
+
+/** The team BADGE: a solid plate with a letterform on it, sized >= 20px and
+ *  always aria-hidden (a mark is never a team's only identification — the
+ *  name is always beside it).
+ *
+ *  MODE-INDEPENDENT ON PURPOSE, and the one place in this file that is. A
+ *  badge is a marque, not chrome: it reads as the team's own colour rather
+ *  than as part of the page, so it does not restate itself per mode the way
+ *  `accent` does. Being one value per team rather than two is what makes that
+ *  a property of the data instead of a convention someone has to maintain.
+ *
+ *  These are NOT accents and are not interchangeable with them. `accent` has
+ *  to tint a whole page and stay ΔE 8 clear of ten rivals at 12px; a plate
+ *  only has to carry its own ink. Several plates sit far closer to a rival
+ *  than any accent is allowed to — which is why the badge exists as a second
+ *  encoding rather than as a recolouring of the first. Every pair below
+ *  clears 4.5:1, plate against ink. */
+export const TEAM_BADGES: Record<TeamSlug, { plate: string; ink: string }> = {
+  ferrari: { plate: "#e5102f", ink: "#ffffff" },
+  mercedes: { plate: "#00d7b6", ink: "#14100a" },
+  mclaren: { plate: "#f47600", ink: "#14100a" },
+  redbull: { plate: "#4a83d8", ink: "#14100a" },
+  astonmartin: { plate: "#229971", ink: "#14100a" },
+  williams: { plate: "#1868db", ink: "#ffffff" },
+  audi: { plate: "#f4f4f2", ink: "#bb0a30" },
+  alpine: { plate: "#42baf0", ink: "#14100a" },
+  haas: { plate: "#9c9fa2", ink: "#14100a" },
+  racingbulls: { plate: "#6c98ff", ink: "#0a1a33" },
+  cadillac: { plate: "#444444", ink: "#ffffff" },
+};
+
+/** Hairline around a badge plate, so a plate close in value to the surface
+ *  behind it still reads as a discrete object. Per mode — unlike the plate
+ *  itself, this IS chrome: it belongs to the page, not to the team. */
+export const BADGE_RING: Record<Mode, string> = {
+  light: "#6f6c67",
+  dark: "#646468",
 };
 
 /** Chrome for a mixed head-to-head pair (no team owns the page) and the
@@ -188,28 +338,90 @@ export const DEFAULT_TINT: Tint = {
  *
  *  KEYS MUST BE LEXICOGRAPHIC: `collides()` normalises with
  *  `ka < kb ? ka|kb : kb|ka`, and "mclaren1" sorts BEFORE "mercedes1" — an
- *  entry written in team order instead silently never matches.
+ *  entry written in team order instead silently never matches. At 11 teams
+ *  there are more ways to get it wrong: "racingbulls0" also sorts before
+ *  "redbull0", and "astonmartin1" before "audi1".
  *
- *      pair                  light   dark
- *      ferrari1|mclaren0       1.5    0.7
- *      ferrari0|redbull1       4.2   12.0
- *      ferrari1|redbull1       8.9    6.6
- *      mclaren0|redbull1      11.9    6.7
- *      mclaren1|redbull0      17.8    5.1
- *      mclaren1|mercedes1     12.3    7.2
+ *      pair                          light   dark
+ *      alpine0|mclaren1                6.0   11.3
+ *      alpine0|racingbulls0            5.2    4.8
+ *      alpine0|williams1              30.4    2.1
+ *      alpine1|cadillac0              11.4    2.8
+ *      alpine1|haas1                   2.0    1.9
+ *      alpine1|mercedes1               3.6    8.1
+ *      astonmartin0|audi1              4.7   12.9
+ *      astonmartin0|cadillac1          0.5   16.6
+ *      astonmartin0|mercedes0          5.2    5.0
+ *      astonmartin0|redbull1           6.8    6.2
+ *      astonmartin1|cadillac0          1.1   31.8
+ *      astonmartin1|ferrari0           6.2   23.6
+ *      astonmartin1|redbull1           5.1   13.0
+ *      audi0|cadillac0                 4.8    7.1
+ *      audi0|ferrari0                  8.0    5.4
+ *      audi1|cadillac1                 8.3    2.1
+ *      audi1|haas0                     3.5    6.3
+ *      audi1|mercedes0                 1.1    8.1
+ *      cadillac0|haas1                10.4    1.8
+ *      cadillac1|mercedes0             4.8   12.1
+ *      cadillac1|redbull1              7.2   15.6
+ *      ferrari0|redbull1               4.2   12.0
+ *      ferrari1|mclaren0               1.5    0.7
+ *      ferrari1|redbull1               8.9    6.6
+ *      haas0|mercedes0                 2.7    2.6
+ *      haas1|mercedes1                 5.5    8.0
+ *      mclaren0|redbull1              11.9    6.7
+ *      mclaren1|mercedes1             12.3    7.2
+ *      mclaren1|racingbulls0           5.1    8.2
+ *      mclaren1|redbull0              17.8    5.1
+ *      racingbulls1|williams1          0.5   29.5
  *
- *  Five of these were added 2026-08-08; before that the table held only the
- *  first and the rest shipped as live defects — two series a red-green
- *  colorblind viewer could not tell apart. Verified against all 48 ordered
- *  cross-team pairings: 10 slot-swap, 2 fall through to neutral, 36 render
- *  unchanged, worst rendered ΔE 8.3. */
+ *  Half these rows are CROSS-MODE, not "these two look alike": alpine0 and
+ *  williams1 are ΔE 30.4 apart in light and 2.1 in dark. The table is one
+ *  mode-independent Set, so a pair colliding in EITHER mode belongs in it.
+ *
+ *  The six-entry version of this table shipped five silent defects for months
+ *  — two series a red-green colorblind viewer could not tell apart. At 31
+ *  entries hand-maintenance is no longer the risk it was: the table is
+ *  generated from the shipped driver colours, and `checkDrivers` re-derives it
+ *  behaviourally on every run, so an omission surfaces as a FAIL naming the
+ *  missing pair rather than as two identical lines on a chart.
+ *
+ *  For how these actually resolve — how many orderings slot-swap, how many
+ *  fall through to neutral, and the worst ΔE that survives — read the
+ *  validator's `tintForPair routing` roll-up. Those counts used to be recorded
+ *  here and drifted; they are printed now. */
 const CVD_COLLISIONS = new Set([
-  "ferrari1|mclaren0",
+  "alpine0|mclaren1",
+  "alpine0|racingbulls0",
+  "alpine0|williams1",
+  "alpine1|cadillac0",
+  "alpine1|haas1",
+  "alpine1|mercedes1",
+  "astonmartin0|audi1",
+  "astonmartin0|cadillac1",
+  "astonmartin0|mercedes0",
+  "astonmartin0|redbull1",
+  "astonmartin1|cadillac0",
+  "astonmartin1|ferrari0",
+  "astonmartin1|redbull1",
+  "audi0|cadillac0",
+  "audi0|ferrari0",
+  "audi1|cadillac1",
+  "audi1|haas0",
+  "audi1|mercedes0",
+  "cadillac0|haas1",
+  "cadillac1|mercedes0",
+  "cadillac1|redbull1",
   "ferrari0|redbull1",
+  "ferrari1|mclaren0",
   "ferrari1|redbull1",
+  "haas0|mercedes0",
+  "haas1|mercedes1",
   "mclaren0|redbull1",
-  "mclaren1|redbull0",
   "mclaren1|mercedes1",
+  "mclaren1|racingbulls0",
+  "mclaren1|redbull0",
+  "racingbulls1|williams1",
 ]);
 
 function collides(a: { team: TeamSlug; slot: 0 | 1 }, b: { team: TeamSlug; slot: 0 | 1 }): boolean {
