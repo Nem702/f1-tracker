@@ -150,10 +150,31 @@ export const homeCascade = {
   ribbonB: 0.45,
   race: 0.55,
   chips: 0.65,
-  chipStagger: 0.05,
+  /** The chip cascade is budgeted as a WINDOW, not a per-chip step. It used
+   *  to be a flat 0.05s per chip, which was fine at five chips (last one at
+   *  0.85) and broke at twelve: the last chip landed at 1.20, i.e. after
+   *  caption (0.9) and countdown (0.95) had already arrived, so the cascade
+   *  finished visibly out of order. Dividing a fixed window by the chip count
+   *  instead (see chipCascadeDelay) keeps the last chip ahead of caption for
+   *  any grid size — which matters because the count is data-dependent:
+   *  buildRosters() only emits teams the API actually returned drivers for.
+   *  0.15 leaves 0.10s of headroom before caption. */
+  chipsWindow: 0.15,
   caption: 0.9,
   countdown: 0.95,
 } as const;
+
+/** Entrance delay for chip `index` of `count` in the home cascade. The whole
+ *  cascade spans homeCascade.chipsWindow regardless of how many chips there
+ *  are, so the last one always starts at chips + chipsWindow (0.80).
+ *  The per-chip step is capped at stagger.tight so a short grid still reads
+ *  as a cascade of distinct chips rather than one slow sweep — with few
+ *  enough chips it simply finishes earlier than the window allows. */
+export function chipCascadeDelay(index: number, count: number): number {
+  const steps = Math.max(1, count - 1);
+  const step = Math.min(stagger.tight, homeCascade.chipsWindow / steps);
+  return homeCascade.chips + index * step;
+}
 
 /* ---------------------------------------------------------------------------
  * Active-nav pill: shared layoutId convention. The navbar renders exactly

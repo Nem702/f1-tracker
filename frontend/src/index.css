@@ -308,9 +308,11 @@ body {
   transition: var(--tint-transition);
 }
 
-/* Horizontal scroll instead of wrapping when the nav list doesn't fit —
-   same pattern as .team-switcher__chips: items keep their shape and the
-   navbar never grows taller or forces the page sideways. */
+/* Horizontal scroll instead of wrapping when the nav list doesn't fit: items
+   keep their shape and the navbar never grows taller or forces the page
+   sideways. Unlike .team-switcher__chips (which wraps — a hidden scrollbar
+   there hid whole teams), the overflow here is a few pixels at most before
+   the drawer takes over at the nav breakpoint. */
 .navbar__nav {
   display: flex;
   align-items: center;
@@ -699,8 +701,8 @@ body {
      sizing — the chip row's intrinsic width (wider than a phone) then
      inflates the whole body past the viewport, because the switcher's
      percentage max-width can never resolve against an intrinsically-sized
-     ancestor. width: 100% restores the constraint chain that lets the
-     chips actually scroll. */
+     ancestor. width: 100% restores the constraint chain that gives the chip
+     grid a definite width to wrap against. */
   width: 100%;
   max-width: 1100px;
   margin: 0 auto;
@@ -713,9 +715,9 @@ body {
 /* Centers the team switcher under the hero. */
 .hero-body__selectors {
   /* Same explicit-width story as .hero-body above: the parent's
-     align-items: center would size this to its intrinsic width (the full
-     unscrolled chip row), overflowing phones. A definite 100% lets the
-     switcher's max-width resolve so the chip row scrolls; desktop looks
+     align-items: center would size this to its intrinsic width (the chip
+     grid on one line), overflowing phones. A definite 100% lets the
+     switcher's max-width resolve so the chip grid wraps; desktop looks
      identical because justify-content already centers the content. */
   width: 100%;
   display: flex;
@@ -751,47 +753,79 @@ body {
   max-width: 100%;
 }
 
-/* The radiogroup row: horizontal scroll instead of wrapping below 900px —
-   chips keep their shape and the page never overflows sideways. */
+/* The radiogroup: a centered, wrapping grid — 2 rows of 6 on desktop, 3 of 4
+   on tablet, 6 of 2 on phones.
+
+   This used to be a single row with `overflow-x: auto` and the scrollbar
+   hidden. At five chips that only bit phones; at twelve (the full 2026 grid
+   plus Head-to-Head) the row is ~1505px against a 1120px cap, so three chips
+   sat off the end of EVERY desktop width with no scrollbar, no fade and no
+   hint that anything was there — silently unreachable. Nothing here scrolls
+   any more, so there is no hidden-scroll trap left at any width.
+
+   Tracks are `minmax(0, max-content)`, not `1fr`: max-content sizes each
+   column to its own widest chip (aligned columns, no stretched-out chips)
+   and, with `justify-content: center`, a partially-filled last row still
+   centers — which matters because buildRosters() drops teams the API has no
+   drivers for, so the chip count is data-dependent, not always twelve. The
+   `0` minimum keeps a squeeze from pushing the grid wider than its container;
+   the column counts below are chosen so that squeeze never actually happens.
+
+   Row gap is a step wider than the column gap: the active chip's glow is a
+   downward bloom (`0 8px 26px -10px`) that would otherwise land on the chips
+   in the row beneath it. */
 .team-switcher__chips {
-  display: flex;
-  gap: var(--space-2);
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, max-content));
+  justify-content: center;
+  column-gap: var(--space-2);
+  row-gap: var(--space-3);
   max-width: 100%;
-  overflow-x: auto;
   /* Site-wide box-sizing is border-box (index.css's `* {}` rule), which
      makes max-width and padding compete for the same budget: the padding
      added below (room for the active chip's glow) would otherwise get
-     carved out of the 100% available to the chips themselves, pushing them
-     into unwanted scrolling on any viewport where they're borderline (this
-     bit us twice — first via bigger padding, then again once the page grid
-     narrowed under a max-width wrapper). Overriding to content-box here
-     means the padding is added on top of the 100% instead of subtracted
-     from it, so the chips always get the full available width and only the
-     glow's clearance grows/shrinks — confirmed via devtools by toggling the
-     site-wide rule off, but that fix scoped to just this element instead of
-     every padded box on the page. */
+     carved out of the 100% available to the chips themselves, squeezing the
+     columns on any viewport where they're borderline (this bit us twice —
+     first via bigger padding, then again once the page grid narrowed under a
+     max-width wrapper). Overriding to content-box here means the padding is
+     added on top of the 100% instead of subtracted from it, so the chips
+     always get the full available width and only the glow's clearance
+     grows/shrinks — confirmed via devtools by toggling the site-wide rule
+     off, but that fix scoped to just this element instead of every padded
+     box on the page. */
   box-sizing: content-box;
   /* more room on Y than X: the glow's blur falloff reaches further on the
      bottom, where the box-shadow's 8px y-offset pushes it out further. The
      negative margin gives the padding back to the layout, net +4px on
-     every side same as before. */
+     every side same as before. This padding is also what the focus ring
+     draws into — with the old overflow-x the ring on the first/last chip was
+     clipped at the row edge; there is no overflow rule here now, so it
+     isn't. */
   padding: 32px 10px 48px;
   margin: -28px -6px -44px;
-  scrollbar-width: none;
 }
 
-.team-switcher__chips::-webkit-scrollbar {
-  display: none;
+/* Column counts, tier by tier. Measured against the widest chip in the grid
+   (Head-to-Head, 145px) plus gaps, so a track is never squeezed below its
+   chip's nowrap content:
+     6 cols need ~790px of row width; the narrowest desktop tier (901px
+       viewport) has ~841px.
+     4 cols need ~550px; at the 641px viewport that tier starts from there is
+       ~621px.
+     2 cols need ~290px; a 390px phone has ~370px.
+   These mirror the tablet/phone breakpoints in breakpoints.ts. */
+@media (max-width: 900px) {
+  .team-switcher__chips {
+    grid-template-columns: repeat(4, minmax(0, max-content));
+  }
 }
 
-/* Phone tier: wrap into two centered rows instead of horizontal scroll —
-   a chip row that scrolls sideways has no affordance on a phone and reads
-   as "only three teams". Wrap wins over the overflow-x above (nothing left
-   to scroll). */
+/* Phone tier: two per row. Six rows of chips is tall, and the honest fix is
+   a compact chip (mark instead of full team name) rather than a row that
+   scrolls sideways with no affordance and reads as "only three teams". */
 @media (max-width: 640px) {
   .team-switcher__chips {
-    flex-wrap: wrap;
-    justify-content: center;
+    grid-template-columns: repeat(2, minmax(0, max-content));
   }
 }
 
@@ -805,7 +839,6 @@ body {
   column-gap: 10px;
   row-gap: 1px;
   align-items: center;
-  flex-shrink: 0;
   text-align: left;
   padding: 8px 16px 8px 12px;
   border-radius: var(--radius-md);
