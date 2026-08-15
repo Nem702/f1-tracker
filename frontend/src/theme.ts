@@ -266,40 +266,81 @@ const TEAM_PALETTES: Record<Mode, Record<TeamSlug, TeamColors>> = {
 
 /** The team BADGE: a solid plate with a letterform on it, sized >= 20px and
  *  always aria-hidden (a mark is never a team's only identification — the
- *  name is always beside it).
+ *  name is always beside it). Round 5 values — see docs/STATE.md.
  *
- *  MODE-INDEPENDENT ON PURPOSE, and the one place in this file that is. A
- *  badge is a marque, not chrome: it reads as the team's own colour rather
- *  than as part of the page, so it does not restate itself per mode the way
- *  `accent` does. Being one value per team rather than two is what makes that
- *  a property of the data instead of a convention someone has to maintain.
+ *  MODE-INDEPENDENT ON PURPOSE, and the one place in this file that is. The
+ *  plate derives identically in both modes because it is solved against its
+ *  own ink inside a self-contained surface: `accent` is a fill measured
+ *  against the page and `accentInk` is text measured against card and page —
+ *  and the page is what differs most between modes. If the badge selected one
+ *  mode's accent it would silently inherit a value solved against a page it
+ *  never sits on, and the next accent nudge would move the badge for reasons
+ *  nobody reading the diff could understand.
+ *
+ *  Typed `Record<TeamSlug, string>` deliberately: adding a team is a type
+ *  error until its badge values exist here, same discipline as
+ *  `theme.seeds.ts`.
  *
  *  These are NOT accents and are not interchangeable with them. `accent` has
  *  to tint a whole page and stay ΔE 8 clear of ten rivals at 12px; a plate
  *  only has to carry its own ink. Several plates sit far closer to a rival
  *  than any accent is allowed to — which is why the badge exists as a second
- *  encoding rather than as a recolouring of the first. Every pair below
- *  clears 4.5:1, plate against ink. */
-export const TEAM_BADGES: Record<TeamSlug, { plate: string; ink: string }> = {
-  ferrari: { plate: "#e5102f", ink: "#ffffff" },
-  mercedes: { plate: "#00d7b6", ink: "#14100a" },
-  mclaren: { plate: "#f47600", ink: "#14100a" },
-  redbull: { plate: "#4a83d8", ink: "#14100a" },
-  astonmartin: { plate: "#229971", ink: "#14100a" },
-  williams: { plate: "#1868db", ink: "#ffffff" },
-  audi: { plate: "#f4f4f2", ink: "#bb0a30" },
-  alpine: { plate: "#42baf0", ink: "#14100a" },
-  haas: { plate: "#9c9fa2", ink: "#14100a" },
-  racingbulls: { plate: "#6c98ff", ink: "#0a1a33" },
-  cadillac: { plate: "#444444", ink: "#ffffff" },
+ *  encoding rather than as a recolouring of the first. Every `badgeInk`
+ *  clears 4.5:1 against its own `badgePlate` — see `npm run validate:theme`. */
+export const BADGE_PLATE: Record<TeamSlug, string> = {
+  mclaren: "#f47600",
+  ferrari: "#ec002e",
+  redbull: "#5f80be",
+  mercedes: "#00d7b6",
+  astonmartin: "#229971",
+  williams: "#1868db",
+  audi: "#f8103a",
+  alpine: "#00a9d8",
+  haas: "#9c9fa2",
+  racingbulls: "#6c98ff",
+  cadillac: "#78766e",
+};
+
+export const BADGE_INK: Record<TeamSlug, string> = {
+  mclaren: "#14100a",
+  ferrari: "#ffffff",
+  redbull: "#14100a",
+  mercedes: "#14100a",
+  astonmartin: "#14100a",
+  williams: "#ffffff",
+  audi: "#14100a",
+  alpine: "#14100a",
+  haas: "#14100a",
+  racingbulls: "#14100a",
+  cadillac: "#ffffff",
 };
 
 /** Hairline around a badge plate, so a plate close in value to the surface
  *  behind it still reads as a discrete object. Per mode — unlike the plate
- *  itself, this IS chrome: it belongs to the page, not to the team. */
+ *  itself, this IS chrome: it belongs to the page, not to the team.
+ *
+ *  Both values are composites of a settled translucent token, stored opaque:
+ *  light is `#14100a @ 55%` over the light page `#DEDCD9`; dark is
+ *  `#ffffff @ 45%` over the dark page `#0A0A0C`. Light has no blobs (they're
+ *  off — see `auroraA/B/C` below), so flat page IS the worst light ground:
+ *  3.82:1, PASS.
+ *
+ *  Dark keeps its blobs, and the switcher chip sits on `.aurora`, a FIXED
+ *  layer, so the blobs are glued to the viewport, not to page content — any
+ *  screen point can pass under a blob core while scrolling, including all
+ *  three cores at once on ordinary laptop viewports (the blobs are 920px
+ *  circles; see `.aurora__blob-wrap--a/b/c` in index.css for the offsets that
+ *  make the overlap geometrically real, not theoretical). `npm run
+ *  validate:theme` composites `.glass` over each team's stacked
+ *  accent+driver1+driver2 blob cores at their own opacity and measures the
+ *  ring against it for all 11 teams; the worst realistic case is Aston Martin
+ *  (green raises background luminance the most) at 2.71:1, below the 3:1
+ *  floor — declared as a named ACCEPTED exception in the validator rather
+ *  than left as a number in this comment, so it can't go stale silently the
+ *  way the Round 4 figures here did. */
 export const BADGE_RING: Record<Mode, string> = {
   light: "#6f6c67",
-  dark: "#646468",
+  dark: "#787879",
 };
 
 /** Chrome for a mixed head-to-head pair (no team owns the page) and the
