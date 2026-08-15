@@ -4,6 +4,7 @@ import type { DriverPair, TeamRoster } from "../teams";
 import { useMode } from "../hooks/useTheme";
 import { teamSwatch } from "../theme";
 import { GlassSelect } from "./GlassSelect";
+import { TeamMark } from "./TeamMark";
 import { chipCascadeDelay, chipEntrance } from "../motion";
 
 interface Props {
@@ -113,7 +114,9 @@ export function TeamSwitcher({ rosters, pair, onSelectPair }: Props) {
               initial="hidden"
               animate="show"
             >
-              <span className="team-chip__swatch" aria-hidden="true" />
+              <span className="team-chip__mark">
+                <TeamMark slug={roster.slug} />
+              </span>
               <span className="team-chip__name">{roster.name}</span>
               <span className="team-chip__duo">
                 {roster.duo[0].acronym} · {roster.duo[1].acronym}
