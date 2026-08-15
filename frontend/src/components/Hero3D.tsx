@@ -21,20 +21,37 @@ interface Props {
 
 type Point = [number, number, number];
 
+/** Fastest/slowest lap_duration across BOTH selected drivers' laps, so a
+ *  single pace scale can be shared between their ribbons. Returns null when
+ *  there's nothing to scale (fewer than 2 qualifying laps total) — callers
+ *  fall back to decorative ribbons in that case. */
+function sharedPaceRange(laps: Lap[], driverA: number | null, driverB: number | null) {
+  const durations = laps
+    .filter((l) => (l.driver_number === driverA || l.driver_number === driverB) && l.lap_duration !== null)
+    .map((l) => l.lap_duration!);
+  if (durations.length < 2) return null;
+  return { min: Math.min(...durations), max: Math.max(...durations) };
+}
+
 /** Map one driver's lap durations onto a 3D ribbon: x = race progress,
- *  y = pace (faster laps sit higher), z = a fixed lane per driver. */
-function ribbonPoints(laps: Lap[], driverNumber: number | null, z: number): Point[] {
+ *  y = pace (faster laps sit higher), z = a fixed lane per driver. `range`
+ *  is the shared min/max (see sharedPaceRange) — both drivers must be scaled
+ *  against the same range or vertical position stops being comparable. */
+function ribbonPoints(
+  laps: Lap[],
+  driverNumber: number | null,
+  z: number,
+  range: { min: number; max: number },
+): Point[] {
   const times = laps
     .filter((l) => l.driver_number === driverNumber && l.lap_duration !== null)
     .sort((a, b) => a.lap_number - b.lap_number);
   if (times.length < 2) return [];
-  const durations = times.map((l) => l.lap_duration!);
-  const min = Math.min(...durations);
-  const max = Math.max(...durations);
-  const range = max - min || 1;
+  const { min, max } = range;
+  const span = max - min || 1;
   return times.map((lap, i) => [
     (i / (times.length - 1) - 0.5) * 12,
-    ((max - lap.lap_duration!) / range) * 2.6 - 1.3,
+    ((max - lap.lap_duration!) / span) * 2.6 - 1.3,
     z,
   ]);
 }
@@ -216,8 +233,15 @@ class HeroBoundary extends Component<{ children: ReactNode }, { failed: boolean 
 
 export function Hero3D({ laps, pair }: Props) {
   const { a, b } = useMemo(() => {
-    const ra = ribbonPoints(laps, pair?.[0].number ?? null, 0.4);
-    const rb = ribbonPoints(laps, pair?.[1].number ?? null, -0.4);
+    const driverA = pair?.[0].number ?? null;
+    const driverB = pair?.[1].number ?? null;
+    // One shared min/max across both drivers' laps — computed once, passed
+    // into both ribbonPoints calls, so vertical position is comparable
+    // between them. null (fewer than 2 qualifying laps total, e.g. one or
+    // both drivers have no laps yet) falls through to the decorative pair.
+    const range = sharedPaceRange(laps, driverA, driverB);
+    const ra = range ? ribbonPoints(laps, driverA, 0.4, range) : [];
+    const rb = range ? ribbonPoints(laps, driverB, -0.4, range) : [];
     if (ra.length && rb.length) return { a: ra, b: rb };
     return { a: decorativePoints(0.4, 0), b: decorativePoints(-0.4, 2.1) };
   }, [laps, pair]);

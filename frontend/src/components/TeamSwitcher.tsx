@@ -4,7 +4,7 @@ import type { DriverPair, TeamRoster } from "../teams";
 import { useMode } from "../hooks/useTheme";
 import { teamSwatch } from "../theme";
 import { GlassSelect } from "./GlassSelect";
-import { chipEntrance, homeCascade } from "../motion";
+import { chipCascadeDelay, chipEntrance } from "../motion";
 
 interface Props {
   rosters: TeamRoster[];
@@ -26,12 +26,24 @@ const samePair = (duo: DriverPair, pair: DriverPair) =>
   (duo[0].number === pair[1].number && duo[1].number === pair[0].number);
 
 /**
- * Segmented team switcher under the hero: four glass team chips (swatch +
- * name + duo acronyms) plus a Head-to-Head chip that reveals two selects
- * covering every tracked driver, grouped by team. One accessible radiogroup —
- * roving tabindex, arrow keys move AND select, matching the WAI-ARIA radio
- * pattern. Chip click swaps the whole dashboard to that team's duo; no
- * refetch happens anywhere (charts filter client-side by driver number).
+ * Segmented team switcher under the hero: one glass chip per tracked team
+ * (swatch + name + duo acronyms) plus a Head-to-Head chip that reveals two
+ * selects covering every tracked driver, grouped by team. One accessible
+ * radiogroup — roving tabindex, arrow keys move AND select, matching the
+ * WAI-ARIA radio pattern. Chip click swaps the whole dashboard to that team's
+ * duo; no refetch happens anywhere (charts filter client-side by driver
+ * number).
+ *
+ * The chips WRAP (a centered grid — see .team-switcher__chips), so on the
+ * full 2026 grid they read as two rows of six rather than one row. Arrow keys
+ * deliberately stay one-dimensional across that wrap: Right/Down step to the
+ * next chip in TEAM_ORDER and Left/Up to the previous one, wrapping around the
+ * ends, which is exactly what the ARIA radio-group pattern specifies (next /
+ * previous in the group, not spatial navigation). Keeping it flat means the
+ * key order, the DOM order and the roving-tabindex order are all the same
+ * sequence at every breakpoint, and nothing has to know how many columns the
+ * grid currently has — that count changes at two media queries and would have
+ * to be measured at runtime to drive a truly 2-D scheme.
  *
  * Chips carry the home cascade's entrance (see App.tsx's homeCascade.chips)
  * — the delay is relative to THIS component's own mount, not the page's,
@@ -97,7 +109,7 @@ export function TeamSwitcher({ rosters, pair, onSelectPair }: Props) {
               onClick={() => select(roster.slug)}
               onKeyDown={(e) => onKeyDown(e, idx)}
               variants={chipEntrance}
-              custom={homeCascade.chips + idx * homeCascade.chipStagger}
+              custom={chipCascadeDelay(idx, items.length)}
               initial="hidden"
               animate="show"
             >
@@ -121,7 +133,7 @@ export function TeamSwitcher({ rosters, pair, onSelectPair }: Props) {
           onClick={() => select("h2h")}
           onKeyDown={(e) => onKeyDown(e, rosters.length)}
           variants={chipEntrance}
-          custom={homeCascade.chips + rosters.length * homeCascade.chipStagger}
+          custom={chipCascadeDelay(rosters.length, items.length)}
           initial="hidden"
           animate="show"
         >
