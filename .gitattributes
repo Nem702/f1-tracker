@@ -1,0 +1,19 @@
+# Normalize line endings to LF in the repository, regardless of local
+# core.autocrlf, so checkouts and diffs are consistent across machines/CI.
+* text=auto eol=lf
+
+# Windows PowerShell scripts must stay CRLF.
+*.ps1 text eol=crlf
+
+# Binary assets: never touch line endings.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
