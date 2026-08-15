@@ -289,12 +289,15 @@ const TEAM_PALETTES: Record<Mode, Record<TeamSlug, TeamColors>> = {
  *  clears 4.5:1 against its own `badgePlate` — see `npm run validate:theme`. */
 export const BADGE_PLATE: Record<TeamSlug, string> = {
   mclaren: "#f47600",
-  ferrari: "#ec002e",
+  // Lightened from #ec002e so black ink clears the 4.5 contrast floor:
+  // black-on-#ec002e is 4.16:1 (fail), black-on-#ef2442 is 4.51:1 (min
+  // lightening that passes), and #ef2442 stays within ΔE 2 of the seed.
+  ferrari: "#ef2442",
   redbull: "#5f80be",
   mercedes: "#00d7b6",
   astonmartin: "#229971",
   williams: "#1868db",
-  audi: "#f8103a",
+  audi: "#f4f4f2",
   alpine: "#00a9d8",
   haas: "#9c9fa2",
   racingbulls: "#6c98ff",
@@ -303,12 +306,12 @@ export const BADGE_PLATE: Record<TeamSlug, string> = {
 
 export const BADGE_INK: Record<TeamSlug, string> = {
   mclaren: "#14100a",
-  ferrari: "#ffffff",
+  ferrari: "#14100a",
   redbull: "#14100a",
   mercedes: "#14100a",
   astonmartin: "#14100a",
   williams: "#ffffff",
-  audi: "#14100a",
+  audi: "#bb0a30",
   alpine: "#14100a",
   haas: "#14100a",
   racingbulls: "#14100a",

@@ -753,26 +753,22 @@ function colorMixOpaque(fg: string, alpha: number, bg: string): string {
  *  mistyped hex can still clear 4.5 while landing on the wrong number, and
  *  this is the fastest signal that a hex was mistyped rather than derived. */
 const BADGE_INK_RATIO: Record<TeamSlug, number> = {
-  mclaren: 6.71, ferrari: 4.56, redbull: 4.80, mercedes: 10.28,
-  astonmartin: 5.29, williams: 5.20, audi: 4.63, alpine: 6.92,
+  mclaren: 6.71, ferrari: 4.51, redbull: 4.80, mercedes: 10.28,
+  astonmartin: 5.29, williams: 5.20, audi: 5.96, alpine: 6.92,
   haas: 7.12, racingbulls: 6.83, cadillac: 4.55,
 };
 
-/** Check 2 allow-list: plate-vs-plate pairs below the ΔE 8 floor. Exactly one
- *  entry is expected — anything else that lands here is a real FAIL (see the
- *  task's "round cap"). Keyed lexicographically, same convention as
- *  CVD_COLLISIONS in theme.ts. */
-const BADGE_PLATE_COLLISIONS: Record<string, string> = {
-  "audi|ferrari":
-    "inherent — seeds 1.7 apart, split by ink polarity (Ferrari white ink, Audi #14100a), " +
-    "which reads as a difference at 20px where the hue does not. Floor not lowered.",
-};
+/** Check 2 allow-list: plate-vs-plate pairs below the ΔE 8 floor. Empty as of
+ *  the 2026-08-15 plate swap — Ferrari/Audi is now ΔE 42.1, clear of the
+ *  floor, and no other pair drops below it. Any future sub-8 pair is a real
+ *  FAIL (see the task's "round cap"). Keyed lexicographically, same
+ *  convention as CVD_COLLISIONS in theme.ts. */
+const BADGE_PLATE_COLLISIONS: Record<string, string> = {};
 
 /** Check 3 allow-list: plate-vs-rival-seed pairs below the ΔE 8 floor,
  *  declared `inherent` rather than re-derived. */
 const BADGE_SEED_COLLISIONS: Record<string, string> = {
-  "ferrari plate ↔ audi seed": "ΔE 2.0 — inherent, see plate-vs-plate collision above.",
-  "audi plate ↔ ferrari seed": "ΔE 2.4 — inherent, see plate-vs-plate collision above.",
+  "ferrari plate ↔ audi seed": "ΔE 1.6 — inherent brand proximity (both saturated reds).",
   "racingbulls plate ↔ alpine seed": "ΔE 7.4 — inherent brand proximity.",
   "haas plate ↔ cadillac seed": "ΔE 4.8 — inherent brand proximity (both neutral greys).",
   "williams plate ↔ redbull seed": "ΔE 8.0 — inherent brand proximity (both blues).",
