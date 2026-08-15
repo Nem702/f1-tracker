@@ -860,6 +860,11 @@ body {
   transition: var(--tint-transition);
 }
 
+.team-chip__mark {
+  grid-row: 1 / span 2;
+  display: inline-flex;
+}
+
 .team-chip__swatch--h2h {
   width: auto;
   height: auto;
@@ -1155,6 +1160,33 @@ body {
     grid-template-columns: 1fr;
     gap: var(--space-6);
   }
+}
+
+/* Mark strip: all 11 typographic team marks, each next to its own name —
+   the name is the accessible label, TeamMark itself is aria-hidden. */
+.mark-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
+  margin: var(--space-8) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mark-strip__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-secondary);
+}
+
+.mark-strip__disclaimer {
+  margin: var(--space-5) 0 0;
+  max-width: 640px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-secondary);
 }
 
 /* ---------- page sections (single continuous scroll) ---------- */
@@ -1811,6 +1843,39 @@ body {
 
 .data-table__dim {
   color: var(--ink-secondary);
+}
+
+/* Typographic team mark (TeamMark.tsx) — Tier 2b: a three-letter code on a
+   fixed-size accent plate, never SVG. Fixed footprint regardless of font
+   metrics (border-box + overflow: hidden), so a fallback font stepping in
+   for Inter can't grow the plate; all codes are three uppercase letters so
+   nothing needs to wrap. Colors come inline per team (BADGE_PLATE/INK/RING
+   in theme.ts) — this rule only owns geometry and type. */
+.team-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 20px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 5px;
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: 10.5px;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Standings' constructor rows: same 8px gap + vertical nudge as .team-dot
+   uses beside the same text, sized for the taller plate instead of a dot. */
+.data-table .team-mark {
+  margin-right: 8px;
+  vertical-align: -4px;
 }
 
 /* ---------- race control feed ---------- */

@@ -3,9 +3,11 @@ import { api } from "../api/client";
 import { useApi } from "../hooks/useApi";
 import { SectionHeading } from "./SectionHeading";
 import { TeamDot } from "./TeamDot";
+import { TeamMark } from "./TeamMark";
 import { ChartCard } from "./ChartCard";
 import { DataTable, type TableSpec } from "./DataTable";
 import { Reveal } from "./Reveal";
+import { teamSlugFromName } from "../teams";
 
 /** Leader gets null (renders as the em dash); everyone else their points
  *  deficit, minus-signed. Rows arrive position-sorted from the backend. */
@@ -62,12 +64,16 @@ export function Standings() {
       {
         key: "team_name",
         label: "Team",
-        render: (row) => (
-          <>
-            <TeamDot teamName={row.team_name as string | null} />
-            {String(row.team_name ?? "—")}
-          </>
-        ),
+        render: (row) => {
+          const name = row.team_name as string | null;
+          const slug = teamSlugFromName(name);
+          return (
+            <>
+              {slug ? <TeamMark slug={slug} /> : <TeamDot teamName={name} />}
+              {String(name ?? "—")}
+            </>
+          );
+        },
       },
       { key: "points", label: "Points", align: "right" },
       { key: "gap", label: "Gap", align: "right", render: gapCell },

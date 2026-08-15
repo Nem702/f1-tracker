@@ -1,5 +1,7 @@
 import { motion } from "framer-motion";
 import { entrance, staggerContainer, staggerItem } from "../motion";
+import { TEAM_NAMES, TEAM_ORDER } from "../teams";
+import { TeamMark } from "./TeamMark";
 
 const steps = [
   {
@@ -33,12 +35,13 @@ export function About() {
         <h2 className="section__title">Real data, end to end.</h2>
         <p className="about__body">
           F1 Tracker is a personal skill-building project that follows the
-          front of the 2026 field — Ferrari, Mercedes, McLaren, and Red Bull —
-          across the season. Pick a team to compare its driver pair, or put
-          any two of the eight tracked drivers head-to-head. Real timing data
-          from the OpenF1 API lands in a Postgres database, a small API serves
-          it, and this page draws it. No mock data anywhere in the stack:
-          every lap, pit stop, and weather reading below happened on track.
+          full 2026 grid — all {TEAM_ORDER.length} constructors — across the
+          season. Pick a team to compare its driver pair, or put any two of
+          the {TEAM_ORDER.length * 2} tracked drivers head-to-head. Real
+          timing data from the OpenF1 API lands in a Postgres database, a
+          small API serves it, and this page draws it. No mock data anywhere
+          in the stack: every lap, pit stop, and weather reading below
+          happened on track.
         </p>
       </motion.div>
 
@@ -61,6 +64,28 @@ export function About() {
           </motion.li>
         ))}
       </motion.ol>
+
+      <motion.div
+        variants={entrance}
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, margin: "-80px" }}
+      >
+        <ul className="mark-strip">
+          {TEAM_ORDER.map((slug) => (
+            <li key={slug} className="mark-strip__item">
+              <TeamMark slug={slug} />
+              {TEAM_NAMES[slug]}
+            </li>
+          ))}
+        </ul>
+        <p className="mark-strip__disclaimer">
+          F1 Tracker is an unofficial, non-commercial project and is not
+          affiliated with, endorsed by, or licensed by Formula 1, the FIA, or
+          any of the eleven teams above. Team marks here are typographic
+          codes, not team logos.
+        </p>
+      </motion.div>
     </section>
   );
 }

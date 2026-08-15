@@ -55,7 +55,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { getTheme, teamSwatch, tintForPair } from "../src/theme.ts";
+import { BADGE_INK, BADGE_PLATE, BADGE_RING, getTheme, teamSwatch, tintForPair } from "../src/theme.ts";
 import type { Mode, Theme, Tint } from "../src/theme.ts";
 import { TEAM_SEEDS } from "../src/theme.seeds.ts";
 import { TEAM_ORDER } from "../src/teams.ts";
@@ -123,6 +123,15 @@ const ACCEPTED: Record<string, string> = {
     "rejected too: heroGlowMax is a shared mode token, so it would change Hero3D for the four shipped " +
     "teams and reopen the light-mode pass's decision to compress the ramp rather than flatten it. " +
     "Pace still reads from the line's shape and the hero legend. Logged in docs/STATE.md.",
+
+  "dark · badge ring|ring vs chip on stacked aurora blobs (worst: astonmartin)":
+    "2.71:1, below the 3:1 floor. `.aurora` is position:fixed, so its three 920px blob circles are glued " +
+    "to the viewport, not to page content, and geometrically overlap on an ordinary laptop viewport — the " +
+    "switcher chip can pass under all three cores stacked. Aston Martin's green pushes the composited " +
+    "background's luminance closest to the ring's own, of all 11 teams. No token fix: darkening the ring " +
+    "moves it off its Round 5 derivation (a settled translucent-over-page composite), and the blobs are " +
+    "core to the dark identity. Logged in docs/STATE.md; if the worst team ever changes this key stops " +
+    "matching and the FAIL stands, by design.",
 };
 
 // ---- colour maths (ported from dataviz validate_palette.js) -----------------
@@ -733,6 +742,180 @@ function colorMixOpaque(fg: string, alpha: number, bg: string): string {
   return over(`rgba(${parseHex(fg).join(", ")}, ${alpha})`, bg);
 }
 
+// ---- badge checks -------------------------------------------------------
+//
+// BADGE_PLATE/BADGE_INK are mode-independent (see theme.ts), so checks 1-3
+// below run ONCE, not per mode. Check 4 (ring vs page) and the two roll-ups
+// (5, 6) are per-mode because their grounds are.
+
+/** Check 1: the ink ratio each plate row in theme.ts's comment cites, to 2dp.
+ *  Reproducing the CITED number (not just clearing 4.5) is the point — a
+ *  mistyped hex can still clear 4.5 while landing on the wrong number, and
+ *  this is the fastest signal that a hex was mistyped rather than derived. */
+const BADGE_INK_RATIO: Record<TeamSlug, number> = {
+  mclaren: 6.71, ferrari: 4.56, redbull: 4.80, mercedes: 10.28,
+  astonmartin: 5.29, williams: 5.20, audi: 4.63, alpine: 6.92,
+  haas: 7.12, racingbulls: 6.83, cadillac: 4.55,
+};
+
+/** Check 2 allow-list: plate-vs-plate pairs below the ΔE 8 floor. Exactly one
+ *  entry is expected — anything else that lands here is a real FAIL (see the
+ *  task's "round cap"). Keyed lexicographically, same convention as
+ *  CVD_COLLISIONS in theme.ts. */
+const BADGE_PLATE_COLLISIONS: Record<string, string> = {
+  "audi|ferrari":
+    "inherent — seeds 1.7 apart, split by ink polarity (Ferrari white ink, Audi #14100a), " +
+    "which reads as a difference at 20px where the hue does not. Floor not lowered.",
+};
+
+/** Check 3 allow-list: plate-vs-rival-seed pairs below the ΔE 8 floor,
+ *  declared `inherent` rather than re-derived. */
+const BADGE_SEED_COLLISIONS: Record<string, string> = {
+  "ferrari plate ↔ audi seed": "ΔE 2.0 — inherent, see plate-vs-plate collision above.",
+  "audi plate ↔ ferrari seed": "ΔE 2.4 — inherent, see plate-vs-plate collision above.",
+  "racingbulls plate ↔ alpine seed": "ΔE 7.4 — inherent brand proximity.",
+  "haas plate ↔ cadillac seed": "ΔE 4.8 — inherent brand proximity (both neutral greys).",
+  "williams plate ↔ redbull seed": "ΔE 8.0 — inherent brand proximity (both blues).",
+};
+
+function checkBadgeInk(): void {
+  const g = "badge · ink on plate";
+  for (const slug of TEAM_ORDER) {
+    const plate = BADGE_PLATE[slug];
+    const ink = BADGE_INK[slug];
+    const v = contrast(ink, plate);
+    const expected = BADGE_INK_RATIO[slug];
+    const reproduces = Math.abs(v - expected) < 0.005;
+    const status: Status = v < AA ? "FAIL" : !reproduces ? "FAIL" : v < AA + THIN_MARGIN ? "THIN" : "PASS";
+    add(g, `${slug} ink ${ink} on plate ${plate}`,
+      `${v.toFixed(2)}:1${reproduces ? "" : ` — expected ${expected.toFixed(2)}, mismatch suggests a mistyped hex`}`,
+      status);
+  }
+}
+
+function checkBadgePlateCollisions(): void {
+  const g = "badge · plate vs plate";
+  const fired = new Set<string>();
+  for (let i = 0; i < TEAM_ORDER.length; i++) {
+    for (let j = i + 1; j < TEAM_ORDER.length; j++) {
+      const [a, b] = [TEAM_ORDER[i], TEAM_ORDER[j]];
+      const [ka, kb] = a < b ? [a, b] : [b, a];
+      const key = `${ka}|${kb}`;
+      const v = deltaE(BADGE_PLATE[a], BADGE_PLATE[b]);
+      if (v >= SEED_FLOOR) continue;
+      const allowed = BADGE_PLATE_COLLISIONS[key];
+      if (allowed) fired.add(key);
+      add(g, `${ka} ↔ ${kb}`, `ΔE ${v.toFixed(1)} (${BADGE_PLATE[ka]} ↔ ${BADGE_PLATE[kb]})` + (allowed ? ` — ALLOWED: ${allowed}` : ""),
+        allowed ? "WARN" : "FAIL");
+    }
+  }
+  const stale = Object.keys(BADGE_PLATE_COLLISIONS).filter((k) => !fired.has(k));
+  for (const k of stale) {
+    add(g, `${k} (stale allow-list entry)`, "no longer collides — delete from BADGE_PLATE_COLLISIONS", "WARN");
+  }
+}
+
+function checkBadgeVsRivalSeed(): void {
+  const g = "badge · plate vs rival seed";
+  for (const team of TEAM_ORDER) {
+    for (const rival of TEAM_ORDER) {
+      if (rival === team) continue;
+      const v = deltaE(BADGE_PLATE[team], TEAM_SEEDS[rival]);
+      if (v >= SEED_FLOOR) continue;
+      const key = `${team} plate ↔ ${rival} seed`;
+      const allowed = BADGE_SEED_COLLISIONS[key];
+      add(g, key, `ΔE ${v.toFixed(1)} (${BADGE_PLATE[team]} ↔ ${TEAM_SEEDS[rival]})` + (allowed ? ` — ALLOWED: ${allowed}` : ""),
+        allowed ? "WARN" : "FAIL");
+    }
+  }
+}
+
+/** Light: blobs are off (auroraA/B/C = 0 — see theme.ts), so the flat page
+ *  wash's darker stop IS the worst light ground; the plain page check covers
+ *  it exactly. Dark keeps its blobs, and `.aurora` is `position: fixed`, so
+ *  they're glued to the viewport rather than to page content — any point can
+ *  pass under a blob core while scrolling, including all three cores
+ *  overlapping at once on an ordinary laptop viewport (three 920px circles
+ *  positioned at corners of a ~1280×800 viewport geometrically overlap — see
+ *  `.aurora__blob-wrap--a/b/c` in index.css). Reproduces the composite:
+ *  `.glass` fill over the three blobs stacked source-over at their own
+ *  opacity (mask is fully opaque inside the 42% core radius, so peak alpha
+ *  IS `--aurora-a/b/c` exactly), for every team, and keeps the worst. */
+function checkBadgeRing(mode: Mode, t: Theme, s: Surfaces): void {
+  const g = `${mode} · badge ring`;
+  if (mode === "light") {
+    ratio(g, "ring vs flat page", BADGE_RING[mode], t.pageBase, NON_TEXT);
+    return;
+  }
+  let worst = Infinity;
+  let worstTeam: TeamSlug = "ferrari";
+  let worstChip = "";
+  for (const slug of TEAM_ORDER) {
+    const th = getTheme(mode, tintFor(slug));
+    let stacked = t.pageBase;
+    for (const [color, alpha] of [
+      [th.accent, parseFloat(t.auroraA)],
+      [th.driver1, parseFloat(t.auroraB)],
+      [th.driver2, parseFloat(t.auroraC)],
+    ] as [string, number][]) {
+      stacked = over(`rgba(${parseHex(color).join(", ")}, ${alpha})`, stacked);
+    }
+    const chip = over(t.glass, stacked);
+    const v = contrast(BADGE_RING[mode], chip);
+    if (v < worst) { worst = v; worstTeam = slug; worstChip = chip; }
+  }
+  const check = `ring vs chip on stacked aurora blobs (worst: ${worstTeam})`;
+  add(g, check, `${worst.toFixed(2)}:1 vs ${worstChip} (all 3 blobs overlapping, ${worstTeam})`,
+    worst < NON_TEXT ? "FAIL" : worst < NON_TEXT + THIN_MARGIN ? "THIN" : "PASS");
+  // ratio()'s own PASS/THIN/FAIL isn't reused above because the check name
+  // carries the offending team, same reasoning as checkHero3D's ACCEPTED key:
+  // if the worst team ever changes, the ACCEPTED key below stops matching and
+  // the FAIL stands instead of silently accepting a different team's number.
+  ratio(g, "ring vs plate (reference, not the failing surface)", BADGE_RING[mode], s.plate, NON_TEXT);
+}
+
+/** Checks 5 & 6, RECORD ONLY: every driver colour against every rival team's
+ *  badge plate, both modes, two metrics. PLAIN OKLab reconstructs the
+ *  original Round 5 derivation (13 rows) and is kept because it matches the
+ *  task's frozen table exactly. CVD-worst (protan/deutan) is what every other
+ *  driver-separation check in this file uses, and is the metric that actually
+ *  matters for the outline-encoding decision these rows feed: CVD-worst can
+ *  see red-green collapse that plain OKLab cannot, and surfaces a very
+ *  different worst offender (mercedes0 vs haas ΔE 1.03, not visible in the
+ *  plain block at all). Both are RECORD ONLY — neither gates — and neither
+ *  replaces the other. */
+const driverVsPlatePlain: { mode: Mode; driver: string; hex: string; plate: TeamSlug; v: number }[] = [];
+const driverVsPlateCVD: { mode: Mode; driver: string; hex: string; plate: TeamSlug; v: number }[] = [];
+
+function recordDriverVsPlate(mode: Mode): void {
+  for (const driverTeam of TEAM_ORDER) {
+    const th = getTheme(mode, tintFor(driverTeam));
+    for (const [slot, hex] of [th.driver1, th.driver2].entries()) {
+      const driver = `${driverTeam}${slot}`;
+      for (const plateTeam of TEAM_ORDER) {
+        if (plateTeam === driverTeam) continue;
+        const plate = BADGE_PLATE[plateTeam];
+        const vPlain = deltaE(hex, plate);
+        if (vPlain < CVD_FLOOR) driverVsPlatePlain.push({ mode, driver, hex, plate: plateTeam, v: vPlain });
+        const vCvd = cvdDeltaE(hex, plate);
+        if (vCvd < CVD_FLOOR) driverVsPlateCVD.push({ mode, driver, hex, plate: plateTeam, v: vCvd });
+      }
+    }
+  }
+}
+
+/** Check 6, RECORD ONLY: accent-on-page ratio, 11 teams x 2 modes. The 3:1
+ *  check does not exist yet (see docs/STATE.md known gaps) — this just
+ *  captures the numbers so that eventual check knows its real scope. */
+const accentOnPage: { mode: Mode; team: TeamSlug; v: number }[] = [];
+
+function recordAccentOnPage(mode: Mode, t: Theme): void {
+  for (const slug of TEAM_ORDER) {
+    const th = getTheme(mode, tintFor(slug));
+    accentOnPage.push({ mode, team: slug, v: contrast(th.accent, t.pageBase) });
+  }
+}
+
 // ---- run --------------------------------------------------------------------
 
 const GLYPH: Record<Status, string> = { PASS: "PASS", THIN: "THIN", WARN: "WARN", FAIL: "FAIL" };
@@ -747,6 +930,9 @@ const GLYPH: Record<Status, string> = { PASS: "PASS", THIN: "THIN", WARN: "WARN"
 const SUMMARY = process.argv.includes("--summary");
 
 checkSeedIsolation();
+checkBadgeInk();
+checkBadgePlateCollisions();
+checkBadgeVsRivalSeed();
 for (const mode of ["light", "dark"] as Mode[]) {
   const t = getTheme(mode, tintFor("ferrari"));
   const s = surfacesOf(t);
@@ -758,6 +944,9 @@ for (const mode of ["light", "dark"] as Mode[]) {
   checkDataColours(mode, t, s);
   checkBrandSeeds(mode);
   checkHero3D(mode, t, s);
+  checkBadgeRing(mode, t, s);
+  recordDriverVsPlate(mode);
+  recordAccentOnPage(mode, t);
 }
 
 // COUNT FIRST, PRINT SECOND. Two passes, so `--summary` is structurally unable
@@ -848,6 +1037,34 @@ for (const m of [...margins].sort((a, b) => a.value - a.floor - (b.value - b.flo
     `  ${(m.value - m.floor >= 0 ? "+" : "") + (m.value - m.floor).toFixed(2)} over ${m.floor.toFixed(1)}` +
       `   ${m.value.toFixed(2)}:1   ${m.id}`,
   );
+}
+
+// Checks 5 & 6 (two metrics — see recordDriverVsPlate): driver colour vs
+// rival badge plate, sub-ΔE-8 only, each with a per-rival-plate grouping.
+function printDriverVsPlate(title: string, rows: typeof driverVsPlatePlain): void {
+  console.log(rule(title));
+  console.log(`  ${rows.length} rows below ΔE ${CVD_FLOOR}`);
+  for (const r of [...rows].sort((a, b) => a.v - b.v)) {
+    console.log(
+      `  ${r.mode.padEnd(5)} ${r.driver.padEnd(10)} ${r.hex.padEnd(9)} vs ${r.plate.padEnd(12)} ΔE ${r.v.toFixed(2)}`,
+    );
+  }
+  const byPlate = new Map<TeamSlug, number>();
+  for (const r of rows) byPlate.set(r.plate, (byPlate.get(r.plate) ?? 0) + 1);
+  console.log("  by rival plate:");
+  for (const [plate, count] of [...byPlate.entries()].sort((a, b) => b[1] - a[1])) {
+    console.log(`    ${plate.padEnd(14)} ${count}`);
+  }
+}
+printDriverVsPlate("driver colour vs rival badge plate — PLAIN OKLab (sub-8, RECORD only)", driverVsPlatePlain);
+printDriverVsPlate("driver colour vs rival badge plate — CVD-worst (sub-8, RECORD only)", driverVsPlateCVD);
+
+// Check 6 roll-up: accent-on-page ratio, all 22 (11 teams x 2 modes).
+console.log(rule("accent on page ratio (all 22, RECORD only)"));
+for (const mode of ["light", "dark"] as Mode[]) {
+  for (const r of accentOnPage.filter((x) => x.mode === mode)) {
+    console.log(`  ${r.mode.padEnd(5)} ${r.team.padEnd(12)} ${r.v.toFixed(2)}:1`);
+  }
 }
 
 // An exception that no longer fires is worse than no exception: it reads as a
