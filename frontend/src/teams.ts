@@ -35,10 +35,14 @@ export const TEAM_ORDER: readonly TeamSlug[] = [
   "redbull",
   "astonmartin",
   "williams",
-  "audi",
-  "alpine",
-  "haas",
+  // Second row: interleaved so no two similar-hue swatches sit adjacent —
+  // racingbulls(blue) audi(red) haas(gray) alpine(cyan) cadillac(charcoal).
+  // See CVD_COLLISIONS / theme.ts for the underlying color pairs; this is a
+  // plain visual-adjacency call, not a colorblind-safety one.
   "racingbulls",
+  "audi",
+  "haas",
+  "alpine",
   "cadillac",
 ];
 
