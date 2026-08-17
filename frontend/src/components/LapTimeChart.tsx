@@ -14,6 +14,7 @@ import { useTheme } from "../hooks/useTheme";
 import { useIsPhone } from "../hooks/useMediaQuery";
 import { useDrawInOnce } from "../hooks/useDrawInOnce";
 import { fmtLapTime } from "../format";
+import { paceDomain } from "../lib/paceDomain";
 import { ChartCard } from "./ChartCard";
 import { PairLegend } from "./DriverChip";
 import { ChartTooltip, type TooltipRow } from "./ChartTooltip";
@@ -81,32 +82,42 @@ export function LapTimeChart({ laps, pair, loading, error }: Props) {
   const drawIn = useDrawInOnce(merged.length > 0);
 
   // Slow outliers ruin the y-axis: a red-flag stoppage records one absurd
-  // "lap" (30+ minutes at Monaco), and even ordinary SC/red-flag crawl laps
-  // (~1.6×+ race pace) squash the actual pace battle into a sliver. Blank
-  // anything over 1.5× the median from the chart — pit in/out laps
-  // (~1.2–1.35×) stay, so the strategy spikes still read — and let the
-  // auto domain fit the racing story. Blanked laps read as gaps, like
-  // other missing times; the raw values stay in the table view, and the
-  // card subtitle reports how many went off-scale.
-  const { data, offScale } = useMemo(() => {
+  // "lap" (30+ minutes at Monaco), and even ordinary SC/VSC crawl laps
+  // (~1.6×+ race pace) squash the actual pace battle into a sliver.
+  //
+  // This used to censor anything over 1.5× the pooled median and then leave
+  // <YAxis domain={["auto","auto"]}> to fit whatever survived. `paceDomain`
+  // replaces both halves with one contamination-aware range: because slow
+  // contamination is entirely one-sided, it estimates the contaminated
+  // fraction from quantiles low enough to be immune to it, then indexes into
+  // the green part — which is self-correcting in a way a fixed multiple of a
+  // (itself contaminated) median is not. See lib/paceDomain.ts for the
+  // measurements. The domain is then set EXPLICITLY rather than left to auto,
+  // so the axis shows the racing rather than the outliers.
+  //
+  // Censored laps read as gaps, like other missing times (connectNulls stays
+  // false); the raw values stay in the table view, which renders `merged`,
+  // and the card subtitle reports how many went off-scale.
+  const { data, offScale, domain } = useMemo(() => {
     const durations = merged
       .flatMap((p) => [p.a, p.b])
-      .filter((d): d is number => d !== null)
-      .sort((a, b) => a - b);
-    if (durations.length === 0) return { data: merged, offScale: 0 };
-    const cutoff = durations[Math.floor(durations.length / 2)] * 1.5;
+      .filter((d): d is number => d !== null);
+    if (durations.length === 0) {
+      return { data: merged, offScale: 0, domain: undefined };
+    }
+    const { lo, hi } = paceDomain(durations);
     let offScale = 0;
     const data = merged.map((p) => {
-      const aOver = p.a !== null && p.a > cutoff;
-      const bOver = p.b !== null && p.b > cutoff;
-      offScale += (aOver ? 1 : 0) + (bOver ? 1 : 0);
+      const aOut = p.a !== null && (p.a > hi || p.a < lo);
+      const bOut = p.b !== null && (p.b > hi || p.b < lo);
+      offScale += (aOut ? 1 : 0) + (bOut ? 1 : 0);
       return {
         ...p,
-        a: aOver ? null : p.a,
-        b: bOver ? null : p.b,
+        a: aOut ? null : p.a,
+        b: bOut ? null : p.b,
       };
     });
-    return { data, offScale };
+    return { data, offScale, domain: [lo, hi] as [number, number] };
   }, [merged]);
 
   // Index of each series' last real point, so the direct end-label sits on
@@ -233,7 +244,7 @@ export function LapTimeChart({ laps, pair, loading, error }: Props) {
             tick={{ fill: theme.inkMuted, fontSize: 11 }}
           />
           <YAxis
-            domain={["auto", "auto"]}
+            domain={domain ?? ["auto", "auto"]}
             tickFormatter={(v: number) => fmtLapTime(v, 0)}
             tickLine={false}
             axisLine={false}

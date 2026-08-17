@@ -19,7 +19,7 @@
   /* ---- breakpoints (single source of truth, mirrored in breakpoints.ts) ----
      Media queries can't read custom properties, so these live as a contract:
      every @media in this app uses one of these three numbers.
-       phone  640px — phone tier: column drops, chart simplification, no Hero3D
+       phone  640px — phone tier: column drops, chart simplification, shorter hero stage
        nav    840px — navbar drawer replaces the inline row; .view__header collapse
        tablet 900px — the long-standing main collapse tier (grids → 1 col)
      Keep breakpoints.ts in sync when changing any of them. */
@@ -578,12 +578,12 @@ body {
 
 /* ---------- hero banner (#hero section) ---------- */
 /* Uncontained — no surface/shadow/radius, bleeding past the content
-   column's own side padding so the ribbons float directly on the page
+   column's own side padding so the circuit trace floats directly on the page
    aurora as the section's center feature, not a boxed-in panel. */
 
 /* Fills the viewport on load, but not as one centered stack: the intro
    headline is pinned up near the navbar (it's copy, not the focal point),
-   .hero-stage is the flexible middle that centers the ribbon animation —
+   .hero-stage is the flexible middle that centers the circuit animation —
    the thing that's actually meant to read as "centered" — and the picker +
    caption sit at the bottom. `min-height` (not `height`) so a short
    viewport grows/scrolls instead of clipping content, and `dvh` (with a
@@ -611,15 +611,14 @@ body {
   padding-bottom: var(--space-6);
 }
 
-/* Phone tier: Hero.tsx never mounts the WebGL stage here, so instead of
-   top-aligned content with a dead void where .hero-stage used to stretch,
-   the intro + pickers center vertically in the same near-viewport
-   min-height — the hero still owns the first screen and #next-race starts
-   below the fold. */
+/* Phone tier: the stage DOES mount here (plain SVG, no WebGL — there is
+   nothing left worth withholding from a small screen), so this only tightens
+   the vertical rhythm. The hero still owns the first screen and #next-race
+   starts below the fold. */
 @media (max-width: 640px) {
   .hero-section {
     justify-content: center;
-    gap: var(--space-6);
+    gap: var(--space-5);
   }
 }
 
@@ -659,10 +658,10 @@ body {
 }
 
 /* The flexible middle: grows to absorb whatever space the intro and body
-   don't use, then centers the ribbon box within itself both ways — this is
-   what makes the ribbon animation (not the intro copy) the section's visual
-   center. `min-height: 0` overrides flexbox's default min-height:auto, which
-   would otherwise refuse to shrink below the ribbon's content size on short
+   don't use, then centers the circuit box within itself both ways — this is
+   what makes the animation (not the intro copy) the section's visual center.
+   `min-height: 0` overrides flexbox's default min-height:auto, which would
+   otherwise refuse to shrink below the circuit's content size on short
    viewports and defeat the "grow the section, don't clip" fallback. */
 .hero-stage {
   flex: 1 1 auto;
@@ -672,28 +671,209 @@ body {
   justify-content: center;
 }
 
-.hero {
+/* ---------- hero circuit trace ---------- */
+
+.hero-circuit {
   position: relative;
   width: 100%;
-  /* Height-driven now, not width-driven: .hero-stage centers it within a
-     viewport-height column, so height (not width) is the constrained axis
-     here. No text overlays the canvas anymore (that moved below the picker
-     as .hero-caption), so it's free to fill the whole box. */
-  height: clamp(260px, 34vh, 460px);
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   margin: 0 calc(var(--content-pad-x) * -1);
 }
 
-.hero__canvas {
-  position: absolute !important;
-  inset: 0;
+/* The measured box. HeroCircuit.tsx puts a ResizeObserver on this element and
+   fits the viewBox to whatever it reports, so the circuit's own aspect ratio
+   never drives layout — aspect ratios across the 24 circuits span 0.21
+   (Jeddah) to 4.68 (Miami after its quarter-turn), and a stage that resized
+   itself per circuit would make the whole page jump on every race switch. */
+.hero-circuit__stage {
+  width: 100%;
+  height: clamp(260px, 34vh, 440px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero-circuit__svg {
+  display: block;
+  overflow: visible;
+}
+
+/* --axis, not --grid. The outline is the hero's primary figure, not a
+   hairline behind a chart, and --grid (light #e2e2e4 on a #dedcd9 page) is
+   nearly invisible at this weight. --axis is the strongest hairline token and
+   lands within a shade of the reference mockup's own track colour in both
+   modes: light #c8c8ca vs its rgba(20,22,26,.18) ≈ #c2c2c1, dark #383835 vs
+   its rgba(255,255,255,.15) ≈ #2a2a2b. */
+.hero-circuit__track {
+  fill: none;
+  stroke: var(--axis);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.hero-circuit__sf {
+  stroke: var(--ink-muted);
+  stroke-linecap: round;
+}
+
+/* Two overlapping sub-arcs, drawn with a dash period equal to the whole path
+   length so a single dash wraps the start/finish line for free. Widths and
+   dash geometry are set per frame from JS; only colour lives here. */
+.hero-circuit__arc {
+  fill: none;
+  stroke-linecap: butt;
+}
+
+/* Lights and arcs start HIDDEN and the frame loop is authoritative for their
+   opacity from then on. Before the path has been measured there is no sensible
+   place to put a light, and a CSS-default-visible group renders as a stray dot
+   parked at the SVG origin — which is exactly what a reduced-motion load did
+   until this was pinned down. */
+.hero-circuit__arc {
+  opacity: 0;
+}
+
+.hero-circuit__light {
+  opacity: 0;
+}
+
+.hero-circuit__light-halo {
+  fill: var(--driver1);
+  opacity: var(--hero-halo-opacity);
+}
+
+.hero-circuit__light-mid {
+  fill: var(--driver1);
+  opacity: var(--hero-mid-opacity);
+}
+
+.hero-circuit__light-core {
+  fill: var(--driver1);
+}
+
+/* The second light is the second driver's slot colour. */
+.hero-circuit__light:nth-of-type(2) circle {
+  fill: var(--driver2);
+}
+
+.hero-circuit__readout {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: var(--space-5);
+  width: 100%;
+  min-height: 46px;
+  padding: 0 var(--space-6);
+}
+
+.hero-circuit__narration {
+  display: flex;
+  gap: var(--space-5);
+  align-items: flex-end;
+  transition: opacity 0.25s ease;
+}
+
+.hero-circuit__narration.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hero-circuit__field {
+  display: flex;
+  flex-direction: column;
+}
+
+.hero-circuit__key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-bottom: 6px;
+}
+
+.hero-circuit__value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 24px;
+  font-weight: 650;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-circuit__value small {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+
+.hero-circuit__field--note {
+  padding-bottom: 4px;
+}
+
+.hero-circuit__note {
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
+
+.hero-circuit__toggle {
+  position: absolute;
+  right: var(--space-3);
+  bottom: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  opacity: 0.45;
+  transition: opacity 0.2s ease;
+}
+
+.hero-circuit__toggle:hover,
+.hero-circuit__toggle:focus-visible {
+  opacity: 1;
+}
+
+/* OpenStreetMap's licence requires credit wherever the outlines render. */
+.hero-circuit__credit {
+  margin: var(--space-2) 0 0;
+  font-size: 11px;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .hero-circuit__stage {
+    height: clamp(230px, 38vh, 340px);
+  }
+
+  .hero-circuit__narration {
+    gap: var(--space-4);
+  }
+
+  .hero-circuit__value {
+    font-size: 18px;
+  }
+
+  .hero-circuit__readout {
+    padding: 0 var(--space-5);
+  }
 }
 
 /* Everything below the uncontained hero is capped to a comfortable width and
-   centered: the hero's ribbon chart caps its own rendered size (Hero3D's
-   `fit` calc), so it never actually fills an ultrawide monitor, but every
-   card/grid below it otherwise would — this keeps the whole section reading
-   as one column roughly as wide as the chart above, not edge to edge. */
+   centered: the circuit stage fits itself to its own box, so it never
+   actually fills an ultrawide monitor, but every card/grid below it otherwise
+   would — this keeps the whole section reading as one column roughly as wide
+   as the animation above, not edge to edge. */
 .hero-body {
   flex: 0 0 auto;
   /* Explicit width, not just auto margins: as a flex item, `margin: 0 auto`

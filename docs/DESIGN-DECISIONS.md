@@ -157,14 +157,28 @@ arrow-key navigation that skips disabled options, and close on
 glass design system as everything else on the page.
 
 **Route-scoped code-splitting via `React.lazy`, not `vite.config.ts` manual chunks.**
-The dashboard's three views each pull in different heavy dependencies — `three.js` /
-`react-three-fiber` / `drei` for the Overview hero, `recharts` for the six Race Analysis
-charts — but every component was a static import, so all three shipped in one bundle
-regardless of which view a visitor landed on. Wrapping the already-existing
-`view === "..."` conditionals in `React.lazy()` + `Suspense` splits each cluster into
-its own chunk automatically (confirmed via `npm run build`: a ~905KB three.js/r3f/drei
-chunk and separate recharts chunks, apart from the ~355KB main bundle) — no
+The dashboard's views each pull in different heavy dependencies, but every component
+was a static import, so all of them shipped in one bundle regardless of which view a
+visitor landed on. Wrapping the already-existing `view === "..."` conditionals in
+`React.lazy()` + `Suspense` splits each cluster into its own chunk automatically — no
 `manualChunks` config needed, since Vite already splits on `import()` boundaries.
+
+The original headline example of this was a **~912KB `three.js`/r3f/drei chunk** for the
+Overview hero's WebGL ribbons. That is no longer live evidence, because the hero was
+replaced by a plain-SVG circuit trace and those four packages were removed outright. The
+mechanism still holds for `recharts`, which remains lazy-loaded per chart. Measured
+before/after the hero swap (`npm run build`):
+
+| | JS total (raw) | JS total (gzip) | largest chunk |
+|---|---|---|---|
+| WebGL hero | 1694.3 KB | 487.3 KB | `Hero3D` 912.0 KB (244.6 gz) |
+| circuit hero | 829.3 KB | 261.1 KB | `index` 433.3 KB (139.6 gz) |
+| **delta** | **−865.0 KB (−51%)** | **−226.2 KB (−46%)** | three chunk gone |
+
+The main `index` chunk grew ~47KB raw / ~19KB gzip, because the 24 circuit outlines
+(~38KB of SVG path text) and the hero component are static imports rather than a lazy
+chunk. That is a deliberate trade: the hero is the LCP element, so paying for it up front
+beats a second round-trip, and it is still a ~865KB net win.
 
 **Cache-Control + gzip on backend responses, only where data is provably immutable.**
 Every `/api/races/{session_key}/...` endpoint serves data the fetch pipeline already
@@ -281,16 +295,27 @@ original fill, leaving dark untouched. The active chip, the insight card, the
 swatch halo and the countdown's outer bloom all went through this.
 
 **Hero3D's pace ramp is compressed in light, never flattened — it is data.**
-The wide faint duplicate under the crisp lap trace encodes pace on *opacity*
-(faster laps glow more), so a constant would delete information. The 3:1 check
-the original code documents as having "failed for real" failed again: at the old
-0.07–0.22 ramp the glow dragged **three** drivers' crisp lines below the floor
-against their own glow-brightened surround (ferrari0 3.78→2.62, mercedes1
-3.61→2.78, redbull1 3.20→2.47). Light now runs 0.03–0.13 at `lineWidth` 5 — only
-redbull1 still dips, and it starts from just 3.20 bare. The floor dropped
-alongside the ceiling so the fast-vs-slow ramp stays perceptible (ΔE 2.8), and
-width came down because width and opacity both feed the smudge while only one is
-doing encoding work. Dark keeps 0.07–0.22 at width 7.
+**SUPERSEDED (not abandoned), 2026-08-16.** Recorded in full because the
+*reasoning* still applies to any future opacity-as-encoding, and because
+"abandoned" would invite a later session to restore it. It has nothing left to
+apply to: the WebGL hero was replaced by a lap-chart hero, whose Y axis carried
+pace instead, and then by the circuit trace that shipped — which encodes
+separation as an **arc of track** and has **no pace encoding at all**. There is
+no ramp left to keep perceptible, so `heroGlowMin`/`Max`/`Width` and the
+validator's `checkHero3D` were deleted along with the component. The light-mode
+ACCEPTED exception it owned went with it (three declared exceptions became two).
+
+The decision as it stood: the wide faint duplicate under the crisp lap trace
+encoded pace on *opacity* (faster laps glow more), so a constant would have
+deleted information. The 3:1 check the original code documents as having "failed
+for real" failed again: at the old 0.07–0.22 ramp the glow dragged **three**
+drivers' crisp lines below the floor against their own glow-brightened surround
+(ferrari0 3.78→2.62, mercedes1 3.61→2.78, redbull1 3.20→2.47). Light ran
+0.03–0.13 at `lineWidth` 5 — only redbull1 still dipped, and it started from just
+3.20 bare. The floor dropped alongside the ceiling so the fast-vs-slow ramp
+stayed perceptible (ΔE 2.8), and width came down because width and opacity both
+feed the smudge while only one was doing encoding work. Dark kept 0.07–0.22 at
+width 7.
 
 **The countdown commits to its inversion; its overrides split by what the token
 describes.**
@@ -366,9 +391,10 @@ replacing it with plate-coloured casing strokes. No such halo existed: all five
 recharts charts draw a single flat `strokeWidth={2}` line — no `<defs>`, no
 filters, no duplicated wide stroke — and `activeDot` already carried a 2px
 `stroke={theme.surface}` separation ring. The review worked from screenshots and
-had identified **`Hero3D.tsx`'s lap trace** as a chart line. The fix landed there
-instead (see the pace-ramp entry above) and the charts were left alone. Logged
-because a silently-dropped review item looks identical to an overlooked one.
+had identified the WebGL hero's own lap trace (`Hero3D.tsx`, since deleted — the
+hero is `HeroCircuit.tsx` now) as a chart line. The fix landed there instead (see
+the pace-ramp entry above, now marked superseded) and the charts were left alone.
+Logged because a silently-dropped review item looks identical to an overlooked one.
 
 ## Known data quirks (not bugs)
 

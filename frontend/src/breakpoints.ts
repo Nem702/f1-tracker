@@ -3,7 +3,7 @@
  *  custom properties, so the values are documented there and exported here
  *  for the TSX side (hooks/useMediaQuery.ts).
  *
- *  - phone  (640): phone tier — column drops, chart simplification, no Hero3D
+ *  - phone  (640): phone tier — column drops, chart simplification, shorter hero stage
  *  - nav    (840): navbar drawer replaces the inline row; .view__header collapse
  *  - tablet (900): the long-standing main collapse tier (grids → 1 col)
  */

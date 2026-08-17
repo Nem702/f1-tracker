@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { NAV_QUERY, PHONE_QUERY } from "../breakpoints";
 
-/* Width-aware rendering (hiding Hero3D on phones, dropping table columns,
+/* Width-aware rendering (dropping table columns, shortening the hero stage,
    narrowing Recharts margins) can't be done in CSS, so this is the one
    sanctioned matchMedia-for-layout hook. Same module-level store shape as
    hooks/useTheme.ts: the snapshot is read synchronously on first render

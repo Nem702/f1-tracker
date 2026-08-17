@@ -52,8 +52,8 @@ export default function App() {
   // opening at the hero — same as a plain anchor link would. This can't
   // just scroll on the next frame: every section fetches its own data
   // independently (races, standings, official results, telemetry, …), each
-  // resolving at its own pace, and Hero3D plus every telemetry chart are
-  // lazy-loaded on top of that — so the page's height grows in several
+  // resolving at its own pace, and every telemetry chart is lazy-loaded on
+  // top of that — so the page's height grows in several
   // separate spurts over the first second or two rather than settling once.
   // A ResizeObserver on <body> catches every one of those spurts — the jump
   // only fires once layout has gone quiet for 600ms (comfortably longer
@@ -203,6 +203,10 @@ export default function App() {
           <section id="hero" className="hero-section">
             <Hero
               laps={laps.data ?? []}
+              pit={pit.data ?? []}
+              raceControl={raceControl.data ?? []}
+              race={race}
+              raceWeekend={raceWeekend.data?.race_weekend ?? null}
               pair={pair}
               rosters={rosters}
               onSelectPair={setPair}

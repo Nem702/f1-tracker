@@ -146,8 +146,14 @@ export const homeCascade = {
   auroraBlobs: [0.05, 0.1, 0.15] as const,
   introTitle: 0.05,
   introText: 0.2,
-  ribbonA: 0.35,
-  ribbonB: 0.45,
+  /** The hero stage's own arrival. Was `ribbonA`/`ribbonB` — a pair, because
+   *  the WebGL hero drew two ribbons on staggered delays. The circuit hero is
+   *  one element that runs its own draw-in inside a rAF loop, so there is a
+   *  single row here now and `ribbonB` (0.45) is gone. The value is unchanged
+   *  at 0.35 deliberately: race (0.55), chips (0.65) and caption (0.9) are all
+   *  timed against a stage appearing around 0.35–0.45s, and moving it would
+   *  pull the whole landing cascade out of order. */
+  heroStage: 0.35,
   race: 0.55,
   chips: 0.65,
   /** The chip cascade is budgeted as a WINDOW, not a per-chip step. It used

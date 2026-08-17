@@ -16,7 +16,7 @@ import {
 
    The store also carries the active TINT (team chrome + the pair's two color
    slots, derived from the selected pair in App via theme.ts's tintForPair) —
-   same reasoning: the ribbons and every chart re-render with the new pair
+   same reasoning: the hero and every chart re-render with the new pair
    colors through one subscription, no context needed. */
 
 const STORAGE_KEY = "f1-tracker-mode";
