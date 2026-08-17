@@ -10,6 +10,11 @@ export interface Race {
   date_start: string | null;
   date_end: string | null;
   year: number | null;
+  /** True when the laps table holds at least one row for this session — a
+   *  race with a `races` row but no laps (a cancelled 2026 round stored
+   *  before the pipeline learned to filter is_cancelled) is not offered in
+   *  the race picker. See App.tsx's selectable-race predicate. */
+  has_laps: boolean;
 }
 
 export interface Driver {

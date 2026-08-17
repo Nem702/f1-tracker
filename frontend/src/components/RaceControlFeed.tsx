@@ -6,6 +6,7 @@ import type { Theme } from "../theme";
 import { fmtClock } from "../format";
 import { entrance, stagger } from "../motion";
 import { isSafetyCarRow } from "../lib/heroRace";
+import { trackStatusColor, type TrackStatus } from "../lib/trackStatus";
 import { ChartCard } from "./ChartCard";
 
 interface Props {
@@ -14,17 +15,25 @@ interface Props {
   error: string | null;
 }
 
+/** Classification order is load-bearing: red, then yellow, then SafetyCar
+ *  category, then green/clear, then none — an SC deployment can carry a flag
+ *  too, so red/yellow must be checked first or a flagged SC row would read as
+ *  a plain flag instead of a safety car. Shared with HeroCircuit's narration
+ *  dot via trackStatusColor so the two colour mappings cannot drift apart. */
+function classifyTrackStatus(row: RaceControlRow): TrackStatus {
+  const flag = row.flag?.toUpperCase() ?? "";
+  const category = row.category?.toUpperCase() ?? "";
+  if (flag.includes("RED")) return "red";
+  if (flag.includes("YELLOW")) return "yellow";
+  if (category.includes("SAFETYCAR") || category.includes("SAFETY CAR")) return "safetyCar";
+  if (flag.includes("GREEN") || flag.includes("CLEAR")) return "green";
+  return "none";
+}
+
 /** Flags map onto the reserved status scale (a yellow flag IS a warning);
  *  the label always rides next to the dot, so color never carries it alone. */
 function flagColor(row: RaceControlRow, theme: Theme): string | null {
-  const flag = row.flag?.toUpperCase() ?? "";
-  const category = row.category?.toUpperCase() ?? "";
-  if (flag.includes("RED")) return theme.flagCritical;
-  if (flag.includes("YELLOW")) return theme.flagWarning;
-  if (category.includes("SAFETYCAR") || category.includes("SAFETY CAR"))
-    return theme.flagSerious;
-  if (flag.includes("GREEN") || flag.includes("CLEAR")) return theme.flagGood;
-  return null;
+  return trackStatusColor(classifyTrackStatus(row), theme);
 }
 
 /** A race logs 200+ messages and the interesting ones (safety cars, red

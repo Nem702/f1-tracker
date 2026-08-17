@@ -96,7 +96,7 @@
    "pitExitT": 0.0486,
    "pitNormalDeg": 71.1,
    "pitSide": "inner",
-   "pitSideConfirmed": false,
+   "pitSideConfirmed": true,
    "pitZoneApproximate": true
   },
   {
@@ -191,7 +191,7 @@
    "pitExitT": 0.0695,
    "pitNormalDeg": -105.2,
    "pitSide": "inner",
-   "pitSideConfirmed": false,
+   "pitSideConfirmed": true,
    "pitZoneApproximate": true
   },
   {
@@ -305,7 +305,7 @@
    "pitExitT": 0.0548,
    "pitNormalDeg": -122.2,
    "pitSide": "inner",
-   "pitSideConfirmed": false,
+   "pitSideConfirmed": true,
    "pitZoneApproximate": true
   },
   {
@@ -343,7 +343,7 @@
    "pitExitT": 0.0609,
    "pitNormalDeg": 172.8,
    "pitSide": "inner",
-   "pitSideConfirmed": false,
+   "pitSideConfirmed": true,
    "pitZoneApproximate": true
   },
   {

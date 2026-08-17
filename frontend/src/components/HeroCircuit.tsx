@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -11,8 +12,8 @@ import type { Lap, PitStop, Race, RaceControlRow } from "../api/types";
 import type { DriverPair } from "../teams";
 import { useMode, useTheme } from "../hooks/useTheme";
 import { circuitForRace } from "../lib/heroCircuit";
-import { HERO_CIRCUITS_ATTRIBUTION } from "../data/heroCircuits";
-import { buildHeroRace, gapAt, positionAt, type HeroRace } from "../lib/heroRace";
+import { buildHeroRace, gapAt, positionAt, type HeroRace, type LapKind } from "../lib/heroRace";
+import { trackStatusColor, type TrackStatus } from "../lib/trackStatus";
 
 /* ---------------------------------------------------------------------------
  * The hero: a real circuit outline, one light per driver, moving at real pace.
@@ -42,8 +43,10 @@ import { buildHeroRace, gapAt, positionAt, type HeroRace } from "../lib/heroRace
  * ------------------------------------------------------------------------- */
 
 /** Milliseconds of wall clock per race lap. The mockup offered 2.6 / 3.6 / 5.0
- *  seconds; 3.6 is the middle and the one that shipped. */
-const MS_PER_LAP = 3600;
+ *  seconds; only two ship as the settings panel's "Lap pace" choice — Normal
+ *  (the original default) and Slow. */
+const MS_PER_LAP_NORMAL = 3600;
+const MS_PER_LAP_SLOW = 5000;
 /** The track draws itself once before the lights appear. */
 const DRAW_MS = 1300;
 /** Dead time at the end of a cycle before the draw-in replays. */
@@ -60,6 +63,18 @@ const PIT_EASE = 0.22;
 /** The gap arc never wraps more than this much of the lap — past that it stops
  *  reading as "the space between them" and becomes a ring. */
 const MAX_ARC = 0.72;
+
+/** Parity with RaceControlFeed: the two states both components map (green,
+ *  safety car) point at the same tokens via trackStatusColor; the states the
+ *  hero has that Race control doesn't need a dot for (pit, out, unknown) map
+ *  to "none", which trackStatusColor resolves to no colour at all. */
+const LAP_KIND_TRACK_STATUS: Record<LapKind, TrackStatus> = {
+  green: "green",
+  sc: "safetyCar",
+  pit: "none",
+  out: "none",
+  unknown: "none",
+};
 
 /** The two lights' halo and mid-ring opacities, per mode. These are ORNAMENT,
  *  not encoding — nothing here carries a value the way the old WebGL hero's
@@ -97,6 +112,20 @@ interface Props {
   pair: DriverPair | null;
 }
 
+function GearIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M12 3.5v2.3M12 18.2v2.3M20.5 12h-2.3M5.8 12H3.5M17.7 6.3l-1.6 1.6M7.9 16.1l-1.6 1.6M17.7 17.7l-1.6-1.6M7.9 7.9L6.3 6.3"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 /** Halo + mid + core, moved as one group. */
 function Light({ innerRef }: { innerRef: React.RefObject<SVGGElement | null> }) {
   return (
@@ -127,6 +156,15 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
 
   const [narrationOn, setNarrationOn] = useState(true);
 
+  // ---- settings panel state. NOT persisted anywhere (no localStorage /
+  // sessionStorage) — both reset to their defaults on reload, by design. ----
+  const [msPerLap, setMsPerLap] = useState(MS_PER_LAP_NORMAL);
+  const [motionPaused, setMotionPaused] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsPanelId = useId();
+  const gearRef = useRef<HTMLButtonElement>(null);
+  const settingsPanelRef = useRef<HTMLDivElement>(null);
+
   // ---- element refs the frame loop writes to -------------------------------
   const stageRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -140,6 +178,7 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
   const gapRef = useRef<HTMLSpanElement>(null);
   const whoRef = useRef<HTMLSpanElement>(null);
   const noteRef = useRef<HTMLSpanElement>(null);
+  const dotRef = useRef<HTMLSpanElement>(null);
 
   /** Geometry measured from the rendered path — filled by the layout effect,
    *  read every frame. `px` converts SCREEN pixels to viewBox units, which is
@@ -256,13 +295,18 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
   // second time, because the new `kind` labels produced a new model object.
   // The restart key above is the ONLY thing allowed to replay the draw-in.
   const arcOpacity = ARC_OPACITY[mode];
-  const live = useRef({ model, colorA, colorB, narrationOn, driverA, driverB, arcOpacity });
-  live.current = { model, colorA, colorB, narrationOn, driverA, driverB, arcOpacity };
+  const live = useRef({ model, colorA, colorB, narrationOn, driverA, driverB, arcOpacity, theme });
+  live.current = { model, colorA, colorB, narrationOn, driverA, driverB, arcOpacity, theme };
 
   useEffect(() => {
     const stage = stageRef.current;
     const track = trackRef.current;
     if (!stage || !track || !circuit) return;
+
+    // The OS preference still wins: if it says reduce motion, this is true
+    // regardless of motionPaused, and the settings panel disables its own
+    // toggle rather than pretending it can override an a11y preference.
+    const staticFromSettings = prefersReducedMotion === true || motionPaused;
 
     let raf: number | null = null;
     let start: number | null = null;
@@ -301,8 +345,8 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
     };
 
     const frame = (ms: number, forceStatic: boolean) => {
-      const { model, colorA, colorB, narrationOn, driverA, driverB, arcOpacity } = live.current;
-      const isStatic = forceStatic || prefersReducedMotion === true;
+      const { model, colorA, colorB, narrationOn, driverA, driverB, arcOpacity, theme } = live.current;
+      const isStatic = forceStatic || staticFromSettings;
       const { len } = geom.current;
       // The path has not been measured yet (the ResizeObserver has not
       // reported, or the circuit just changed). Rebase the clock instead of
@@ -317,7 +361,7 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
       // One animation lap is one race lap; the window length is a pure
       // function of laps + pit, so this is stable across a late raceControl.
       const windowLaps = model ? model.windowEnd - model.windowStart + 1 : 0;
-      const duration = windowLaps * MS_PER_LAP;
+      const duration = windowLaps * msPerLap;
       const cycle = DRAW_MS + duration + FADE_MS;
 
       let drawn = 1;
@@ -388,13 +432,43 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
         // "unknown" is never reported as green — the note goes silent rather
         // than claiming green flag racing for a lap it cannot vouch for.
         let note = "—";
-        if (A.kind === "pit") note = `${driverA?.acronym ?? "Car"} pits.`;
-        else if (B.kind === "pit") note = `${driverB?.acronym ?? "Car"} pits.`;
-        else if (A.kind === "out") note = `${driverA?.acronym ?? "Car"} rejoins.`;
-        else if (B.kind === "out") note = `${driverB?.acronym ?? "Car"} rejoins.`;
-        else if (A.kind === "sc" || B.kind === "sc") note = "Safety car.";
-        else if (A.kind === "green" && B.kind === "green") note = "Green flag racing.";
+        let noteKind: LapKind = "unknown";
+        if (A.kind === "pit") {
+          note = `${driverA?.acronym ?? "Car"} pits.`;
+          noteKind = "pit";
+        } else if (B.kind === "pit") {
+          note = `${driverB?.acronym ?? "Car"} pits.`;
+          noteKind = "pit";
+        } else if (A.kind === "out") {
+          note = `${driverA?.acronym ?? "Car"} rejoins.`;
+          noteKind = "out";
+        } else if (B.kind === "out") {
+          note = `${driverB?.acronym ?? "Car"} rejoins.`;
+          noteKind = "out";
+        } else if (A.kind === "sc" || B.kind === "sc") {
+          note = "Safety car.";
+          noteKind = "sc";
+        } else if (A.kind === "green" && B.kind === "green") {
+          note = "Green flag racing.";
+          noteKind = "green";
+        }
         noteRef.current.textContent = note;
+
+        // Reserve the dot's box with visibility, not opacity/colour — a
+        // transparent-but-present dot would still take up space correctly,
+        // but colouring it "away" is the wrong tool: visibility keeps the
+        // text from shifting left and right as the dot appears/disappears
+        // while making unmistakably clear (incl. to a11y tooling) there is
+        // nothing to announce for this state.
+        if (dotRef.current) {
+          const color = trackStatusColor(LAP_KIND_TRACK_STATUS[noteKind], theme);
+          if (color) {
+            dotRef.current.style.backgroundColor = color;
+            dotRef.current.style.visibility = "visible";
+          } else {
+            dotRef.current.style.visibility = "hidden";
+          }
+        }
       }
     };
 
@@ -408,7 +482,7 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
      *  hero must not burn a frame budget while it is off screen, in a hidden
      *  tab, or under reduced motion. */
     const sync = () => {
-      const run = visible && !document.hidden && prefersReducedMotion !== true;
+      const run = visible && !document.hidden && !staticFromSettings;
       if (run) {
         if (raf === null) {
           start = null;
@@ -441,19 +515,28 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
       if (raf !== null) cancelAnimationFrame(raf);
       syncRef.current = null;
     };
-    // THIS DEPENDENCY LIST IS DELIBERATELY MINIMAL. Every entry here restarts
+    // THIS DEPENDENCY LIST IS DELIBERATELY MINIMAL — every entry here restarts
     // the loop and therefore replays the draw-in, so only things that SHOULD
-    // replay it belong: `restartKey` (race / pair / circuit) and the reduced-
-    // motion preference, which changes which loop runs at all. `circuit` is
-    // carried by `restartKey`. Everything else the loop reads — the model, the
-    // driver colours, the narration toggle — comes from `live.current`, so a
-    // late `raceControl`, a team switch's retint, or hiding the readout all
-    // take effect on the very next frame without interrupting the animation.
-    // `box` is absent for the same reason: the layout effect writes the new
-    // geometry into `geom.current`, and a window resize must not restart the
-    // draw-in either.
+    // replay it belong: `restartKey` (race / pair / circuit), the reduced-
+    // motion preference (changes which loop runs at all), and the two settings
+    // panel controls added in task 07:
+    //   - `motionPaused` — resuming replays the draw-in ON PURPOSE. Pressing
+    //     play is expected to redraw the track, not resume mid-orbit.
+    //   - `msPerLap` — changing pace replays the draw-in once, and this is why
+    //     it's a dependency rather than routed through `live.current` like
+    //     the values below: `msPerLap` sets `cycle`, and mutating `cycle`
+    //     underneath a running `ms % cycle` would teleport both lights
+    //     mid-orbit — exactly the failure the window-stability rule below
+    //     exists to prevent.
+    // `circuit` is carried by `restartKey`. Everything else the loop reads —
+    // the model, the driver colours, the narration toggle, the flag-colour
+    // theme tokens — comes from `live.current`, so a late `raceControl`, a
+    // team switch's retint, or hiding the readout all take effect on the very
+    // next frame without interrupting the animation. `box` is absent for the
+    // same reason: the layout effect writes the new geometry into
+    // `geom.current`, and a window resize must not restart the draw-in either.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restartKey, circuit, prefersReducedMotion]);
+  }, [restartKey, circuit, prefersReducedMotion, motionPaused, msPerLap]);
 
   // Repaint the composed still whenever anything the frame reads changes.
   // While the rAF loop is running this is a NO-OP — sync() leaves a live loop
@@ -465,7 +548,36 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
   // narration stuck on "—", because the last frame ran while model was null.
   useEffect(() => {
     syncRef.current?.();
-  }, [model, colorA, colorB, narrationOn, arcOpacity]);
+  }, [model, colorA, colorB, narrationOn, arcOpacity, theme]);
+
+  // Dismissal: Escape closes the settings popover and returns focus to the
+  // gear that opened it; a press outside both the panel and the gear closes
+  // it too. Same pattern as GlassSelect's popup (pointerdown, not click, so
+  // it also fires when the outside press starts a drag/scroll).
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (
+        !settingsPanelRef.current?.contains(target) &&
+        !gearRef.current?.contains(target)
+      ) {
+        setSettingsOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSettingsOpen(false);
+        gearRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [settingsOpen]);
 
   if (!circuit) return null;
 
@@ -506,27 +618,101 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
             </div>
             <div className="hero-circuit__field hero-circuit__field--note">
               <span className="hero-circuit__key">On track</span>
-              <span className="hero-circuit__note" ref={noteRef}>
-                —
+              <span className="hero-circuit__note-value">
+                <span className="hero-circuit__dot" ref={dotRef} aria-hidden="true" />
+                <span className="hero-circuit__note" ref={noteRef}>
+                  —
+                </span>
               </span>
             </div>
           </div>
         )}
         {model && (
-          <button
-            type="button"
-            className="hero-circuit__toggle"
-            aria-pressed={narrationOn}
-            aria-label={narrationOn ? "Hide the lap readout" : "Show the lap readout"}
-            onClick={() => setNarrationOn((on) => !on)}
-          >
-            i
-          </button>
+          <div className="hero-circuit__controls">
+            <button
+              type="button"
+              className="hero-circuit__toggle"
+              aria-pressed={narrationOn}
+              aria-label={narrationOn ? "Hide the lap readout" : "Show the lap readout"}
+              onClick={() => setNarrationOn((on) => !on)}
+            >
+              i
+            </button>
+            <button
+              ref={gearRef}
+              type="button"
+              className="hero-circuit__toggle"
+              aria-expanded={settingsOpen}
+              aria-controls={settingsPanelId}
+              aria-label="Animation settings"
+              onClick={() => setSettingsOpen((open) => !open)}
+            >
+              <GearIcon />
+            </button>
+
+            {settingsOpen && (
+              <div
+                id={settingsPanelId}
+                ref={settingsPanelRef}
+                className="hero-circuit__settings glass"
+                aria-label="Animation settings"
+              >
+                <div className="hero-circuit__settings-group">
+                  <span className="hero-circuit__settings-label">Lap pace</span>
+                  <div
+                    className="hero-circuit__settings-row"
+                    role="group"
+                    aria-label="Lap pace"
+                  >
+                    <button
+                      type="button"
+                      className={`btn-pill${msPerLap === MS_PER_LAP_NORMAL ? " btn-pill--accent" : ""}`}
+                      aria-pressed={msPerLap === MS_PER_LAP_NORMAL}
+                      onClick={() => setMsPerLap(MS_PER_LAP_NORMAL)}
+                    >
+                      Normal
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn-pill${msPerLap === MS_PER_LAP_SLOW ? " btn-pill--accent" : ""}`}
+                      aria-pressed={msPerLap === MS_PER_LAP_SLOW}
+                      onClick={() => setMsPerLap(MS_PER_LAP_SLOW)}
+                    >
+                      Slow
+                    </button>
+                  </div>
+                </div>
+
+                <div className="hero-circuit__settings-group">
+                  <span className="hero-circuit__settings-label">Motion</span>
+                  <div className="hero-circuit__settings-row">
+                    <button
+                      type="button"
+                      className={`btn-pill${!motionPaused ? " btn-pill--accent" : ""}`}
+                      aria-pressed={!motionPaused}
+                      aria-disabled={prefersReducedMotion === true || undefined}
+                      onClick={() => {
+                        // The OS preference cannot be overridden from here —
+                        // a page that could would be a bug, not a feature.
+                        if (prefersReducedMotion === true) return;
+                        setMotionPaused((paused) => !paused);
+                      }}
+                    >
+                      {motionPaused ? "Paused" : "Playing"}
+                    </button>
+                  </div>
+                  {prefersReducedMotion === true && (
+                    <p className="hero-circuit__settings-note">
+                      Reduced motion is on in your system settings, so the
+                      animation stays paused.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
-
-      {/* OpenStreetMap's licence requires credit wherever these render. */}
-      <p className="hero-circuit__credit">{HERO_CIRCUITS_ATTRIBUTION}</p>
     </div>
   );
 }

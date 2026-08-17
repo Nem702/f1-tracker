@@ -46,6 +46,9 @@ function race(
     date_start: null,
     date_end: null,
     year: 2026,
+    // Irrelevant to circuitForRace, which is a pure race->circuit lookup —
+    // present only because Race requires it.
+    has_laps: true,
   };
 }
 
@@ -164,9 +167,11 @@ test("the pit-normal corrections survived transcription", () => {
   // Exactly two circuits are "outer", and exactly 14 are rotated.
   assert.equal(HERO_CIRCUITS.filter((c) => c.pitSide === "outer").length, 2);
   assert.equal(HERO_CIRCUITS.filter((c) => c.rotationDeg === 90).length, 14);
-  // Four are defaulted-not-eyeballed and flagged as such.
+  // All 24 pit sides were visually confirmed 2026-08-17 (the last four —
+  // Jeddah, Spielberg, Madrid, Singapore — confirmed inner, unchanged from
+  // their default). Nobody should quietly reintroduce an unconfirmed circuit.
   assert.deepEqual(
     HERO_CIRCUITS.filter((c) => !c.pitSideConfirmed).map((c) => c.id).sort(),
-    ["at-1969", "es-2026", "sa-2021", "sg-2008"],
+    [],
   );
 });

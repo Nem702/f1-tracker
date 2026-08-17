@@ -49,8 +49,10 @@ export interface HeroCircuit {
   /** Offset angle in degrees for the pit-lane side. Use verbatim. */
   pitNormalDeg: number;
   pitSide: "inner" | "outer";
-  /** false on four circuits defaulted to inner without a visual check:
-   *  Jeddah, Spielberg, Madrid, Singapore. */
+  /** All 24 pit sides were visually confirmed against the rendered pit strip
+   *  on 2026-08-17. Jeddah, Spielberg, Madrid and Singapore were the last
+   *  four to be eyeballed (previously defaulted to inner unconfirmed) — all
+   *  four confirmed inner, unchanged from their default. */
   pitSideConfirmed: boolean;
   pitZoneApproximate: boolean;
 }
@@ -151,7 +153,7 @@ export const HERO_CIRCUITS: HeroCircuit[] = [
     pitExitT: 0.0486,
     pitNormalDeg: 71.1,
     pitSide: "inner",
-    pitSideConfirmed: false,
+    pitSideConfirmed: true,
     pitZoneApproximate: true,
   },
   {
@@ -246,7 +248,7 @@ export const HERO_CIRCUITS: HeroCircuit[] = [
     pitExitT: 0.0695,
     pitNormalDeg: -105.2,
     pitSide: "inner",
-    pitSideConfirmed: false,
+    pitSideConfirmed: true,
     pitZoneApproximate: true,
   },
   {
@@ -360,7 +362,7 @@ export const HERO_CIRCUITS: HeroCircuit[] = [
     pitExitT: 0.0548,
     pitNormalDeg: -122.2,
     pitSide: "inner",
-    pitSideConfirmed: false,
+    pitSideConfirmed: true,
     pitZoneApproximate: true,
   },
   {
@@ -398,7 +400,7 @@ export const HERO_CIRCUITS: HeroCircuit[] = [
     pitExitT: 0.0609,
     pitNormalDeg: 172.8,
     pitSide: "inner",
-    pitSideConfirmed: false,
+    pitSideConfirmed: true,
     pitZoneApproximate: true,
   },
   {
