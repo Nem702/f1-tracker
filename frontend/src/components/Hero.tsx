@@ -37,7 +37,7 @@ function NextSessionLine({ weekend }: { weekend: RaceWeekend | null }) {
     : null;
   return (
     <p className="hero-intro__next">
-      <a href="#next-race">
+      <a className="btn-pill" href="#next-race">
         Next up: the {weekend.race_name}
         {when && <span className="hero-intro__next-when">, {when}</span>} &rarr;
       </a>

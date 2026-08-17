@@ -6,7 +6,9 @@ import { useScrollSpy } from "./hooks/useScrollSpy";
 import { setTint, useMode, useTheme } from "./hooks/useTheme";
 import { cssVars, tintForPair } from "./theme";
 import { buildRosters, findDriver, pairTeamSlug, type DriverPair } from "./teams";
+import { HERO_CIRCUITS_ATTRIBUTION } from "./data/heroCircuits";
 import { deriveDelta } from "./lib/delta";
+import { filterSelectableRaces } from "./lib/selectableRaces";
 import { fmtDate } from "./format";
 import { Navbar } from "./components/Navbar";
 import { SECTIONS, normalizeHash } from "./viewState";
@@ -104,14 +106,24 @@ export default function App() {
   // serves both sections' worth of Jolpica data.
   const raceWeekend = useApi((_k) => api.raceWeekend(), 0);
 
+  // Computed once here, not inside RaceSelector, so both instances (Hero's
+  // and Telemetry's) and the default-selection effect below all agree on
+  // what's selectable — filtering inside RaceSelector would leave this
+  // effect free to default to a race the user cannot see. `now` is evaluated
+  // once per races.data change, not per row.
+  const selectableRaces = useMemo(
+    () => filterSelectableRaces(races.data ?? [], Date.now()),
+    [races.data],
+  );
+
   const [selected, setSelected] = useState<number | null>(null);
 
-  // Default to the most recent race once the list arrives.
+  // Default to the most recent SELECTABLE race once the list arrives.
   useEffect(() => {
-    if (selected === null && races.data && races.data.length > 0) {
-      setSelected(races.data[0].session_key);
+    if (selected === null && selectableRaces.length > 0) {
+      setSelected(selectableRaces[0].session_key);
     }
-  }, [races.data, selected]);
+  }, [selectableRaces, selected]);
 
   // ---- pair model -----------------------------------------------------------
   // Rosters come from the API (which resolved drivers per-session from
@@ -210,7 +222,7 @@ export default function App() {
               pair={pair}
               rosters={rosters}
               onSelectPair={setPair}
-              races={races.data ?? []}
+              races={selectableRaces}
               selected={selected}
               onSelectRace={setSelected}
             />
@@ -241,7 +253,7 @@ export default function App() {
 
           <section id="telemetry" className="page-section" data-band="b">
             <Telemetry
-              races={races.data ?? []}
+              races={selectableRaces}
               selected={selected}
               onSelectRace={setSelected}
               race={race}
@@ -303,6 +315,9 @@ export default function App() {
                 Nem702
               </a>{" "}
               · a skill-building project, not a finished product.
+            </p>
+            <p className="footer__credit footer__credit--attribution">
+              {HERO_CIRCUITS_ATTRIBUTION}
             </p>
           </motion.footer>
         </div>

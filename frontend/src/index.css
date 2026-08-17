@@ -647,6 +647,18 @@ body {
   color: var(--ink-secondary);
 }
 
+/* The anchor falls through to the browser's default link colours (visited
+   purple included) with no rule of its own — .btn-pill supplies the chrome,
+   this just centres the pill and kills the underline .btn-pill doesn't set. */
+.hero-intro__next {
+  margin: var(--space-3) auto 0;
+  text-align: center;
+}
+
+.hero-intro__next a {
+  text-decoration: none;
+}
+
 /* Fixed frame + hidden overflow so the varying word width during the roll
    never shifts surrounding text; DigitRoll.tsx does the same thing for a
    single character. */
@@ -765,7 +777,10 @@ body {
   align-items: flex-end;
   gap: var(--space-5);
   width: 100%;
-  min-height: 46px;
+  /* Tall enough for the two-button control stack (2 * 22px + 6px gap = 50px,
+     plus the stack's own bottom offset) without it overlapping the Lap / Gap
+     / On track figures, which are shorter. */
+  min-height: 60px;
   padding: 0 var(--space-6);
 }
 
@@ -814,15 +829,44 @@ body {
   padding-bottom: 4px;
 }
 
+.hero-circuit__note-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Same geometry as .rc-feed__dot (8px circle) — colour and visibility are set
+   per frame by the imperative loop, not by a stylesheet rule, since the loop
+   must also hide it (not fade it) whenever the state maps to no colour. */
+.hero-circuit__dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
 .hero-circuit__note {
   font-size: 12.5px;
   color: var(--ink-muted);
 }
 
-.hero-circuit__toggle {
+/* The i (narration) and gear (settings) buttons, stacked — replaces the
+   single absolutely-positioned i of task 06. The stack itself carries the
+   positioning now; the buttons are plain flow children of it. */
+.hero-circuit__controls {
   position: absolute;
   right: var(--space-3);
   bottom: 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.hero-circuit__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 22px;
   height: 22px;
   border-radius: 50%;
@@ -843,12 +887,61 @@ body {
   opacity: 1;
 }
 
-/* OpenStreetMap's licence requires credit wherever the outlines render. */
-.hero-circuit__credit {
-  margin: var(--space-2) 0 0;
+/* Opens upward and right-aligned over the circuit stage, not over the copy
+   below — the circuit is decorative, the race picker beneath it isn't. Token
+   budget for this task: --glass2, --glass-border, --ink-secondary,
+   --ink-primary, --accent / --on-accent, --radius-md, --shadow-card only —
+   no new theme tokens, so the validator's total can't move. */
+.hero-circuit__settings {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 5;
+  width: 208px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--glass2);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.hero-circuit__settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.hero-circuit__settings-label {
   font-size: 11px;
-  color: var(--ink-muted);
-  text-align: center;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-secondary);
+}
+
+.hero-circuit__settings-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.hero-circuit__settings-row .btn-pill {
+  flex: 1 1 0;
+  justify-content: center;
+}
+
+.hero-circuit__settings-row .btn-pill[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.hero-circuit__settings-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink-secondary);
 }
 
 @media (max-width: 640px) {
@@ -2179,6 +2272,12 @@ body {
 
 .footer__credit {
   margin: 0;
+}
+
+/* OpenStreetMap's licence requires credit wherever the hero's track outlines
+   render — moved here from directly under the hero (see HeroCircuit). */
+.footer__credit--attribution {
+  margin-top: var(--space-2);
 }
 
 .footer__credit a {

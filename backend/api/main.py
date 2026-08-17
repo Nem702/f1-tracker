@@ -527,7 +527,18 @@ def official_result(session_key: int, conn=Depends(get_db)):
 @app.get("/api/races")
 def races(conn=Depends(get_db)):
     logger.debug("GET /api/races")
-    return query(conn, "SELECT * FROM races ORDER BY date_start DESC")
+    # EXISTS, not a COUNT join — this endpoint is called on every page load
+    # and a semi-join stops at the first matching lap row instead of
+    # aggregating the full laps table (~14k rows) per race.
+    return query(
+        conn,
+        """
+        SELECT r.*,
+               EXISTS (SELECT 1 FROM laps l WHERE l.session_key = r.session_key) AS has_laps
+        FROM races r
+        ORDER BY r.date_start DESC
+        """,
+    )
 
 
 @app.get("/api/drivers")
