@@ -84,7 +84,7 @@ interface TileProps {
 
 // Explicit per-tile `custom` delay rather than a staggerChildren/
 // delayChildren orchestration: StatTile is a separate component (not an
-// inline motion.* in the parent's JSX like Hero3D's h1/p), and going through
+// inline motion.* in the parent's JSX like Hero's h1/p), and going through
 // that extra layer of indirection was silently dropping delayChildren's
 // offset — tiles landed within the first ~500ms regardless of the intended
 // delay. `animate` (not `whileInView`) because the whole row shares one

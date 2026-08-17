@@ -5,6 +5,7 @@ import { useTheme } from "../hooks/useTheme";
 import type { Theme } from "../theme";
 import { fmtClock } from "../format";
 import { entrance, stagger } from "../motion";
+import { isSafetyCarRow } from "../lib/heroRace";
 import { ChartCard } from "./ChartCard";
 
 interface Props {
@@ -42,16 +43,14 @@ const FILTERS: { id: RcFilter; label: string }[] = [
 function matchesFilter(row: RaceControlRow, filter: RcFilter): boolean {
   if (filter === "all") return true;
   const message = row.message?.toUpperCase() ?? "";
-  const category = row.category?.toUpperCase() ?? "";
   switch (filter) {
     case "flags":
       return row.flag != null;
     case "safety":
-      return (
-        category.includes("SAFETYCAR") ||
-        category.includes("SAFETY CAR") ||
-        /SAFETY CAR|VIRTUAL|VSC/.test(message)
-      );
+      // Shared with the hero's safety-car join (lib/heroRace) so the two can
+      // never drift apart — this filter and that join must agree on what
+      // counts as a safety-car row.
+      return isSafetyCarRow(row);
     case "stewarding":
       return /PENALTY|INVESTIGAT|WARNING|DELETED|NOTED|REPRIMAND/.test(message);
   }

@@ -47,9 +47,12 @@
 //     Dark has none. The proportion is unchanged by the grid expansion: the
 //     eight-driver palette ran four of eight, this one runs nine of 22.
 //   - two declared exceptions, both in the validator's ACCEPTED table: dark
-//     inkMuted-on-chip at 4.42:1, and Hero3D's light pace ramp for haas0 and
-//     audi1 (ΔE 1.62/1.79 — both sit near page value, and that entry is keyed
-//     BY COLOUR so a third offender still FAILs). Everything else passes.
+//     inkMuted-on-chip at 4.42:1, and the dark badge ring over stacked aurora
+//     blobs at 2.71:1. Everything else passes. (There were three: the WebGL
+//     hero's light pace ramp was the other, and it went with the hero — the
+//     circuit trace that replaced it encodes separation as an arc of track
+//     and has no pace encoding at all, so there is nothing left to keep
+//     perceptible.)
 //
 // WHERE THIS IS FRAGILE. Zero failures says nothing about how much room is
 // left, and these are the margins the next token nudge eats first. The
@@ -526,9 +529,6 @@ export interface Theme {
   wellPct: string; // the accent "well" behind a glyph (.stat-tile__icon, .pipeline__num) — color-mix % over transparent. Light runs this HOTTER than dark: a 16% wash of a pale-ground accent reads as an unfinished pink square, where dark's deep maroon well reads as intentional
   swatchRingPct: string; // .team-chip__swatch's outer halo ring — 0% in light (it is an outer bloom, and light has no headroom for one), dark keeps its 20%
   countdownEdgePct: string; // .countdown's accent border: color-mix % of accent into --glass-border. The card wears the DARK theme in both modes, so on a light page it needs a real edge; 0% in dark resolves to exactly --glass-border, leaving dark untouched
-  heroGlowMin: number; // Hero3D's pace ramp — the glow duplicate's opacity floor…
-  heroGlowMax: number; // …and ceiling. Faster laps glow more, so this is a DATA ENCODING, not decoration: compress the range in light, never flatten it
-  heroGlowWidth: number; // …and the duplicate's lineWidth. Width and opacity both feed the smudge on a pale ground
   accent: string; // team accent — chrome fills/glow only, never a series
   accentInk: string; // accent as TEXT or icon color (AA on glass)
   onAccent: string; // ink for text sitting on a solid `accent` fill
@@ -622,15 +622,6 @@ const base: Record<Mode, BaseTokens> = {
     wellPct: "26%",
     swatchRingPct: "0%",
     countdownEdgePct: "65%",
-    // Hero3D, light: ceiling down 0.22 → 0.13 and width 7 → 5. At the old
-    // ceiling the glow dragged THREE drivers' crisp lines below the 3:1 floor
-    // against their own glow-brightened surround (ferrari0 3.78→2.62,
-    // mercedes1 3.61→2.78, redbull1 3.20→2.47); at 0.13 only redbull1 still
-    // does, and it starts from only 3.20 bare. The min drops to 0.03 to keep
-    // the fast-vs-slow ramp perceptible (ΔE 2.8) at the lower ceiling.
-    heroGlowMin: 0.03,
-    heroGlowMax: 0.13,
-    heroGlowWidth: 5,
     // Blobs off in light — the vertical pageLift→pageBase wash replaces them.
     // They were the actual source of the "half-pink navbar" and the hard
     // horizontal band edge: the fixed blob was still above the perceptual
@@ -691,14 +682,11 @@ const base: Record<Mode, BaseTokens> = {
     // Dark keeps the glow tier — it has headroom above the fill, which is the
     // whole reason the mechanism works here and not in light. No wash, no
     // countdown edge (0% resolves to plain --glass-border), swatch ring and
-    // well at their existing values, Hero3D ramp untouched.
+    // well at their existing values.
     accentWashPct: "0%",
     wellPct: "16%",
     swatchRingPct: "20%",
     countdownEdgePct: "0%",
-    heroGlowMin: 0.07,
-    heroGlowMax: 0.22,
-    heroGlowWidth: 7,
     auroraA: "0.20",
     auroraB: "0.18",
     auroraC: "0.16",

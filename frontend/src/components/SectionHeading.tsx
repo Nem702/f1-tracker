@@ -27,7 +27,7 @@ interface Props {
  *  text stagger (eyebrow, then title, then lead copy) playing once on
  *  scroll-in, the same whileInView-once mechanism Reveal.tsx uses for cards.
  *  The title slides in from the side (alternating by section parity) while the
- *  eyebrow and lead fade+rise. The hero's own h1 (Hero3D.tsx) stays on the
+ *  eyebrow and lead fade+rise. The hero's own h1 (Hero.tsx) stays on the
  *  page-load cascade — it's above the fold, so "reveal on scroll" doesn't apply
  *  there. */
 export function SectionHeading({ eyebrow, title, index, description, meta, aside }: Props) {

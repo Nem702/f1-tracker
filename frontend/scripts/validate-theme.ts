@@ -91,13 +91,6 @@ const CVD_TEAM_TARGET = 12;
  *  pair and a FAIL would be unsatisfiable. */
 const SEED_FLOOR = 8;
 
-/** Hero3D's pace ramp: how far a driver colour must travel between the ramp's
- *  two alpha endpoints for the ramp to still encode pace. Named because the
- *  THIN threshold is now load-bearing twice — it sets the status band AND
- *  decides which colours get named in the check's key (see checkHero3D). */
-const RAMP_FLOOR = 2.5;
-const RAMP_THIN = 2.0;
-
 /** Failures the project has explicitly accepted, keyed `<group>|<check>`. Each
  *  carries its measured value at acceptance and the reason. A FAIL listed here
  *  reports WARN and does not fail the run.
@@ -110,19 +103,6 @@ const ACCEPTED: Record<string, string> = {
   "dark · ink|inkMuted on chip":
     "4.42:1, pre-existing. --glass2 over the dark page gives inkMuted too little to work with, " +
     "and the dark palette is frozen by the light-mode pass. Outstanding work, logged in docs/DESIGN-DECISIONS.md.",
-
-  // Scoped to these two colours BY NAME — see checkHero3D for why the check
-  // builds its own key. Exempting `pace ramp perceptible` as a bare check name
-  // would pass every future near-page-value colour silently, and near-neutral
-  // brands are exactly what trips it.
-  "light · hero3D pace ramp|pace ramp perceptible (audi1 #d69493, haas0 #a1a5aa)":
-    "ΔE 1.62 (haas0) and 1.79 (audi1) across the 0.03–0.13 light ramp. Both sit close to the light " +
-    "page (#dedcd9) in value, so compositing them at the ramp's two alphas barely moves them — Haas's " +
-    "near-neutral silver and Audi's pale rose are light BY BRAND, so darkening them to satisfy a " +
-    "secondary encoding would trade the thing being encoded for the encoding. Widening the ramp was " +
-    "rejected too: heroGlowMax is a shared mode token, so it would change Hero3D for the four shipped " +
-    "teams and reopen the light-mode pass's decision to compress the ramp rather than flatten it. " +
-    "Pace still reads from the line's shape and the hero legend. Logged in docs/STATE.md.",
 
   "dark · badge ring|ring vs chip on stacked aurora blobs (worst: astonmartin)":
     "2.71:1, below the 3:1 floor. `.aurora` is position:fixed, so its three 920px blob circles are glued " +
@@ -677,71 +657,6 @@ function checkSeedIsolation(): void {
     leaks.length ? "FAIL" : "PASS");
 }
 
-function checkHero3D(mode: Mode, t: Theme, s: Surfaces): void {
-  const g = `${mode} · hero3D pace ramp`;
-  // The glow duplicate sits UNDER and AROUND the crisp line, so the crisp
-  // line's immediate surround is the ground tinted toward its own colour. The
-  // check is therefore not "is the mark visible" (that is unchanged by the
-  // ramp) but "does the glow PUSH a line that cleared 3:1 below it". A line
-  // already under 3:1 bare is the pre-existing relief band and is reported
-  // separately by checkDrivers.
-  const pushed: string[] = [];
-  const ramps: { id: string; hex: string; value: number }[] = [];
-  for (const slug of TEAM_ORDER) {
-    const th = getTheme(mode, tintFor(slug));
-    for (const [i, d] of [th.driver1, th.driver2].entries()) {
-      const bare = contrast(d, s.page);
-      const glowed = contrast(d, colorMixOpaque(d, t.heroGlowMax, s.page));
-      if (bare >= NON_TEXT && glowed < NON_TEXT) {
-        pushed.push(`${slug}${i} ${bare.toFixed(2)}→${glowed.toFixed(2)}`);
-      }
-      ramps.push({
-        id: `${slug}${i}`,
-        hex: d,
-        value: deltaE(colorMixOpaque(d, t.heroGlowMin, s.page), colorMixOpaque(d, t.heroGlowMax, s.page)),
-      });
-    }
-  }
-  add(g, "glow pushes a mark below 3:1", pushed.length ? pushed.join(", ") : "none",
-    pushed.length ? "WARN" : "PASS");
-
-  // The ramp encodes pace, so it has to stay readable as a ramp. ~2.5 ΔE is
-  // about where a slow-vs-fast segment stops being tellable apart.
-  //
-  // THE CHECK NAME CARRIES ITS OFFENDERS, and that is what makes this
-  // exemptible without being disableable. `add()` matches ACCEPTED on
-  // `<group>|<check>`, so a check whose name is a constant string can only be
-  // exempted WHOLESALE — accepting today's two pale colours would silently
-  // pass every future colour that lands near page value too, which for a check
-  // that near-neutral brands trip is a live risk rather than a hypothetical.
-  // Naming the offending slots AND their hexes means the accepted key stops
-  // matching the moment the set changes: a third offender, or either of these
-  // two changing colour, produces a key that is not in ACCEPTED and the FAIL
-  // stands. (An entry that stops firing is reported as stale, so the exemption
-  // cannot quietly outlive the colours it was granted for either.)
-  //
-  // Built from the FAIL threshold, not the PASS floor: a colour landing in the
-  // 2.0–2.5 THIN band is not a FAIL, so it must not perturb the key.
-  const worstRamp = Math.min(...ramps.map((r) => r.value));
-  const offenders = ramps
-    .filter((r) => r.value < RAMP_THIN)
-    .sort((a, b) => (a.id < b.id ? -1 : 1));
-  add(
-    g,
-    offenders.length
-      ? `pace ramp perceptible (${offenders.map((r) => `${r.id} ${r.hex}`).join(", ")})`
-      : "pace ramp perceptible",
-    `worst ΔE ${worstRamp.toFixed(1)} across ${t.heroGlowMin}–${t.heroGlowMax}` +
-      (offenders.length ? ` — ${offenders.map((r) => `${r.id} ${r.value.toFixed(2)}`).join(", ")}` : ""),
-    worstRamp >= RAMP_FLOOR ? "PASS" : worstRamp >= RAMP_THIN ? "THIN" : "FAIL",
-  );
-}
-
-/** Composite an opaque colour onto an opaque ground at a given alpha. */
-function colorMixOpaque(fg: string, alpha: number, bg: string): string {
-  return over(`rgba(${parseHex(fg).join(", ")}, ${alpha})`, bg);
-}
-
 // ---- badge checks -------------------------------------------------------
 //
 // BADGE_PLATE/BADGE_INK are mode-independent (see theme.ts), so checks 1-3
@@ -864,9 +779,10 @@ function checkBadgeRing(mode: Mode, t: Theme, s: Surfaces): void {
   add(g, check, `${worst.toFixed(2)}:1 vs ${worstChip} (all 3 blobs overlapping, ${worstTeam})`,
     worst < NON_TEXT ? "FAIL" : worst < NON_TEXT + THIN_MARGIN ? "THIN" : "PASS");
   // ratio()'s own PASS/THIN/FAIL isn't reused above because the check name
-  // carries the offending team, same reasoning as checkHero3D's ACCEPTED key:
-  // if the worst team ever changes, the ACCEPTED key below stops matching and
-  // the FAIL stands instead of silently accepting a different team's number.
+  // carries the offending team: if the worst team ever changes, the ACCEPTED
+  // key below stops matching and the FAIL stands instead of silently
+  // accepting a different team's number. (The hero's pace-ramp check used the
+  // same trick before the WebGL hero was replaced; this is now the only one.)
   ratio(g, "ring vs plate (reference, not the failing surface)", BADGE_RING[mode], s.plate, NON_TEXT);
 }
 
@@ -939,7 +855,6 @@ for (const mode of ["light", "dark"] as Mode[]) {
   checkDrivers(mode, s);
   checkDataColours(mode, t, s);
   checkBrandSeeds(mode);
-  checkHero3D(mode, t, s);
   checkBadgeRing(mode, t, s);
   recordDriverVsPlate(mode);
   recordAccentOnPage(mode, t);
