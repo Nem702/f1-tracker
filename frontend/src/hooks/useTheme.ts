@@ -8,11 +8,11 @@ import {
 } from "../theme";
 
 /* Mode resolution: an explicit user choice (persisted in localStorage) wins;
-   until one exists, follow the OS preference live — exactly the old behavior.
-   This is a module-level store read via useSyncExternalStore rather than
-   context because every chart calls useTheme() directly, including Ribbons
-   inside the r3f <Canvas>, where React context doesn't cross the reconciler
-   boundary.
+   until one exists, default to dark — it's the theme this app is designed
+   around. This is a module-level store read via useSyncExternalStore rather
+   than context because every chart calls useTheme() directly, including
+   Ribbons inside the r3f <Canvas>, where React context doesn't cross the
+   reconciler boundary.
 
    The store also carries the active TINT (team chrome + the pair's two color
    slots, derived from the selected pair in App via theme.ts's tintForPair) —
@@ -33,16 +33,11 @@ function readStoredMode(): Mode | null {
 let override: Mode | null = readStoredMode();
 let tint: Tint = DEFAULT_TINT;
 
-const osQuery = window.matchMedia("(prefers-color-scheme: dark)");
 const listeners = new Set<() => void>();
 
 function notify() {
   for (const listener of listeners) listener();
 }
-
-// Notifying with an override in place is harmless: useSyncExternalStore
-// re-reads the snapshot, sees the same value, and skips the re-render.
-osQuery.addEventListener("change", notify);
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
@@ -50,7 +45,7 @@ function subscribe(listener: () => void): () => void {
 }
 
 function getMode(): Mode {
-  return override ?? (osQuery.matches ? "dark" : "light");
+  return override ?? "dark";
 }
 
 /** Explicit user choice: persist it and stop following the OS from now on. */

@@ -8,7 +8,19 @@
     <title>F1 Tracker</title>
     <!-- Pre-mount placeholder styles: this covers the window before the JS
          bundle arrives (index.css comes with it), so everything here must be
-         inline and self-contained. React wipes #root's children on mount. -->
+         inline and self-contained. React wipes #root's children on mount.
+         Dark is the app default (useTheme.ts) regardless of OS preference,
+         so the boot screen matches that unless the user explicitly chose
+         light — read synchronously below before the boot div paints. -->
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem("f1-tracker-mode") === "light") {
+            document.documentElement.classList.add("boot-light");
+          }
+        } catch {}
+      })();
+    </script>
     <style>
       .boot {
         min-height: 100vh;
@@ -18,8 +30,8 @@
         justify-content: center;
         gap: 14px;
         font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-        color: #3a3a3e;
-        background: #efeff1;
+        color: #c9c9ce;
+        background: #0e0e10;
       }
       .boot__dot {
         width: 22px;
@@ -44,11 +56,9 @@
           animation: none;
         }
       }
-      @media (prefers-color-scheme: dark) {
-        .boot {
-          background: #0e0e10;
-          color: #c9c9ce;
-        }
+      html.boot-light .boot {
+        background: #efeff1;
+        color: #3a3a3e;
       }
     </style>
   </head>
