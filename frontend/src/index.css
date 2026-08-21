@@ -103,14 +103,14 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  /* pre-mount fallback — must match theme.ts's pageBase (aurora base) */
-  background: #dedcd9;
+  /* pre-mount fallback — must match theme.ts's pageBase (aurora base).
+     Dark is the app default (useTheme.ts) regardless of OS preference;
+     html.boot-light (set inline in index.html) is the explicit opt-out. */
+  background: #0a0a0c;
 }
 
-@media (prefers-color-scheme: dark) {
-  body {
-    background: #0a0a0c;
-  }
+html.boot-light body {
+  background: #dedcd9;
 }
 
 .tabular {
@@ -701,7 +701,12 @@ body {
    itself per circuit would make the whole page jump on every race switch. */
 .hero-circuit__stage {
   width: 100%;
-  height: clamp(260px, 34vh, 440px);
+  /* --hero-stage-min-h is set from React (HeroCircuit.tsx, Fix 1) only for
+     circuits below NARROW_ASPECT_THRESHOLD — everything else keeps the
+     default 260px floor. The override never exceeds this rule's own 440px
+     cap, so it costs no more fold space than a wide circuit already spends
+     on a tall viewport; it just gets narrow circuits there reliably. */
+  height: clamp(var(--hero-stage-min-h, 260px), 34vh, 440px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -768,6 +773,19 @@ body {
 /* The second light is the second driver's slot colour. */
 .hero-circuit__light:nth-of-type(2) circle {
   fill: var(--driver2);
+}
+
+/* Fix 4: a secondary cue next to a car's own light — the narration sentence
+   ("LEC pits." / "HAM rejoins.") is still primary. x/y/font-size are set per
+   frame in viewBox units by the geometry effect; opacity is set per frame by
+   the frame loop, same convention as the light group itself, starting hidden
+   for the same reason (nowhere sensible to put it before the path is measured). */
+.hero-circuit__pit-label {
+  opacity: 0;
+  fill: var(--ink-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 .hero-circuit__readout {
@@ -878,13 +896,21 @@ body {
   font-size: 10px;
   font-weight: 600;
   line-height: 1;
-  opacity: 0.45;
-  transition: opacity 0.2s ease;
+  /* 0.45 undersold the gear as the only way to reach the settings panel
+     (task 07's open item) — 0.7 reads clearly at rest against the actual page
+     background in both themes (there is no fixed dark canvas behind the
+     stage post-06; it sits on whatever --page the current mode uses), still
+     gives hover/focus-visible's jump to 1 somewhere to go. */
+  opacity: 0.7;
+  transition:
+    opacity 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .hero-circuit__toggle:hover,
 .hero-circuit__toggle:focus-visible {
   opacity: 1;
+  border-color: var(--ink-muted);
 }
 
 /* Opens upward and right-aligned over the circuit stage, not over the copy

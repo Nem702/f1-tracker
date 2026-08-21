@@ -56,6 +56,19 @@ const FADE_MS = 700;
 const STATIC_U = 0.3;
 /** Padding around the circuit bounds, in viewBox units. */
 const PAD = 52;
+/** Below this boundsW/boundsH ratio, the stage gets a taller height floor
+ *  (Fix 1). Chosen empirically: it captures the cluster of circuits that
+ *  render distinctly small at the stage's usual height (Budapest 0.884,
+ *  Shanghai 1.141, Zandvoort 1.173, Losail 1.181, Barcelona 1.224, Albert
+ *  Park 1.225) while leaving Monaco (1.323) — already close to full width —
+ *  and everything wider untouched. */
+const NARROW_ASPECT_THRESHOLD = 1.3;
+/** The taller floor narrow circuits get, in px. This is NOT new headroom: it
+ *  equals the clamp's own existing 440px cap, which any circuit already
+ *  reaches on a tall-enough viewport (34vh >= 440px, i.e. viewport height
+ *  >= ~1294px). Narrow circuits just reach it reliably at ordinary viewport
+ *  heights instead of sitting at the ~260-340px the 34vh term gives them. */
+const NARROW_STAGE_MIN_H = 440;
 /** How far a car slides toward the pit side, in screen px. */
 const PIT_OFFSET_PX = 13;
 /** Fraction of the in-lap crawl over which the car eases out to the pit side. */
@@ -63,6 +76,18 @@ const PIT_EASE = 0.22;
 /** The gap arc never wraps more than this much of the lap — past that it stops
  *  reading as "the space between them" and becomes a ring. */
 const MAX_ARC = 0.72;
+/** The gap arc's minimum drawn span, as a fraction of the lap — only applied
+ *  when the real gap is nonzero (Fix 2). Budapest's LEC/HAM teammate gap is
+ *  0.7s, ~0.9% of a lap (0.009 in these units), which renders as two nearly
+ *  overlapping lights with no visible arc between stops. 0.009-0.012 turned
+ *  out to still be visually swallowed by the lights' own ~11px halo radius —
+ *  checked by eye against zoomed screenshots, not assumed. 0.02 is the
+ *  smallest value that reads as a clear separate sliver rather than
+ *  disappearing into the halo, while staying tiny next to MAX_ARC (0.72) so
+ *  it never reads as a real quarter-lap gap. This is a RENDERING floor
+ *  only — the `Gap` narration figure (gapAt()) is untouched and keeps
+ *  reporting the real number. */
+const MIN_ARC = 0.02;
 
 /** Parity with RaceControlFeed: the two states both components map (green,
  *  safety car) point at the same tokens via trackStatusColor; the states the
@@ -126,13 +151,26 @@ function GearIcon() {
   );
 }
 
-/** Halo + mid + core, moved as one group. */
-function Light({ innerRef }: { innerRef: React.RefObject<SVGGElement | null> }) {
+/** Halo + mid + core, moved as one group. The PIT label is a sibling inside
+ *  the same group so it inherits the light's own translate for free — its own
+ *  x/y are a small fixed offset from that origin, set in viewBox units by the
+ *  geometry effect (Fix 4). It starts hidden; the frame loop is authoritative
+ *  for its opacity from then on, same convention as the light group itself. */
+function Light({
+  innerRef,
+  labelRef,
+}: {
+  innerRef: React.RefObject<SVGGElement | null>;
+  labelRef: React.RefObject<SVGTextElement | null>;
+}) {
   return (
     <g ref={innerRef} className="hero-circuit__light">
       <circle className="hero-circuit__light-halo" />
       <circle className="hero-circuit__light-mid" />
       <circle className="hero-circuit__light-core" />
+      <text ref={labelRef} className="hero-circuit__pit-label" aria-hidden="true">
+        PIT
+      </text>
     </g>
   );
 }
@@ -174,6 +212,8 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
   const arcChaseRef = useRef<SVGPathElement>(null);
   const lightARef = useRef<SVGGElement>(null);
   const lightBRef = useRef<SVGGElement>(null);
+  const pitLabelARef = useRef<SVGTextElement>(null);
+  const pitLabelBRef = useRef<SVGTextElement>(null);
   const lapRef = useRef<HTMLSpanElement>(null);
   const gapRef = useRef<HTMLSpanElement>(null);
   const whoRef = useRef<HTMLSpanElement>(null);
@@ -258,10 +298,21 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
     }
     for (const light of [lightARef.current, lightBRef.current]) {
       if (!light) continue;
-      const [halo, mid, core] = Array.from(light.children) as SVGCircleElement[];
+      const [halo, mid, core, label] = Array.from(light.children) as [
+        SVGCircleElement,
+        SVGCircleElement,
+        SVGCircleElement,
+        SVGTextElement,
+      ];
       halo?.setAttribute("r", String(px(11)));
       mid?.setAttribute("r", String(px(5.8)));
       core?.setAttribute("r", String(px(3.0)));
+      // Fix 4: PIT label, offset up-and-right from the light's own origin —
+      // px() keeps it a constant ~8.5 SCREEN px regardless of circuit scale,
+      // same reasoning as the radii just above.
+      label?.setAttribute("x", String(px(13)));
+      label?.setAttribute("y", String(px(-10)));
+      label?.setAttribute("font-size", String(px(8.5)));
     }
 
     // Repaint now that the geometry exists. Load-bearing for the REDUCED
@@ -400,6 +451,16 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
       lightA.style.opacity = String((on ? 1 : 0) * place(lightA, A));
       lightB.style.opacity = String((on ? 1 : 0) * place(lightB, B));
 
+      // Fix 4: the PIT label reuses the SAME per-car classification the
+      // narration text already checks (A.kind/B.kind === "pit"/"out") — no
+      // second, possibly-drifting threshold derived from at.pit/dim.
+      if (pitLabelARef.current) {
+        pitLabelARef.current.style.opacity = A.kind === "pit" || A.kind === "out" ? "1" : "0";
+      }
+      if (pitLabelBRef.current) {
+        pitLabelBRef.current.style.opacity = B.kind === "pit" || B.kind === "out" ? "1" : "0";
+      }
+
       // The arc is suppressed entirely while either car is in the pits: the
       // separation is no longer "an arc of track between them" when one of
       // them has left the racing line.
@@ -416,7 +477,12 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
         arcChase.setAttribute("stroke", aAhead ? colorB : colorA);
         arcLead.style.opacity = String(arcOpacity.lead);
         arcChase.style.opacity = String(arcOpacity.chase);
-        const span = Math.max(0, Math.min((lead.dist - chase.dist) * len, len * MAX_ARC));
+        // Only floor a genuinely nonzero gap — if the two cars are exactly
+        // together (should not happen in real data, but don't assume), the
+        // arc stays at 0 rather than manufacturing separation that isn't there.
+        const rawGap = lead.dist - chase.dist;
+        const span =
+          rawGap > 0 ? Math.max(len * MIN_ARC, Math.min(rawGap * len, len * MAX_ARC)) : 0;
         const from = (((chase.frac * len) % len) + len) % len;
         seg(arcChase, from, span * 0.55);
         seg(arcLead, from + span * 0.45, span * 0.55);
@@ -585,16 +651,25 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
     ? `${circuit.name}: ${driverA?.acronym ?? "car"} and ${driverB?.acronym ?? "car"} over laps ${model.a.rows[model.windowStart]?.lap ?? ""} to ${model.a.rows[model.windowEnd]?.lap ?? ""}`
     : `${circuit.name} circuit outline`;
 
+  // Fix 1: only narrow-aspect circuits get the taller floor — everything else
+  // renders with the stage's normal clamp, untouched.
+  const stageStyle: CSSProperties = {
+    ...LIGHT_LAYERS[mode],
+    ...(circuit.boundsW / circuit.boundsH < NARROW_ASPECT_THRESHOLD
+      ? ({ "--hero-stage-min-h": `${NARROW_STAGE_MIN_H}px` } as CSSProperties)
+      : {}),
+  };
+
   return (
-    <div className="hero-circuit" style={LIGHT_LAYERS[mode]}>
+    <div className="hero-circuit" style={stageStyle}>
       <div className="hero-circuit__stage" ref={stageRef}>
         <svg ref={svgRef} className="hero-circuit__svg" role="img" aria-label={label}>
           <path ref={trackRef} className="hero-circuit__track" d={circuit.path} />
           <line ref={sfRef} className="hero-circuit__sf" />
           <path ref={arcChaseRef} className="hero-circuit__arc hero-circuit__arc--chase" d={circuit.path} />
           <path ref={arcLeadRef} className="hero-circuit__arc hero-circuit__arc--lead" d={circuit.path} />
-          <Light innerRef={lightARef} />
-          <Light innerRef={lightBRef} />
+          <Light innerRef={lightARef} labelRef={pitLabelARef} />
+          <Light innerRef={lightBRef} labelRef={pitLabelBRef} />
         </svg>
       </div>
 
