@@ -16,7 +16,10 @@
  * THE TRAP. `country_name` is ambiguous for two countries: Spain hosts both
  * Barcelona and Madrid, the United States hosts Miami, Austin and Las Vegas.
  * Those must NOT be in the country tier, or a US race resolves to whichever
- * round was typed first. The last test pins that down.
+ * round was typed first. The last test pins that down. And `country_name` can
+ * name the event rather than the venue — the 2026 Bahrain GP at Sepang arrives
+ * as Kuala Lumpur / Kuala Lumpur / Bahrain — so the country tier only runs
+ * when the circuit and location are both empty.
  *
  * Run: `npm test` (node --test --experimental-strip-types).
  */
@@ -52,10 +55,10 @@ function race(
   };
 }
 
-/** The 13 rows /api/races actually returns, measured against the local API on
- *  2026-08-16. Two of them (Jeddah, Sakhir) are cancelled races with no lap
- *  data — they must still resolve to a circuit, because the hero renders a
- *  static outline for them rather than nothing. */
+/** OpenF1's 2026 race sessions, checked 2026-09-24 — all but Kuala Lumpur,
+ *  which is tested separately below. Two of them (Jeddah, Sakhir) are
+ *  cancelled races with no lap data — they must still resolve to a circuit,
+ *  because the hero renders a static outline for them rather than nothing. */
 const REAL_RACES: [string, string, string, string][] = [
   ["Hungaroring", "Budapest", "Hungary", "hu-1986"],
   ["Spa-Francorchamps", "Spa-Francorchamps", "Belgium", "be-1925"],
@@ -70,6 +73,17 @@ const REAL_RACES: [string, string, string, string][] = [
   ["Suzuka", "Suzuka", "Japan", "jp-1962"],
   ["Shanghai", "Shanghai", "China", "cn-2004"],
   ["Melbourne", "Melbourne", "Australia", "au-1953"],
+  ["Zandvoort", "Zandvoort", "Netherlands", "nl-1948"],
+  ["Monza", "Monza", "Italy", "it-1922"],
+  ["Madring", "Madrid", "Spain", "es-2026"],
+  ["Baku", "Baku", "Azerbaijan", "az-2016"],
+  ["Singapore", "Marina Bay", "Singapore", "sg-2008"],
+  ["Austin", "Austin", "United States", "us-2012"],
+  ["Mexico City", "Mexico City", "Mexico", "mx-1962"],
+  ["Interlagos", "São Paulo", "Brazil", "br-1940"],
+  ["Las Vegas", "Las Vegas", "United States", "us-2023"],
+  ["Lusail", "Lusail", "Qatar", "qa-2004"],
+  ["Yas Marina Circuit", "Yas Marina", "United Arab Emirates", "ae-2009"],
 ];
 
 test("every selectable race resolves to the right circuit", () => {
@@ -129,6 +143,15 @@ test("an unknown race resolves to null rather than guessing", () => {
   assert.equal(circuitForRace(race("Nürburgring", "Nürburg", "Germany")), null);
   assert.equal(circuitForRace(race(null, null, null)), null);
   assert.equal(circuitForRace(null), null);
+});
+
+test("a country naming the event, not the venue, resolves to null", () => {
+  // The relocated 2026 Bahrain GP runs at Sepang. Falling back to the country
+  // would draw Sakhir under a race held in Malaysia.
+  assert.equal(
+    circuitForRace(race("Kuala Lumpur", "Kuala Lumpur", "Bahrain"))?.id ?? null,
+    null,
+  );
 });
 
 test("ambiguous countries are absent from the country tier", () => {
