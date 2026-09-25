@@ -32,6 +32,7 @@ import {
   isSafetyCarRow,
   positionAt,
   selectWindow,
+  shortDriver,
   HERO_WINDOW_LAPS,
   type HeroLapRow,
 } from "../src/lib/heroRace.ts";
@@ -144,6 +145,74 @@ test("window clamps to the shorter driver when a DNF shortens one side", () => {
   const b = rowsOf(Array.from({ length: 18 }, () => "green"));
   const win = selectWindow(a, b);
   assert.ok(win.end <= 17, `window end ${win.end} indexes past the retired car`);
+});
+
+/** Monza-like red-flag race for one driver: the numbers from McLaren #1 —
+ *  laps 1-3, a ~30-minute suspension out-lap on lap 4, two slow restart laps,
+ *  then ~86s to lap 53. */
+function redFlagLaps(driverNumber: number): Lap[] {
+  const head = [92.0, 86.9, 135.8, 1953.2, 197.8, 158.4];
+  const rows = laps(driverNumber, 53, { outLaps: [4] });
+  let clock = T0;
+  for (const row of rows) {
+    row.lap_duration = head[row.lap_number - 1] ?? 86;
+    row.date_start = new Date(clock).toISOString();
+    clock += row.lap_duration * 1000;
+  }
+  return rows;
+}
+
+function suspensionPit(driverNumber: number): PitStop {
+  return { session_key: 1, driver_number: driverNumber, lap_number: 3, pit_duration: 1840, date: null };
+}
+
+test("RED FLAG: the window skips the suspension lap", () => {
+  const race = buildHeroRace(
+    [...redFlagLaps(1), ...redFlagLaps(2)],
+    [suspensionPit(1), suspensionPit(2)],
+    [],
+    1,
+    2,
+  );
+  assert.ok(race);
+  const windowLaps = race.a.rows.slice(race.windowStart, race.windowEnd + 1).map((r) => r.lap);
+  assert.ok(!windowLaps.includes(4), `window laps ${windowLaps.join(",")}`);
+  assert.equal(windowLaps.length, HERO_WINDOW_LAPS);
+  // No relabelling: lap 4 is still the out-lap it was.
+  assert.equal(race.a.rows[3].kind, "out");
+});
+
+test("RED FLAG: no suspension lap leaves the window unchanged", () => {
+  // Same shape as the densest-stretch test, with ordinary lap-time variation.
+  const a = rowsOf(Array.from({ length: 40 }, () => "green"));
+  const b = rowsOf(Array.from({ length: 40 }, () => "green"));
+  for (const i of [19, 21, 23]) a[i].kind = "pit";
+  for (const i of [20, 24]) b[i].kind = "pit";
+  a[22].t = 101; // a normal stop
+  b[30].t = LAP_SECONDS * 2.3; // a restart lap — slow, but not a suspension
+  const win = selectWindow(a, b);
+  assert.equal(win.start, 13);
+  assert.equal(win.events, 5);
+});
+
+test("RED FLAG: every window suspended falls back to the unfiltered choice", () => {
+  const a = rowsOf(Array.from({ length: 20 }, () => "green"));
+  const b = rowsOf(Array.from({ length: 20 }, () => "green"));
+  a[10].t = LAP_SECONDS * 25; // inside every 12-lap window of a 20-lap race
+  a[2].kind = "pit";
+  const win = selectWindow(a, b);
+  assert.equal(win.start, 0);
+  assert.equal(win.events, 1);
+});
+
+/* ---------------------------------------------------------- short driver -- */
+
+test("shortDriver names the driver with too few timed laps", () => {
+  assert.deepEqual(shortDriver([...laps(1, 40), ...laps(2, 6)], 1, 2), { number: 2, laps: 6 });
+  assert.equal(shortDriver([...laps(1, 40), ...laps(2, 14)], 1, 2), null);
+  assert.deepEqual(shortDriver([...laps(1, 40)], 1, 99), { number: 99, laps: 0 });
+  // Both short: the one with fewer.
+  assert.deepEqual(shortDriver([...laps(1, 1), ...laps(2, 6)], 1, 2), { number: 1, laps: 1 });
 });
 
 test("WINDOW STABILITY: race control cannot move the window", () => {
