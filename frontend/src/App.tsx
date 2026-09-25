@@ -5,7 +5,16 @@ import { useApi, type ApiState } from "./hooks/useApi";
 import { useScrollSpy } from "./hooks/useScrollSpy";
 import { setTint, useMode, useTheme } from "./hooks/useTheme";
 import { cssVars, tintForPair } from "./theme";
-import { buildRosters, findDriver, pairTeamSlug, type DriverPair } from "./teams";
+import {
+  buildRosters,
+  defaultTeam,
+  findDriver,
+  pairTeamSlug,
+  raceEntrants,
+  TEAM_ORDER,
+  type DriverPair,
+  type TeamSlug,
+} from "./teams";
 import { HERO_CIRCUITS_ATTRIBUTION } from "./data/heroCircuits";
 import { deriveDelta } from "./lib/delta";
 import { filterSelectableRaces } from "./lib/selectableRaces";
@@ -21,23 +30,36 @@ import { Telemetry } from "./components/Telemetry";
 import { About } from "./components/About";
 import { entrance } from "./motion";
 
-/* The selected pair persists as two driver numbers. They're validated
-   against the fetched roster on every resolve (a stale number from a past
-   season falls back to the Ferrari duo), so a bad stored value can never
-   brick the dashboard. */
+/* The selection persists as either a team ({"team":"redbull"} — the chip
+   re-resolves to that team's two drivers in whichever race is selected) or a
+   head-to-head pair ({"h2h":[a,b]} — exactly those two drivers, always).
+   Older builds stored a bare [a,b]; it stays readable and is sorted into team
+   or H2H once the rosters arrive (see the legacy branch in `pair`). Every stored
+   value is validated against the fetched rosters on each resolve, so a bad
+   one can never brick the dashboard — it falls back to the default team.
+   Nothing is written until the user picks something. */
 const PAIR_KEY = "f1-tracker-pair";
 
-function readStoredPair(): [number, number] | null {
+type Selection =
+  | { team: TeamSlug }
+  | { h2h: [number, number] }
+  | { legacy: [number, number] };
+
+const isPair = (v: unknown): v is [number, number] =>
+  Array.isArray(v) && v.length === 2 && v.every((n) => typeof n === "number");
+
+function readStoredSelection(): Selection | null {
   try {
     const raw = localStorage.getItem(PAIR_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
-    if (
-      Array.isArray(parsed) &&
-      parsed.length === 2 &&
-      parsed.every((n) => typeof n === "number")
-    ) {
-      return [parsed[0], parsed[1]];
+    if (isPair(parsed)) return { legacy: parsed };
+    if (parsed && typeof parsed === "object") {
+      const o = parsed as Record<string, unknown>;
+      if (typeof o.team === "string" && (TEAM_ORDER as readonly string[]).includes(o.team)) {
+        return { team: o.team as TeamSlug };
+      }
+      if (isPair(o.h2h)) return { h2h: o.h2h };
     }
   } catch {
     // Unparseable storage just means the default pair.
@@ -127,31 +149,59 @@ export default function App() {
 
   // ---- pair model -----------------------------------------------------------
   // Rosters come from the API (which resolved drivers per-session from
-  // OpenF1) — same rule as the backend: numbers are never hardcoded.
-  const rosters = useMemo(() => buildRosters(drivers.data ?? []), [drivers.data]);
-
-  const [pairNumbers, setPairNumbers] = useState<[number, number] | null>(
-    readStoredPair,
+  // OpenF1) — same rule as the backend: numbers are never hardcoded. The
+  // chip duos follow the selected race's official result, so a mid-season
+  // swap resolves per race; the per-race fetches are declared here because
+  // the pair depends on them.
+  const laps = useApi(api.laps, selected);
+  const officialResult = useApi(api.officialResult, selected);
+  const raceResult = officialResult.data?.official_result?.race ?? null;
+  const rosters = useMemo(
+    () =>
+      buildRosters(
+        drivers.data ?? [],
+        raceResult ? raceEntrants(raceResult, drivers.data ?? []) : undefined,
+      ),
+    [drivers.data, raceResult],
   );
-  const setPair = (a: number, b: number) => {
-    setPairNumbers([a, b]);
+
+  const [selection, setSelection] = useState<Selection | null>(readStoredSelection);
+  const store = (next: Selection) => {
+    setSelection(next);
     try {
-      localStorage.setItem(PAIR_KEY, JSON.stringify([a, b]));
+      localStorage.setItem(PAIR_KEY, JSON.stringify(next));
     } catch {
       // Storage being unavailable only loses persistence, not the switch.
     }
   };
+  const selectTeam = (slug: TeamSlug) => store({ team: slug });
+  const selectH2h = (a: number, b: number) => store({ h2h: [a, b] });
 
   const pair: DriverPair | null = useMemo(() => {
     if (rosters.length === 0) return null;
-    if (pairNumbers) {
-      const a = findDriver(rosters, pairNumbers[0]);
-      const b = findDriver(rosters, pairNumbers[1]);
-      if (a && b && a.number !== b.number) return [a, b];
+    const teamPair = (slug: TeamSlug) => rosters.find((r) => r.slug === slug)?.duo ?? null;
+    const exactPair = ([na, nb]: [number, number]): DriverPair | null => {
+      const a = findDriver(rosters, na);
+      const b = findDriver(rosters, nb);
+      return a && b && a.number !== b.number ? [a, b] : null;
+    };
+    let resolved: DriverPair | null = null;
+    if (selection && "team" in selection) resolved = teamPair(selection.team);
+    else if (selection && "h2h" in selection) resolved = exactPair(selection.h2h);
+    else if (selection) {
+      // A bare [a,b] from an older build counts as a team
+      // when both drivers are on the same team in the season roster (that's
+      // what the old chip stored); anything else was a head-to-head pick.
+      const legacy = exactPair(selection.legacy);
+      resolved =
+        legacy && legacy[0].teamSlug === legacy[1].teamSlug
+          ? teamPair(legacy[0].teamSlug)
+          : legacy;
     }
-    const ferrari = rosters.find((r) => r.slug === "ferrari") ?? rosters[0];
-    return ferrari.duo;
-  }, [rosters, pairNumbers]);
+    if (resolved) return resolved;
+    const slug = defaultTeam(rosters, laps.data ?? []);
+    return slug ? teamPair(slug) : null;
+  }, [rosters, selection, laps.data]);
 
   // Push the pair's tint (team chrome + slot colors) into the theme store so
   // every useTheme() consumer — charts, ribbons, CSS vars — retints together.
@@ -165,13 +215,11 @@ export default function App() {
   const theme = useTheme();
   const teamSlug = pairTeamSlug(pair);
 
-  const laps = useApi(api.laps, selected);
   const stints = useApi(api.stints, selected);
   const pit = useApi(api.pit, selected);
   const positions = useApi(api.positions, selected);
   const weather = useApi(api.weather, selected);
   const raceControl = useApi(api.raceControl, selected);
-  const officialResult = useApi(api.officialResult, selected);
 
   // While the races list is still in flight nothing can be selected, so every
   // per-race fetch above sits idle (key null, loading false) — which reads
@@ -221,7 +269,8 @@ export default function App() {
               raceWeekend={raceWeekend.data?.race_weekend ?? null}
               pair={pair}
               rosters={rosters}
-              onSelectPair={setPair}
+              onSelectPair={selectH2h}
+              onSelectTeam={selectTeam}
               races={selectableRaces}
               selected={selected}
               onSelectRace={setSelected}
@@ -261,7 +310,8 @@ export default function App() {
               racesError={races.error}
               pair={pair}
               rosters={rosters}
-              onSelectPair={setPair}
+              onSelectPair={selectH2h}
+              onSelectTeam={selectTeam}
               laps={withBootstrap(laps)}
               stints={withBootstrap(stints)}
               pit={withBootstrap(pit)}

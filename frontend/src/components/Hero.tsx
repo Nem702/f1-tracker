@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import type { Lap, PitStop, Race, RaceControlRow, RaceWeekend } from "../api/types";
-import type { DriverPair, TeamRoster } from "../teams";
+import type { DriverPair, TeamRoster, TeamSlug } from "../teams";
 import { TeamSwitcher } from "./TeamSwitcher";
 import { RaceSelector } from "./RaceSelector";
 import { RotatingWord } from "./RotatingWord";
@@ -18,6 +18,7 @@ interface Props {
   pair: DriverPair | null;
   rosters: TeamRoster[];
   onSelectPair: (a: number, b: number) => void;
+  onSelectTeam: (slug: TeamSlug) => void;
   races: Race[];
   selected: number | null;
   onSelectRace: (sessionKey: number) => void;
@@ -63,6 +64,7 @@ export function Hero({
   pair,
   rosters,
   onSelectPair,
+  onSelectTeam,
   races,
   selected,
   onSelectRace,
@@ -121,7 +123,12 @@ export function Hero({
 
         <div className="hero-body__selectors">
           {rosters.length > 0 && pair && (
-            <TeamSwitcher rosters={rosters} pair={pair} onSelectPair={onSelectPair} />
+            <TeamSwitcher
+              rosters={rosters}
+              pair={pair}
+              onSelectPair={onSelectPair}
+              onSelectTeam={onSelectTeam}
+            />
           )}
         </div>
         <motion.p

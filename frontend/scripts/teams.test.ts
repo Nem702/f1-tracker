@@ -25,8 +25,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { TEAM_ORDER, teamSlugFromName } from "../src/teams.ts";
-import type { TeamSlug } from "../src/teams.ts";
+import {
+  TEAM_ORDER,
+  buildRosters,
+  defaultTeam,
+  raceEntrants,
+  teamSlugFromName,
+} from "../src/teams.ts";
+import type { TeamRoster, TeamSlug } from "../src/teams.ts";
+import type { Driver, Lap, RaceResultRow } from "../src/api/types.ts";
 
 /** What each upstream actually calls each team. OpenF1 names were fetched
  *  live from /v1/drivers (session_key=11342); Jolpica names from
@@ -122,4 +129,134 @@ test("unresolvable input is null, not a guess", () => {
   assert.equal(teamSlugFromName(""), null);
   assert.equal(teamSlugFromName("Toro Rosso"), null);
   assert.equal(teamSlugFromName("Lotus"), null);
+});
+
+// ---- per-race rosters (handoff 12) -----------------------------------------
+//
+// The one 2026 swap, as Neon and OpenF1 actually hold it: from Zandvoort on,
+// LAW moved Racing Bulls -> Red Bull, HAD (Red Bull) was not entered and TSU
+// joined Racing Bulls. `drivers` keeps only the latest team_name, so LAW reads
+// "Red Bull Racing" for every race — which is exactly what these guard.
+
+const DRIVERS: Driver[] = [
+  [3, "VER", "Max VERSTAPPEN", "Red Bull Racing"],
+  [6, "HAD", "Isack HADJAR", "Red Bull Racing"],
+  [30, "LAW", "Liam LAWSON", "Red Bull Racing"],
+  [22, "TSU", "Yuki TSUNODA", "Racing Bulls"],
+  [41, "LIN", "Arvid LINDBLAD", "Racing Bulls"],
+  [16, "LEC", "Charles LECLERC", "Ferrari"],
+  [44, "HAM", "Lewis HAMILTON", "Ferrari"],
+  [12, "ANT", "Andrea Kimi ANTONELLI", "Mercedes"],
+  [63, "RUS", "George RUSSELL", "Mercedes"],
+].map(([driver_number, name_acronym, name, team_name]) => ({
+  driver_number: driver_number as number,
+  name_acronym: name_acronym as string,
+  name: name as string,
+  team_name: team_name as string,
+}));
+
+// Jolpica's vocabulary on purpose: "Red Bull", "RB F1 Team".
+const result = (rows: [string, string][]): RaceResultRow[] =>
+  rows.map(([driver_code, constructor_name], i) => ({
+    position: i + 1,
+    position_text: String(i + 1),
+    points: null,
+    driver_code,
+    driver_name: driver_code,
+    constructor_name,
+    grid: null,
+    laps: null,
+    status: null,
+    time: null,
+    fastest_lap_rank: null,
+    fastest_lap_time: null,
+  }));
+
+const BUDAPEST = result([
+  ["VER", "Red Bull"], ["HAD", "Red Bull"],
+  ["LAW", "RB F1 Team"], ["LIN", "RB F1 Team"],
+  ["LEC", "Ferrari"], ["HAM", "Ferrari"],
+]);
+const MADRID = result([
+  ["VER", "Red Bull"], ["LAW", "Red Bull"],
+  ["TSU", "RB F1 Team"], ["LIN", "RB F1 Team"],
+  ["LEC", "Ferrari"], ["HAM", "Ferrari"],
+]);
+
+const duoAt = (race: RaceResultRow[] | null, slug: TeamSlug) => {
+  const rosters = buildRosters(DRIVERS, race ? raceEntrants(race, DRIVERS) : undefined);
+  const roster = rosters.find((r) => r.slug === slug);
+  assert.ok(roster, `no ${slug} roster`);
+  return roster.duo;
+};
+const acronyms = (race: RaceResultRow[] | null, slug: TeamSlug) =>
+  duoAt(race, slug).map((d) => d.acronym);
+
+test("Red Bull resolves per race across the Zandvoort swap", () => {
+  assert.deepEqual(acronyms(BUDAPEST, "redbull"), ["VER", "HAD"]);
+  assert.deepEqual(acronyms(MADRID, "redbull"), ["VER", "LAW"]);
+});
+
+test("Racing Bulls loses LAW after the swap, and has him before it", () => {
+  const budapest = duoAt(BUDAPEST, "racingbulls");
+  assert.deepEqual(budapest.map((d) => d.acronym), ["LAW", "LIN"]);
+  // LAW drove for Racing Bulls there, whatever `drivers` says now — so he
+  // carries that team and its slot 0.
+  assert.equal(budapest[0].teamSlug, "racingbulls");
+  assert.equal(budapest[0].slot, 0);
+  assert.deepEqual(acronyms(MADRID, "racingbulls"), ["TSU", "LIN"]);
+});
+
+test("slot-0 driver still leads the duo", () => {
+  const madrid = duoAt(MADRID, "redbull");
+  assert.equal(madrid[0].acronym, "VER");
+  assert.equal(madrid[0].slot, 0);
+  assert.equal(madrid[1].slot, 1);
+});
+
+test("no official result falls back to the season-wide duo", () => {
+  assert.deepEqual(acronyms(null, "redbull"), ["VER", "HAD"]);
+  assert.deepEqual(acronyms(null, "racingbulls"), ["TSU", "LIN"]);
+});
+
+test("H2H list stays season-wide whatever the race", () => {
+  const rosters = buildRosters(DRIVERS, raceEntrants(MADRID, DRIVERS));
+  const redbull = rosters.find((r) => r.slug === "redbull");
+  assert.deepEqual(redbull?.drivers.map((d) => d.acronym), ["VER", "HAD", "LAW"]);
+});
+
+// ---- default team -----------------------------------------------------------
+
+const timedLaps = (driver_number: number, count: number): Lap[] =>
+  Array.from({ length: count }, (_, i) => ({
+    session_key: 1,
+    driver_number,
+    lap_number: i + 1,
+    date_start: null,
+    lap_duration: 90,
+    duration_sector_1: null,
+    duration_sector_2: null,
+    duration_sector_3: null,
+    i1_speed: null,
+    i2_speed: null,
+    st_speed: null,
+    is_pit_out_lap: null,
+  }));
+
+const rostersAt = (race: RaceResultRow[]): TeamRoster[] =>
+  buildRosters(DRIVERS, raceEntrants(race, DRIVERS));
+
+test("default is Ferrari when both Ferrari drivers have a model", () => {
+  const laps = [16, 44, 63, 12].flatMap((n) => timedLaps(n, 57));
+  assert.equal(defaultTeam(rostersAt(MADRID), laps), "ferrari");
+});
+
+test("default falls back to the next team in TEAM_ORDER with a model", () => {
+  // Madrid as it happened: HAM out after 6 laps.
+  const laps = [...timedLaps(16, 57), ...timedLaps(44, 6), ...[63, 12].flatMap((n) => timedLaps(n, 57))];
+  assert.equal(defaultTeam(rostersAt(MADRID), laps), "mercedes");
+});
+
+test("default stays Ferrari when no team has a model", () => {
+  assert.equal(defaultTeam(rostersAt(MADRID), []), "ferrari");
 });
