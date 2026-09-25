@@ -1,6 +1,6 @@
 import { useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { motion } from "framer-motion";
-import type { DriverPair, TeamRoster } from "../teams";
+import type { DriverPair, TeamRoster, TeamSlug } from "../teams";
 import { useMode } from "../hooks/useTheme";
 import { teamSwatch } from "../theme";
 import { GlassSelect } from "./GlassSelect";
@@ -10,7 +10,10 @@ import { chipCascadeDelay, chipEntrance } from "../motion";
 interface Props {
   rosters: TeamRoster[];
   pair: DriverPair | null;
+  /** Head-to-Head picks: exactly these two drivers, whatever race. */
   onSelectPair: (a: number, b: number) => void;
+  /** Chip picks: the team, re-resolved to its duo in each selected race. */
+  onSelectTeam: (slug: TeamSlug) => void;
 }
 
 function VersusIcon() {
@@ -32,7 +35,7 @@ const samePair = (duo: DriverPair, pair: DriverPair) =>
  * selects covering every tracked driver, grouped by team. One accessible
  * radiogroup — roving tabindex, arrow keys move AND select, matching the
  * WAI-ARIA radio pattern. Chip click swaps the whole dashboard to that team's
- * duo; no refetch happens anywhere (charts filter client-side by driver
+ * duo in the selected race; no refetch happens anywhere (charts filter client-side by driver
  * number).
  *
  * The chips WRAP (a centered grid — see .team-switcher__chips), so on the
@@ -53,7 +56,7 @@ const samePair = (duo: DriverPair, pair: DriverPair) =>
  * slow one, chips simply land a beat later than the nominal ~1s rather than
  * ever looking broken — same tradeoff Countdown already makes.
  */
-export function TeamSwitcher({ rosters, pair, onSelectPair }: Props) {
+export function TeamSwitcher({ rosters, pair, onSelectPair, onSelectTeam }: Props) {
   const mode = useMode();
   // The chip row highlights the pair's team; a pair that matches no duo
   // (mixed, or a custom same-team combo) belongs to Head-to-Head. The flag
@@ -74,7 +77,7 @@ export function TeamSwitcher({ rosters, pair, onSelectPair }: Props) {
     }
     setH2hOpen(false);
     const roster = rosters.find((r) => r.slug === id);
-    if (roster) onSelectPair(roster.duo[0].number, roster.duo[1].number);
+    if (roster) onSelectTeam(roster.slug);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>, idx: number) => {

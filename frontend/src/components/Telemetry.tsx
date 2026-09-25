@@ -1,7 +1,7 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import type { ApiState } from "../hooks/useApi";
 import type { Lap, PitStop, PositionRow, Race, RaceControlRow, Stint, WeatherRow } from "../api/types";
-import type { DriverPair, TeamRoster } from "../teams";
+import type { DriverPair, TeamRoster, TeamSlug } from "../teams";
 import type { PairDelta } from "../lib/delta";
 import { summarizeRace, type RaceSummary } from "../lib/raceStory";
 import { SectionHeading } from "./SectionHeading";
@@ -36,6 +36,7 @@ interface Props {
    *  without scrolling back up to Overview. */
   rosters: TeamRoster[];
   onSelectPair: (a: number, b: number) => void;
+  onSelectTeam: (slug: TeamSlug) => void;
   laps: ApiState<Lap[]>;
   stints: ApiState<Stint[]>;
   pit: ApiState<PitStop[]>;
@@ -63,6 +64,7 @@ export function Telemetry({
   pair,
   rosters,
   onSelectPair,
+  onSelectTeam,
   laps,
   stints,
   pit,
@@ -145,7 +147,12 @@ export function Telemetry({
           team or compose a head-to-head pair without scrolling back up. */}
       {rosters.length > 0 && pair && (
         <div className="telemetry__pair-switcher">
-          <TeamSwitcher rosters={rosters} pair={pair} onSelectPair={onSelectPair} />
+          <TeamSwitcher
+            rosters={rosters}
+            pair={pair}
+            onSelectPair={onSelectPair}
+            onSelectTeam={onSelectTeam}
+          />
         </div>
       )}
 

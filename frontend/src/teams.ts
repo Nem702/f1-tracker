@@ -9,7 +9,8 @@
 // in the app, including each team's palette and badge. This file holds the
 // identity; that one holds the paint.
 
-import type { Driver } from "./api/types";
+import type { Driver, Lap, RaceResultRow } from "./api/types";
+import { shortDriver } from "./lib/heroRace.ts";
 
 export type TeamSlug =
   | "ferrari"
@@ -112,8 +113,10 @@ export interface TeamRoster {
   name: string;
   /** All tracked drivers of the team, by driver_number (H2H offers all). */
   drivers: DriverRef[];
-  /** The pair a team chip selects: first two by driver_number, ordered
-   *  slot-0 driver first so pair position matches color slot. */
+  /** The pair a team chip selects: the team's two drivers in the selected
+   *  race when that's known (see raceEntrants), else the first two by
+   *  driver_number. Ordered slot-0 driver first so pair position matches
+   *  color slot. */
   duo: DriverPair;
 }
 
@@ -163,11 +166,63 @@ function lastNameFrom(name: string): string {
     .join(" ");
 }
 
+/** Which drivers each team entered in one race, from the race's official
+ *  result (Jolpica). The `drivers` table holds one team_name per driver —
+ *  whichever was upserted last — so it can't say who drove for whom in a
+ *  past race; after a mid-season swap it puts the swapped driver in his new
+ *  team for every race. Jolpica's `driver_code` joins to OpenF1's
+ *  `name_acronym` (unique on the grid; checked race by race in handoff 12). */
+export function raceEntrants(
+  result: RaceResultRow[],
+  drivers: Driver[],
+): Map<TeamSlug, number[]> {
+  const byAcronym = new Map(drivers.map((d) => [d.name_acronym, d.driver_number]));
+  const entrants = new Map<TeamSlug, number[]>();
+  for (const row of result) {
+    const slug = teamSlugFromName(row.constructor_name);
+    const number = row.driver_code ? byAcronym.get(row.driver_code) : undefined;
+    if (!slug || number === undefined) continue;
+    const list = entrants.get(slug) ?? [];
+    list.push(number);
+    entrants.set(slug, list);
+  }
+  return entrants;
+}
+
+function toRef(d: Driver, slug: TeamSlug): DriverRef {
+  return {
+    number: d.driver_number,
+    acronym: d.name_acronym ?? d.name.slice(0, 3).toUpperCase(),
+    lastName: lastNameFrom(d.name),
+    fullName: d.name,
+    teamSlug: slug,
+    slot: d.name_acronym === SLOT0_ACRONYM[slug] ? 0 : 1,
+  };
+}
+
+/** First two by driver_number, slot-0 driver first. */
+function duoOf(refs: DriverRef[]): DriverPair {
+  const members = [...refs].sort((a, b) => a.number - b.number).slice(0, 2);
+  const lead = members.find((d) => d.slot === 0);
+  const other = members.find((d) => d !== lead);
+  return lead && other ? [lead, other] : [members[0], members[1]];
+}
+
 /** Group /api/drivers rows into the eleven tracked teams, in display order.
  *  Teams with no rows (or a lone driver) simply don't produce a roster —
  *  chips render from whatever comes back, so a schema surprise degrades to
- *  fewer options, not a crash. */
-export function buildRosters(drivers: Driver[]): TeamRoster[] {
+ *  fewer options, not a crash.
+ *
+ *  `drivers` (what H2H offers) is always season-wide. `duo` comes from
+ *  `entrants` — the selected race's teams — when that team entered two
+ *  drivers there, with each ref carrying the team he drove for IN THAT RACE
+ *  (LAW is Racing Bulls, slot 0, at Budapest). Without entrants (no official
+ *  result yet, or its fetch failed) the duo is the season-wide first two by
+ *  driver_number. */
+export function buildRosters(
+  drivers: Driver[],
+  entrants?: Map<TeamSlug, number[]>,
+): TeamRoster[] {
   const byTeam = new Map<TeamSlug, Driver[]>();
   for (const d of drivers) {
     const slug = teamSlugFromName(d.team_name);
@@ -176,6 +231,7 @@ export function buildRosters(drivers: Driver[]): TeamRoster[] {
     list.push(d);
     byTeam.set(slug, list);
   }
+  const byNumber = new Map(drivers.map((d) => [d.driver_number, d]));
 
   const rosters: TeamRoster[] = [];
   for (const slug of TEAM_ORDER) {
@@ -183,26 +239,31 @@ export function buildRosters(drivers: Driver[]): TeamRoster[] {
       (a, b) => a.driver_number - b.driver_number,
     );
     if (rows.length < 2) continue;
+    const refs = rows.map((d) => toRef(d, slug));
 
-    const refs: DriverRef[] = rows.map((d) => ({
-      number: d.driver_number,
-      acronym: d.name_acronym ?? d.name.slice(0, 3).toUpperCase(),
-      lastName: lastNameFrom(d.name),
-      fullName: d.name,
-      teamSlug: slug,
-      slot: d.name_acronym === SLOT0_ACRONYM[slug] ? 0 : 1,
-    }));
-
-    // Duo membership: first two by driver_number (a mid-season swap adds a
-    // third driver — H2H exposes them, the chip keeps the established two).
-    const duoMembers = refs.slice(0, 2);
-    const lead = duoMembers.find((d) => d.slot === 0);
-    const other = duoMembers.find((d) => d !== lead);
-    const duo: DriverPair = lead && other ? [lead, other] : [duoMembers[0], duoMembers[1]];
+    const raceRows = (entrants?.get(slug) ?? [])
+      .map((n) => byNumber.get(n))
+      .filter((d): d is Driver => d !== undefined);
+    const duo = raceRows.length >= 2
+      ? duoOf(raceRows.map((d) => toRef(d, slug)))
+      : duoOf(refs);
 
     rosters.push({ slug, name: TEAM_NAMES[slug], drivers: refs, duo });
   }
   return rosters;
+}
+
+/** The team a first-time visitor lands on: Ferrari, unless either Ferrari
+ *  driver is under MIN_USABLE_LAPS timed laps in the loaded race (no model,
+ *  so the hero would open on the no-comparison note) — then the first team in
+ *  TEAM_ORDER whose duo has one. Ferrari again if no team does. */
+export function defaultTeam(rosters: TeamRoster[], laps: Lap[]): TeamSlug | null {
+  if (rosters.length === 0) return null;
+  const hasModel = (r: TeamRoster) =>
+    shortDriver(laps, r.duo[0].number, r.duo[1].number) === null;
+  const ferrari = rosters.find((r) => r.slug === "ferrari") ?? rosters[0];
+  if (hasModel(ferrari)) return ferrari.slug;
+  return rosters.find(hasModel)?.slug ?? ferrari.slug;
 }
 
 export function findDriver(
