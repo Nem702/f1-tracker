@@ -15,6 +15,12 @@
 // typed first and render the wrong circuit under the right race name, which is
 // worse than rendering nothing. Circuit name is tried first, then location,
 // and only then the unambiguous countries.
+//
+// And `country_name` can name the EVENT rather than the venue: the 2026
+// Bahrain GP, relocated to Sepang, arrives as Kuala Lumpur / Kuala Lumpur /
+// Bahrain. A country fallback there would draw Sakhir under a race held in
+// Malaysia. So the country tier only runs when circuit and location are both
+// empty — if either is present but unrecognised, the answer is null.
 
 // The explicit `.ts` on this specifier is deliberate and is the only one of
 // its kind in src/. scripts/heroCircuit.test.ts imports this module, and
@@ -112,9 +118,12 @@ const LOCATION_ALIASES: Record<string, string> = {
   abudhabi: "ae-2009",
 };
 
-/** By `country_name`, and ONLY where the country hosts exactly one 2026
- *  round. Spain (Barcelona + Madrid) and the United States (Miami + Austin +
- *  Las Vegas) are deliberately omitted — see the header note. */
+/** By `country_name`, and ONLY for countries that map to a single circuit.
+ *  Spain (Barcelona + Madrid) and the United States (Miami + Austin +
+ *  Las Vegas) are deliberately omitted. Even an unambiguous country can name
+ *  the event rather than the venue (Bahrain GP at Sepang), so this tier is
+ *  consulted only when circuit and location are both empty — see the header
+ *  note. */
 const COUNTRY_ALIASES: Record<string, string> = {
   australia: "au-1953",
   china: "cn-2004",
@@ -150,11 +159,12 @@ export function heroCircuitById(id: string): HeroCircuit | null {
  *  recognise it. Callers render the hero without its stage on null. */
 export function circuitForRace(race: Race | null): HeroCircuit | null {
   if (!race) return null;
+  const circuit = normalizeCircuitKey(race.circuit_short_name);
+  const location = normalizeCircuitKey(race.location);
   const id =
-    CIRCUIT_ALIASES[normalizeCircuitKey(race.circuit_short_name)] ??
-    LOCATION_ALIASES[normalizeCircuitKey(race.location)] ??
-    COUNTRY_ALIASES[normalizeCircuitKey(race.country_name)] ??
-    null;
+    circuit || location
+      ? (CIRCUIT_ALIASES[circuit] ?? LOCATION_ALIASES[location] ?? null)
+      : (COUNTRY_ALIASES[normalizeCircuitKey(race.country_name)] ?? null);
   return id ? heroCircuitById(id) : null;
 }
 
