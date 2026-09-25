@@ -12,7 +12,14 @@ import type { Lap, PitStop, Race, RaceControlRow } from "../api/types";
 import type { DriverPair } from "../teams";
 import { useMode, useTheme } from "../hooks/useTheme";
 import { circuitForRace } from "../lib/heroCircuit";
-import { buildHeroRace, gapAt, positionAt, type HeroRace, type LapKind } from "../lib/heroRace";
+import {
+  buildHeroRace,
+  gapAt,
+  positionAt,
+  shortDriver,
+  type HeroRace,
+  type LapKind,
+} from "../lib/heroRace";
 import { trackStatusColor, type TrackStatus } from "../lib/trackStatus";
 
 /* ---------------------------------------------------------------------------
@@ -191,6 +198,19 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
     if (!driverA || !driverB) return null;
     return buildHeroRace(laps, pit, raceControl, driverA.number, driverB.number);
   }, [laps, pit, raceControl, driverA, driverB]);
+
+  // No model because one of the pair has too few timed laps: say so rather
+  // than leave a bare outline. Skipped while `laps` is still empty (the first
+  // fetch hasn't landed), which would otherwise read as "no lap data".
+  const shortNote = useMemo<string | null>(() => {
+    if (model || !driverA || !driverB || laps.length === 0) return null;
+    const short = shortDriver(laps, driverA.number, driverB.number);
+    if (!short) return null;
+    const acr = (short.number === driverA.number ? driverA : driverB).acronym;
+    return short.laps > 0
+      ? `${acr} completed only ${short.laps} ${short.laps === 1 ? "lap" : "laps"} here — too few to animate. Pick another pair.`
+      : `${acr} has no lap data for this race — pick another pair.`;
+  }, [model, laps, driverA, driverB]);
 
   const [narrationOn, setNarrationOn] = useState(true);
 
@@ -436,7 +456,8 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
 
       // No model (a cancelled race, an early DNF, a driver the session
       // doesn't hold): the outline and its start/finish tick are still real,
-      // so compose that much and stop. No lights, no arcs, no figures.
+      // so compose that much and stop. No lights, no arcs, no figures — the
+      // readout shows the too-few-laps note instead, when there is one.
       if (!model || !lightA || !lightB || !arcLead || !arcChase) {
         for (const node of [arcLead, arcChase, lightA, lightB]) {
           if (node) node.style.opacity = "0";
@@ -649,7 +670,7 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
 
   const label = model
     ? `${circuit.name}: ${driverA?.acronym ?? "car"} and ${driverB?.acronym ?? "car"} over laps ${model.a.rows[model.windowStart]?.lap ?? ""} to ${model.a.rows[model.windowEnd]?.lap ?? ""}`
-    : `${circuit.name} circuit outline`;
+    : `${circuit.name} circuit outline${shortNote ? `. ${shortNote}` : ""}`;
 
   // Fix 1: only narrow-aspect circuits get the taller floor — everything else
   // renders with the stage's normal clamp, untouched.
@@ -674,6 +695,7 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
       </div>
 
       <div className="hero-circuit__readout">
+        {shortNote && <span className="hero-circuit__note">{shortNote}</span>}
         {model && (
           <div className={`hero-circuit__narration${narrationOn ? "" : " is-hidden"}`}>
             <div className="hero-circuit__field">

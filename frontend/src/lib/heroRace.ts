@@ -12,8 +12,15 @@ export const HERO_WINDOW_LAPS = 12;
 
 /** Below this many usable laps there is no animation worth showing — a
  *  cancelled race, a lap-3 DNF, a driver the session doesn't hold. The
- *  component falls back to the static outline. */
+ *  component falls back to the static outline, plus a one-line note naming
+ *  the short driver when `shortDriver` finds one. */
 const MIN_USABLE_LAPS = 14;
+
+/** A lap slower than this multiple of the driver's median is a red-flag
+ *  suspension, not racing. OpenF1 logs a suspension as a ~30-minute pit row
+ *  and out-lap for every car; the slowest real laps (safety car, restart)
+ *  stay near 2.3x the median. */
+const SUSPENSION_FACTOR = 3;
 
 /** `"unknown"` is NOT a synonym for `"green"`: it means the safety-car join
  *  could not be evaluated for this lap (no `date_start`, or no race-control
@@ -268,8 +275,25 @@ function buildDriver(
   };
 }
 
+function median(values: number[]): number {
+  const sorted = [...values].sort((x, y) => x - y);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function suspensionFlags(rows: HeroLapRow[]): boolean[] {
+  const limit = SUSPENSION_FACTOR * median(rows.map((r) => r.t));
+  return rows.map((r) => r.t > limit);
+}
+
 /** Densest `HERO_WINDOW_LAPS`-row stretch by PIT laps only. First window wins
  *  ties, which makes it deterministic.
+ *
+ *  A window holding a red-flag suspension lap (see SUSPENSION_FACTOR) for
+ *  either driver is skipped: the loop maps the window's clock linearly onto
+ *  its laps, so one 30-minute lap would eat most of the loop and the lights
+ *  would crawl. If every window holds one, the unfiltered best is used. This
+ *  only excludes windows — no lap's `kind` changes.
  *
  *  Safety-car laps are deliberately NOT counted, and this is the load-bearing
  *  reason the window is a pure function of `laps` + `pit`: those two are
@@ -288,17 +312,31 @@ export function selectWindow(
   // shorter so the window never indexes past the retired car's last lap.
   const shared = Math.min(a.length, b.length);
   const span = Math.min(HERO_WINDOW_LAPS, shared);
+  const suspA = suspensionFlags(a);
+  const suspB = suspensionFlags(b);
   let bestStart = 0;
   let bestCount = -1;
+  let cleanStart = 0;
+  let cleanCount = -1;
   for (let start = 0; start + span <= shared; start++) {
     let count = 0;
+    let suspended = false;
     for (let i = start; i < start + span; i++) {
       if (a[i].kind === "pit" || b[i].kind === "pit") count++;
+      if (suspA[i] || suspB[i]) suspended = true;
     }
     if (count > bestCount) {
       bestCount = count;
       bestStart = start;
     }
+    if (!suspended && count > cleanCount) {
+      cleanCount = count;
+      cleanStart = start;
+    }
+  }
+  if (cleanCount >= 0) {
+    bestStart = cleanStart;
+    bestCount = cleanCount;
   }
   return { start: bestStart, end: bestStart + span - 1, events: bestCount };
 }
@@ -363,7 +401,7 @@ export function positionAt(
 /**
  * Build the whole model, or null when there is not enough real data (a
  * cancelled race, an early DNF, a driver absent from the session). Callers
- * render the static outline on null.
+ * render the static outline on null, with a note from `shortDriver`.
  */
 export function buildHeroRace(
   laps: Lap[],
@@ -439,6 +477,22 @@ export function buildHeroRace(
       joinAvailable,
     },
   };
+}
+
+/** The driver of `a`/`b` with fewer than MIN_USABLE_LAPS timed laps — the
+ *  one with fewer when both are short (`a` on a tie) — or null when both have
+ *  enough. Counts the same rows `buildDriver` keeps. */
+export function shortDriver(
+  laps: Lap[],
+  a: number,
+  b: number,
+): { number: number; laps: number } | null {
+  const timed = (n: number) =>
+    laps.filter((l) => l.driver_number === n && l.lap_duration !== null).length;
+  const na = timed(a);
+  const nb = timed(b);
+  if (na >= MIN_USABLE_LAPS && nb >= MIN_USABLE_LAPS) return null;
+  return nb < na ? { number: b, laps: nb } : { number: a, laps: na };
 }
 
 /** Teammate gap in seconds at the end of the given row index — the figure the
