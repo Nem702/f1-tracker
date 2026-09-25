@@ -50,8 +50,8 @@ import { trackStatusColor, type TrackStatus } from "../lib/trackStatus";
  * ------------------------------------------------------------------------- */
 
 /** Milliseconds of wall clock per race lap. The mockup offered 2.6 / 3.6 / 5.0
- *  seconds; only two ship as the settings panel's "Lap pace" choice — Normal
- *  (the original default) and Slow. */
+ *  seconds; only two ship as the settings panel's "Lap pace" choice — Slow
+ *  (the default) and Normal. */
 const MS_PER_LAP_NORMAL = 3600;
 const MS_PER_LAP_SLOW = 5000;
 /** The track draws itself once before the lights appear. */
@@ -216,7 +216,7 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
 
   // ---- settings panel state. NOT persisted anywhere (no localStorage /
   // sessionStorage) — both reset to their defaults on reload, by design. ----
-  const [msPerLap, setMsPerLap] = useState(MS_PER_LAP_NORMAL);
+  const [msPerLap, setMsPerLap] = useState(MS_PER_LAP_SLOW);
   const [motionPaused, setMotionPaused] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPanelId = useId();
@@ -415,7 +415,7 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
       return dim;
     };
 
-    const frame = (ms: number, forceStatic: boolean) => {
+    const frame = (msIn: number, forceStatic: boolean) => {
       const { model, colorA, colorB, narrationOn, driverA, driverB, arcOpacity, theme } = live.current;
       const isStatic = forceStatic || staticFromSettings;
       const { len } = geom.current;
@@ -427,6 +427,18 @@ export function HeroCircuit({ race, laps, pit, raceControl, pair }: Props) {
       if (len === 0) {
         start = null;
         return;
+      }
+
+      // No model: pin the clock at the end of the draw-in so the outline
+      // draws once and holds, instead of replaying every DRAW_MS + FADE_MS.
+      // The draw-in itself can't be skipped — while `laps` loads, a real
+      // race also has no model yet. If a model does arrive later, the clock
+      // resumes from DRAW_MS: the race starts at the window's first lap on
+      // the already-drawn track, with no second draw-in.
+      let ms = msIn;
+      if (!model && !isStatic && ms > DRAW_MS && start !== null) {
+        start += ms - DRAW_MS;
+        ms = DRAW_MS;
       }
 
       // One animation lap is one race lap; the window length is a pure
