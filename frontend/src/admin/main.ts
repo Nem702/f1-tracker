@@ -466,8 +466,140 @@ async function checksPanel(): Promise<Node[]> {
   ];
 }
 
+// ---- site navbar: a plain-DOM copy of src/components/Navbar.tsx ----
+
+type SvgPart = [tag: string, attrs: Record<string, string>];
+
+// The public icons, element for element. Every part is stroked unless it
+// says otherwise (the About dot is a fill).
+const STROKE = { stroke: "currentColor", "stroke-width": "1.6" };
+const ROUND = { ...STROKE, "stroke-linecap": "round" };
+
+const NAV_ITEMS: { id: string; label: string; icon: SvgPart[] }[] = [
+  {
+    id: "hero",
+    label: "Overview",
+    icon: [
+      ["rect", { x: "3.5", y: "3.5", width: "7.5", height: "7.5", rx: "2", ...STROKE }],
+      ["rect", { x: "13", y: "3.5", width: "7.5", height: "7.5", rx: "2", ...STROKE }],
+      ["rect", { x: "3.5", y: "13", width: "7.5", height: "7.5", rx: "2", ...STROKE }],
+      ["rect", { x: "13", y: "13", width: "7.5", height: "7.5", rx: "2", ...STROKE }],
+    ],
+  },
+  {
+    id: "next-race",
+    label: "Next Race",
+    icon: [
+      ["rect", { x: "3.5", y: "5", width: "17", height: "15.5", rx: "2", ...STROKE }],
+      ["path", { d: "M3.5 9.5h17", ...STROKE }],
+      ["path", { d: "M8 3.5v3M16 3.5v3", ...ROUND }],
+    ],
+  },
+  {
+    id: "last-race",
+    label: "Last Race",
+    icon: [
+      ["path", { d: "M5 21V3", ...ROUND }],
+      ["path", { d: "M5 4.5h9.5l-1.6 3 1.6 3H5", ...ROUND, "stroke-linejoin": "round" }],
+    ],
+  },
+  {
+    id: "season-standings",
+    label: "Standings",
+    icon: [
+      ["path", { d: "M7 4.5h10v3.2a5 5 0 0 1-10 0V4.5Z", ...STROKE, "stroke-linejoin": "round" }],
+      ["path", { d: "M7 5.3H4.8a2.1 2.1 0 0 0 2.2 3.6M17 5.3h2.2a2.1 2.1 0 0 1-2.2 3.6", ...ROUND }],
+      ["path", { d: "M12 11.7v3.6", ...ROUND }],
+      ["path", { d: "M9 19.5h6", ...ROUND }],
+      ["path", { d: "M9.6 19.5 10 16h4l.4 3.5", ...STROKE, "stroke-linejoin": "round" }],
+    ],
+  },
+  {
+    id: "telemetry",
+    label: "Telemetry",
+    icon: [
+      ["path", { d: "M4.5 20V4M4.5 20h15.5", ...ROUND }],
+      ["path", { d: "M6.8 15.6 10.2 11l3 2.6 4.5-6.4", ...ROUND, "stroke-linejoin": "round" }],
+    ],
+  },
+  {
+    id: "about",
+    label: "About",
+    icon: [
+      ["circle", { cx: "12", cy: "12", r: "8.25", ...STROKE }],
+      ["path", { d: "M12 11v5.2", ...ROUND, "stroke-width": "1.8" }],
+      ["circle", { cx: "12", cy: "8", r: "1", fill: "currentColor" }],
+    ],
+  },
+];
+
+const MENU_ICON: SvgPart[] = [["path", { d: "M4 7h16M4 12h16M4 17h16", ...ROUND }]];
+const CLOSE_ICON: SvgPart[] = [["path", { d: "M6 6l12 12M18 6L6 18", ...ROUND }]];
+
+function svgNode(tag: string, attrs: Record<string, string>): SVGElement {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  return node;
+}
+
+function svgIcon(parts: SvgPart[]): SVGElement {
+  const svg = svgNode("svg", { width: "17", height: "17", viewBox: "0 0 24 24", fill: "none", "aria-hidden": "true" });
+  for (const [tag, attrs] of parts) svg.append(svgNode(tag, attrs));
+  return svg;
+}
+
+const navAccount = el("div", { class: "navbar__account" });
+
+// Built once, above <main>, so it spans the page like the public bar. Links
+// go to the public page, which scrolls to /#<section> on load. Below the
+// 840px breakpoint the menu button shows and hides the links and account.
+function mountNavbar() {
+  const nav = el(
+    "nav",
+    { class: "navbar__nav", id: "admin-nav", "aria-label": "Site" },
+    ...NAV_ITEMS.map(({ id, label, icon }) =>
+      el(
+        "a",
+        { class: "navbar__nav-item", href: `/#${id}` },
+        el("span", { class: "navbar__nav-icon" }, svgIcon(icon)),
+        el("span", {}, label),
+      ),
+    ),
+  );
+  const menuBtn = el("button", { type: "button", class: "navbar__menu-btn", "aria-controls": "admin-nav" });
+  const bar = el(
+    "header",
+    { class: "navbar glass" },
+    el(
+      "a",
+      { class: "navbar__brand", href: "/" },
+      el("span", { class: "navbar__brand-mark", "aria-hidden": "true" }),
+      el("span", { class: "navbar__brand-word" }, "F1 Tracker"),
+    ),
+    nav,
+    navAccount,
+    menuBtn,
+  );
+
+  function setOpen(open: boolean) {
+    bar.classList.toggle("navbar--open", open);
+    menuBtn.setAttribute("aria-expanded", String(open));
+    menuBtn.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
+    menuBtn.replaceChildren(svgIcon(open ? CLOSE_ICON : MENU_ICON));
+  }
+  setOpen(false);
+  menuBtn.addEventListener("click", () => setOpen(!bar.classList.contains("navbar--open")));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && bar.classList.contains("navbar--open")) {
+      setOpen(false);
+      menuBtn.focus();
+    }
+  });
+  document.body.prepend(bar);
+}
+
 function renderSignedIn(email: string) {
-  const signOut = el("button", { type: "button" }, "Sign out");
+  const signOut = el("button", { type: "button", class: "navbar__pill" }, "Sign out");
   signOut.addEventListener("click", async () => {
     try {
       const { error } = await auth.signOut();
@@ -478,8 +610,9 @@ function renderSignedIn(email: string) {
       alert(`Sign-out failed: ${String(err)}`);
     }
   });
+  navAccount.replaceChildren(el("span", { class: "navbar__email" }, email), signOut);
   root.replaceChildren(
-    el("header", {}, el("h1", {}, "F1 Tracker admin"), el("span", { class: "muted" }, `Signed in as ${email} `, signOut)),
+    el("header", {}, el("h1", {}, "Admin")),
     panel("Data status", statusPanel),
     panel("How the API checked you", checksPanel),
     fetchPanel(),
@@ -522,7 +655,8 @@ function renderSignedOut(message = "") {
       submit.disabled = false;
     }
   });
-  root.replaceChildren(el("header", {}, el("h1", {}, "F1 Tracker admin")), form);
+  navAccount.replaceChildren();
+  root.replaceChildren(el("header", {}, el("h1", {}, "Admin")), form);
 }
 
 async function start() {
@@ -532,4 +666,5 @@ async function start() {
   else renderSignedOut(error ? `Neon Auth: ${error.message ?? error.status}` : "");
 }
 
+mountNavbar();
 start().catch((e: unknown) => renderSignedOut(authErrorText(e)));
