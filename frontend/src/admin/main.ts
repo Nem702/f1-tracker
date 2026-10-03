@@ -1,4 +1,5 @@
-// /admin: Neon Auth sign-in plus two read-only panels over /api/admin/*.
+// /admin: Neon Auth sign-in plus three panels over /api/admin/*: two
+// read-only, and one that starts the fetch workflow on GitHub Actions.
 //
 // Plain DOM, no React, and no imports from the public app: any module
 // shared with index.html would be split into a shared chunk and change the
@@ -35,7 +36,7 @@ function el(tag: string, attrs: Record<string, string> = {}, ...children: Child[
   return node;
 }
 
-function table(headers: string[], rows: (string | number | null)[][]): HTMLElement {
+function table(headers: string[], rows: (Node | string | number | null)[][]): HTMLElement {
   return el(
     "div",
     { class: "scroll" },
@@ -43,7 +44,13 @@ function table(headers: string[], rows: (string | number | null)[][]): HTMLEleme
       "table",
       {},
       el("thead", {}, el("tr", {}, ...headers.map((h) => el("th", {}, h)))),
-      el("tbody", {}, ...rows.map((r) => el("tr", {}, ...r.map((c) => el("td", { class: "wrap" }, String(c ?? "—")))))),
+      el(
+        "tbody",
+        {},
+        ...rows.map((r) =>
+          el("tr", {}, ...r.map((c) => el("td", { class: "wrap" }, c instanceof Node ? c : String(c ?? "—")))),
+        ),
+      ),
     ),
   );
 }
@@ -52,7 +59,16 @@ function unixToIso(seconds: unknown): string {
   return typeof seconds === "number" ? new Date(seconds * 1000).toISOString() : String(seconds);
 }
 
-class ApiError extends Error {}
+class ApiError extends Error {
+  status: number | null;
+  detail: string | null;
+
+  constructor(message: string, status: number | null = null, detail: string | null = null) {
+    super(message);
+    this.status = status;
+    this.detail = detail;
+  }
+}
 
 // The SDK's AuthError carries the HTTP status when Neon answered; anything
 // else (e.g. fetch's TypeError) means the request never got a response.
@@ -62,7 +78,7 @@ function authErrorText(err: unknown): string {
   return `Could not reach Neon Auth: ${String(err)}`;
 }
 
-async function adminGet<T>(path: string): Promise<T> {
+async function adminFetch<T>(path: string, method: "GET" | "POST" = "GET"): Promise<T> {
   // A fresh JWT per call: they live 15 minutes. Fetched directly because the
   // SDK's auth.token() maps /token to getSession and answers from its session
   // cache without a request, so it never returns a token.
@@ -71,10 +87,11 @@ async function adminGet<T>(path: string): Promise<T> {
   if (typeof token !== "string" || !token) {
     throw new ApiError(`Could not get a token from Neon Auth (${tokenRes.status}) — try signing in again.`);
   }
-  const res = await fetch(`${API_BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetch(`${API_BASE}${path}`, { method, headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(`HTTP ${res.status} — ${body.detail ?? res.statusText}`);
+    const detail = typeof body.detail === "string" ? body.detail : null;
+    throw new ApiError(`HTTP ${res.status} — ${detail ?? res.statusText}`, res.status, detail);
   }
   return res.json() as Promise<T>;
 }
@@ -107,19 +124,129 @@ type StatusResponse = {
   next_race_fetched_at: string | null;
 };
 
+function errorText(e: unknown): string {
+  return e instanceof ApiError ? e.message : `Request failed: ${String(e)}`;
+}
+
 function panel(title: string, load: () => Promise<Node[]>): HTMLElement {
   const body = el("div", {}, el("p", { class: "muted" }, "Loading…"));
   load()
     .then((nodes) => body.replaceChildren(...nodes))
-    .catch((e: unknown) => {
-      const msg = e instanceof ApiError ? e.message : `Request failed: ${String(e)}`;
-      body.replaceChildren(el("p", { class: "error" }, msg));
-    });
+    .catch((e: unknown) => body.replaceChildren(el("p", { class: "error" }, errorText(e))));
   return el("section", {}, el("h2", {}, title), body);
 }
 
+// Fixed, like the repo/workflow constants in backend/api/github_actions.py.
+const WORKFLOW_PAGE = "https://github.com/Nem702/f1-tracker/actions/workflows/fetch.yml";
+const NOT_CONFIGURED = "GitHub Actions not configured";
+
+type Run = {
+  id: number;
+  status: string | null;
+  conclusion: string | null;
+  event: string | null;
+  created_at: string | null;
+  html_url: string | null;
+};
+type RunsResponse = { state: string; runs: Run[] };
+
+function externalLink(href: string, text: string): HTMLElement {
+  return el("a", { href, target: "_blank", rel: "noopener noreferrer" }, text);
+}
+
+function runLink(run: Run): Node | string {
+  // Only GitHub URLs become links, whatever the API passes through.
+  return run.html_url?.startsWith("https://github.com/") ? externalLink(run.html_url, `#${run.id}`) : `#${run.id}`;
+}
+
+function fetchPanel(): HTMLElement {
+  const title = el("h2", {}, "Fetch");
+  const stateLine = el("p", { class: "muted" }, "Loading…");
+  const message = el("p", { role: "status" });
+  const runsBox = el("div");
+  const runButton = el("button", { type: "button" }, "Fetch latest data") as HTMLButtonElement;
+  const refreshButton = el("button", { type: "button" }, "Refresh") as HTMLButtonElement;
+  const enableButton = el("button", { type: "button", hidden: "" }, "Re-enable schedule") as HTMLButtonElement;
+  const buttons = [runButton, refreshButton, enableButton];
+  const section = el(
+    "section",
+    {},
+    title,
+    stateLine,
+    el("div", { class: "actions" }, ...buttons),
+    message,
+    runsBox,
+  );
+
+  function say(text: string, isError = false) {
+    message.className = isError ? "error" : "muted";
+    message.textContent = text;
+  }
+
+  async function load() {
+    const r = await adminFetch<RunsResponse>("/api/admin/runs");
+    stateLine.textContent = `Workflow state: ${r.state}`;
+    enableButton.hidden = r.state === "active";
+    runsBox.replaceChildren(
+      r.runs.length
+        ? table(
+            ["Run", "Status", "Conclusion", "Event", "Created"],
+            r.runs.map((run) => [runLink(run), run.status, run.conclusion, run.event, run.created_at]),
+          )
+        : el("p", { class: "muted" }, "No runs yet."),
+    );
+  }
+
+  // One request at a time: every button is disabled while one is in flight.
+  async function busy(action: () => Promise<string | void>) {
+    for (const b of buttons) b.disabled = true;
+    say("");
+    try {
+      const done = await action();
+      if (done) say(done);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 503 && e.detail === NOT_CONFIGURED) {
+        section.replaceChildren(
+          title,
+          el(
+            "p",
+            {},
+            "Fetching from here isn't configured on this server. ",
+            externalLink(WORKFLOW_PAGE, "Run it from GitHub Actions"),
+            ".",
+          ),
+        );
+      } else {
+        // A failed first load must not leave "Loading…" up.
+        if (stateLine.textContent === "Loading…") stateLine.textContent = "Workflow state: unknown";
+        say(errorText(e), true);
+      }
+    } finally {
+      for (const b of buttons) b.disabled = false;
+    }
+  }
+
+  runButton.addEventListener("click", () =>
+    busy(async () => {
+      await adminFetch("/api/admin/fetch", "POST");
+      return "Run requested. It may take a few seconds to show up — press Refresh.";
+    }),
+  );
+  refreshButton.addEventListener("click", () => busy(load));
+  enableButton.addEventListener("click", () =>
+    busy(async () => {
+      await adminFetch("/api/admin/fetch/enable", "POST");
+      await load();
+      return "Schedule re-enabled.";
+    }),
+  );
+
+  void busy(load);
+  return section;
+}
+
 async function statusPanel(): Promise<Node[]> {
-  const s = await adminGet<StatusResponse>("/api/admin/status");
+  const s = await adminFetch<StatusResponse>("/api/admin/status");
   const latest = s.latest_race;
   const next = s.next_race;
   return [
@@ -155,7 +282,7 @@ async function statusPanel(): Promise<Node[]> {
 }
 
 async function checksPanel(): Promise<Node[]> {
-  const me = await adminGet<MeResponse>("/api/admin/me");
+  const me = await adminFetch<MeResponse>("/api/admin/me");
   return [
     table(["Check", "Passed with"], me.checks.map((c) => [c.check, c.detail])),
     el("h2", {}, "Decoded claims"),
@@ -185,6 +312,7 @@ function renderSignedIn(email: string) {
     el("header", {}, el("h1", {}, "F1 Tracker admin"), el("span", { class: "muted" }, `Signed in as ${email} `, signOut)),
     panel("Data status", statusPanel),
     panel("How the API checked you", checksPanel),
+    fetchPanel(),
   );
 }
 

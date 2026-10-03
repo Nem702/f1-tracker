@@ -2,7 +2,8 @@
 Read-only JSON API over the f1-tracker Postgres database, for the Part 6
 frontend. Serves what the fetch pipeline has already persisted — it never
 calls OpenF1 itself, so it's immune to rate limits and the live-session
-lockout. No writes: every endpoint is a SELECT.
+lockout. No database writes: every endpoint is a SELECT. The one write of
+any kind is the admin-only fetch trigger, which starts a GitHub Actions run.
 
 Several documented exceptions call out live instead of reading Postgres,
 each through its own cache (persisted to disk so a restart keeps the
@@ -39,6 +40,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from psycopg2.extras import RealDictCursor
 
+from backend.api import github_actions
 from backend.api.admin_auth import require_admin
 from backend.shared.db import get_readonly_connection
 from backend.shared.logger import logger
@@ -156,7 +158,8 @@ if not _allowed_origins:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    allow_methods=["GET"],
+    # POST is for the admin fetch routes; every public route is GET-only.
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)
@@ -630,8 +633,9 @@ def race_control(session_key: int, response: Response, conn=Depends(get_db)):
     )
 
 
-# Admin routes: read-only like everything above, gated by require_admin
-# (see admin_auth.py). Cache-Control: no-store comes from the middleware.
+# Admin routes, gated by require_admin (see admin_auth.py). /me and /status
+# are read-only; the /fetch routes call GitHub Actions (github_actions.py).
+# Cache-Control: no-store comes from the middleware.
 
 @app.get("/api/admin/me")
 def admin_me(admin=Depends(require_admin)):
@@ -672,3 +676,27 @@ def admin_status(conn=Depends(get_db)):
         "next_race": cached.get("next_session") if cached else None,
         "next_race_fetched_at": cached.get("fetched_at") if cached else None,
     }
+
+
+@app.post("/api/admin/fetch", status_code=202, dependencies=[Depends(require_admin)])
+def admin_fetch():
+    # GitHub won't run a disabled workflow; say so rather than re-enabling
+    # it behind the admin's back.
+    state = github_actions.workflow_state()
+    if state != "active":
+        raise HTTPException(status_code=409, detail=f"Workflow is {state}; re-enable it first")
+    github_actions.dispatch()
+    logger.info("admin: fetch workflow dispatched")
+    return {"detail": "Run requested"}
+
+
+@app.get("/api/admin/runs", dependencies=[Depends(require_admin)])
+def admin_runs():
+    return {"state": github_actions.workflow_state(), "runs": github_actions.list_runs()}
+
+
+@app.post("/api/admin/fetch/enable", dependencies=[Depends(require_admin)])
+def admin_fetch_enable():
+    github_actions.enable()
+    logger.info("admin: fetch workflow enabled")
+    return {"state": "active"}
