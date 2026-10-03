@@ -2,8 +2,10 @@
 Read-only JSON API over the f1-tracker Postgres database, for the Part 6
 frontend. Serves what the fetch pipeline has already persisted — it never
 calls OpenF1 itself, so it's immune to rate limits and the live-session
-lockout. No database writes: every endpoint is a SELECT. The one write of
-any kind is the admin-only fetch trigger, which starts a GitHub Actions run.
+lockout. Every public endpoint is a SELECT. The writes are admin-only: the
+fetch trigger starts a GitHub Actions run, and the circuit-facts save
+(PUT /api/admin/circuit-facts/{circuit_id}) is the one route that writes to
+the database, through its own role that can touch only that table.
 
 Several documented exceptions call out live instead of reading Postgres,
 each through its own cache (persisted to disk so a restart keeps the
@@ -34,15 +36,16 @@ from collections import defaultdict, deque
 from datetime import datetime, timezone
 from pathlib import Path
 
+import psycopg2
 from fastapi import FastAPI, Depends, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from psycopg2.extras import RealDictCursor
 
-from backend.api import github_actions
+from backend.api import circuit_facts, github_actions
 from backend.api.admin_auth import require_admin
-from backend.shared.db import get_readonly_connection
+from backend.shared.db import get_admin_connection, get_readonly_connection
 from backend.shared.logger import logger
 from backend.shared.jolpica_lookup import find_jolpica_round
 from backend.shared.jolpica_results import get_official_result
@@ -158,8 +161,9 @@ if not _allowed_origins:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    # POST is for the admin fetch routes; every public route is GET-only.
-    allow_methods=["GET", "POST"],
+    # POST is for the admin fetch routes and PUT for the admin circuit-facts
+    # save; every public route is GET-only.
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["*"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=500)
@@ -354,6 +358,25 @@ def _save_race_weekend_cache(payload):
 _load_race_weekend_cache()
 
 
+def _apply_circuit_facts_row(result):
+    """Swap in the admin-edited facts for this circuit, if there's a row.
+    Any DB failure keeps the JSON facts get_race_weekend() already set: an
+    unreachable or not-yet-migrated table must never cost the card its facts,
+    let alone turn this endpoint into a 5xx."""
+    circuit_id = result["circuit"]["circuit_id"]
+    try:
+        conn = get_readonly_connection()
+        try:
+            rows = query(conn, "SELECT * FROM circuit_facts WHERE circuit_id = %s", (circuit_id,))
+        finally:
+            conn.close()
+    except Exception:
+        logger.exception("GET /api/race-weekend - circuit_facts lookup failed, keeping the JSON facts")
+        return
+    if rows:
+        result["circuit"]["facts"] = circuit_facts.row_to_facts(rows[0])
+
+
 @app.get("/api/race-weekend")
 def race_weekend():
     """Jolpica-backed aggregate for the race-weekend page: round/circuit,
@@ -379,6 +402,8 @@ def race_weekend():
         logger.warning("GET /api/race-weekend - no usable cache, returning null")
         return {"race_weekend": None, "fetched_at": _utc_now_iso()}
 
+    if result is not None:
+        _apply_circuit_facts_row(result)
     payload = {"race_weekend": result, "fetched_at": _utc_now_iso()}
     _race_weekend_cache["payload"] = payload
     _race_weekend_cache["fetched_at"] = now
@@ -633,8 +658,10 @@ def race_control(session_key: int, response: Response, conn=Depends(get_db)):
     )
 
 
-# Admin routes, gated by require_admin (see admin_auth.py). /me and /status
-# are read-only; the /fetch routes call GitHub Actions (github_actions.py).
+# Admin routes, gated by require_admin (see admin_auth.py). /me, /status and
+# the circuit-facts list are read-only; the /fetch routes call GitHub Actions
+# (github_actions.py); the circuit-facts PUT is the one route that writes to
+# the database, through get_admin_connection() and nothing else.
 # Cache-Control: no-store comes from the middleware.
 
 @app.get("/api/admin/me")
@@ -700,3 +727,46 @@ def admin_fetch_enable():
     github_actions.enable()
     logger.info("admin: fetch workflow enabled")
     return {"state": "active"}
+
+
+@app.get("/api/admin/circuit-facts", dependencies=[Depends(require_admin)])
+def admin_circuit_facts(conn=Depends(get_db)):
+    rows = {r["circuit_id"]: r for r in query(conn, "SELECT * FROM circuit_facts")}
+    return [circuit_facts.effective(cid, rows.get(cid)) for cid in circuit_facts.JSON_FACTS]
+
+
+def _patch_race_weekend_cache(circuit_id, facts):
+    """Update the cached race-weekend payload in place, in memory and on
+    disk, when it shows this circuit. Deliberately not a cache clear: that
+    forces a full Jolpica refetch, and if Jolpica is down the card goes blank
+    instead of serving the stale copy."""
+    payload = _race_weekend_cache["payload"]
+    circuit = ((payload or {}).get("race_weekend") or {}).get("circuit") or {}
+    if circuit.get("circuit_id") == circuit_id:
+        circuit["facts"] = facts
+        _save_race_weekend_cache(payload)
+
+
+@app.put("/api/admin/circuit-facts/{circuit_id}")
+def admin_save_circuit_facts(circuit_id: str, facts: circuit_facts.CircuitFacts, admin=Depends(require_admin)):
+    if circuit_id not in circuit_facts.JSON_FACTS:
+        raise HTTPException(status_code=404, detail=f"Unknown circuit {circuit_id}")
+    try:
+        conn = get_admin_connection()
+    except Exception:
+        # An unset NEON_DATABASE_URL_ADMIN lands here as a KeyError.
+        logger.exception("admin: circuit-facts connection failed")
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    try:
+        row = circuit_facts.upsert(conn, circuit_id, facts, admin["claims"]["sub"])
+    except psycopg2.Error:
+        # E.g. the table or a grant is missing: a 503 the page can show,
+        # rather than a bare 500 that never reaches the CORS layer.
+        logger.exception("admin: circuit-facts save failed")
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    finally:
+        conn.close()
+    item = circuit_facts.effective(circuit_id, row)
+    _patch_race_weekend_cache(circuit_id, item["facts"])
+    logger.info("admin: circuit facts saved for %s", circuit_id)
+    return item
