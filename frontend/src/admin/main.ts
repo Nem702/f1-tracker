@@ -11,9 +11,9 @@ import "./admin.css";
 // Same default as src/api/client.ts (not imported, see above).
 const API_BASE: string = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
-// Production goes same-origin through the /neon-auth Vercel rewrite, so the
-// session cookie is first-party (Safari blocks it cross-site). Dev talks to
-// Neon Auth directly; "Allow Localhost" is on for that.
+// Production goes same-origin through the /neon-auth proxy function
+// (api/neon-auth.ts), so the session cookie is first-party (Safari blocks it
+// cross-site). Dev talks to Neon Auth directly; "Allow Localhost" is on for that.
 const AUTH_BASE: string = import.meta.env.PROD
   ? `${location.origin}/neon-auth`
   : import.meta.env.VITE_NEON_AUTH_URL;
@@ -53,6 +53,14 @@ function unixToIso(seconds: unknown): string {
 }
 
 class ApiError extends Error {}
+
+// The SDK's AuthError carries the HTTP status when Neon answered; anything
+// else (e.g. fetch's TypeError) means the request never got a response.
+function authErrorText(err: unknown): string {
+  const status = (err as { status?: unknown } | null)?.status;
+  if (typeof status === "number") return `Neon Auth: ${(err as Error).message} (${status})`;
+  return `Could not reach Neon Auth: ${String(err)}`;
+}
 
 async function adminGet<T>(path: string): Promise<T> {
   // A fresh JWT per call: they live 15 minutes and the SDK caches the session.
@@ -205,7 +213,7 @@ function renderSignedOut(message = "") {
       }
       renderSignedIn(data.user.email);
     } catch (err) {
-      status.textContent = `Could not reach Neon Auth: ${String(err)}`;
+      status.textContent = authErrorText(err);
     } finally {
       submit.disabled = false;
     }
@@ -220,4 +228,4 @@ async function start() {
   else renderSignedOut(error ? `Neon Auth: ${error.message ?? error.status}` : "");
 }
 
-start().catch((e: unknown) => renderSignedOut(`Could not reach Neon Auth: ${String(e)}`));
+start().catch((e: unknown) => renderSignedOut(authErrorText(e)));
