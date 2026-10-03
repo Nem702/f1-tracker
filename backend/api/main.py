@@ -39,6 +39,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from psycopg2.extras import RealDictCursor
 
+from backend.api.admin_auth import require_admin
 from backend.shared.db import get_readonly_connection
 from backend.shared.logger import logger
 from backend.shared.jolpica_lookup import find_jolpica_round
@@ -115,6 +116,10 @@ async def rate_limit(request: Request, call_next):
     # nosniff on every response: near-zero cost, and stops a browser from
     # ever second-guessing the JSON content type.
     response.headers["X-Content-Type-Options"] = "nosniff"
+    # Admin responses are per-user: never stored by a browser or proxy.
+    # Set here rather than per route so 401/403/503 carry it too.
+    if request.url.path.startswith("/api/admin/"):
+        response.headers["Cache-Control"] = "no-store"
     return response
 
 
@@ -623,3 +628,47 @@ def race_control(session_key: int, response: Response, conn=Depends(get_db)):
         "SELECT * FROM race_control WHERE session_key = %s ORDER BY date",
         (session_key,),
     )
+
+
+# Admin routes: read-only like everything above, gated by require_admin
+# (see admin_auth.py). Cache-Control: no-store comes from the middleware.
+
+@app.get("/api/admin/me")
+def admin_me(admin=Depends(require_admin)):
+    claims = admin["claims"]
+    return {
+        "user_id": claims["sub"],
+        "email": claims.get("email"),
+        "iat": claims["iat"],
+        "exp": claims["exp"],
+        "checks": admin["checks"],
+        "claims": claims,
+    }
+
+
+@app.get("/api/admin/status", dependencies=[Depends(require_admin)])
+def admin_status(conn=Depends(get_db)):
+    # One query: every stored race with its per-table row counts, newest
+    # first, so the first row is also the latest stored race.
+    races = query(
+        conn,
+        """
+        SELECT r.session_key, r.location, r.country_name, r.date_start,
+               (SELECT count(*) FROM laps l WHERE l.session_key = r.session_key) AS laps,
+               (SELECT count(*) FROM pit p WHERE p.session_key = r.session_key) AS pit,
+               (SELECT count(*) FROM stints s WHERE s.session_key = r.session_key) AS stints,
+               (SELECT count(*) FROM positions po WHERE po.session_key = r.session_key) AS positions,
+               (SELECT count(*) FROM race_control rc WHERE rc.session_key = r.session_key) AS race_control,
+               (SELECT count(*) FROM weather w WHERE w.session_key = r.session_key) AS weather
+        FROM races r
+        ORDER BY r.date_start DESC NULLS LAST
+        """,
+    )
+    # Next race from the in-process cache only — no upstream call from here.
+    cached = _next_race_cache["payload"]
+    return {
+        "latest_race": races[0] if races else None,
+        "races": races,
+        "next_race": cached.get("next_session") if cached else None,
+        "next_race_fetched_at": cached.get("fetched_at") if cached else None,
+    }
