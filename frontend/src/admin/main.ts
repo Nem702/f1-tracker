@@ -63,10 +63,15 @@ function authErrorText(err: unknown): string {
 }
 
 async function adminGet<T>(path: string): Promise<T> {
-  // A fresh JWT per call: they live 15 minutes and the SDK caches the session.
-  const { data, error } = await auth.token();
-  if (error || !data?.token) throw new ApiError("Could not get a token from Neon Auth — try signing in again.");
-  const res = await fetch(`${API_BASE}${path}`, { headers: { Authorization: `Bearer ${data.token}` } });
+  // A fresh JWT per call: they live 15 minutes. Fetched directly because the
+  // SDK's auth.token() maps /token to getSession and answers from its session
+  // cache without a request, so it never returns a token.
+  const tokenRes = await fetch(`${AUTH_BASE}/token`, { credentials: "include" });
+  const token = tokenRes.ok ? ((await tokenRes.json().catch(() => ({}))) as { token?: unknown }).token : undefined;
+  if (typeof token !== "string" || !token) {
+    throw new ApiError(`Could not get a token from Neon Auth (${tokenRes.status}) — try signing in again.`);
+  }
+  const res = await fetch(`${API_BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new ApiError(`HTTP ${res.status} — ${body.detail ?? res.statusText}`);
