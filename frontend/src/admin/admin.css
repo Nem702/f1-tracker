@@ -130,6 +130,21 @@ td.wrap {
   word-break: break-all;
 }
 
-.error:empty {
+.error:empty,
+.muted:empty {
   display: none;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+button[hidden] {
+  display: none;
+}
+
+a {
+  color: inherit;
 }
