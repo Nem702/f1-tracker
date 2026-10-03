@@ -11,10 +11,17 @@ on:
 permissions:
   contents: read
 
+# One fetch at a time: a manual run (and, later, one started from the site)
+# queues behind a running one instead of racing it. Queued, not cancelled —
+# a cancelled run would drop the races it hadn't reached yet.
+concurrency:
+  group: fetch-f1-data
+  cancel-in-progress: false
+
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       # Actions pinned to commit SHAs (tag comments alongside) so a moved or
       # compromised tag can't swap the code this job runs with the DB secret.

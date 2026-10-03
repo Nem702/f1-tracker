@@ -219,6 +219,18 @@ def race_control_already_fetched(conn, session_key):
         return cur.fetchone()[0]
 
 
+def session_keys_with_laps(conn):
+    """Session keys that already have laps stored — the same EXISTS test as
+    the API's has_laps. A race with no races row at all isn't returned, so
+    it counts as missing too."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT session_key FROM races r "
+            "WHERE EXISTS (SELECT 1 FROM laps l WHERE l.session_key = r.session_key)"
+        )
+        return {row[0] for row in cur.fetchall()}
+
+
 def insert_race_control(conn, session_key, messages):
     """messages is the raw list of dicts from /race_control — session-wide, insert-only.
     No ON CONFLICT: this is an append-only event log, not upserted.

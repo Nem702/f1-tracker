@@ -32,6 +32,7 @@ from backend.pipeline.store import (
     upsert_positions,
     race_control_already_fetched,
     insert_race_control,
+    session_keys_with_laps,
 )
 from backend.pipeline.fetch_audit import assert_fetch_counts
 
@@ -64,6 +65,33 @@ def get_latest_completed_race_session(year=2026):
     if not completed:
         raise ValueError(f"No completed races found for {year}")
     return completed[-1]
+
+
+def select_sessions_to_fetch(completed, stored_keys):
+    """Pure catch-up selection: the latest completed race first, always —
+    re-fetching it is what the default run has always done — then every
+    other completed race with no laps stored, oldest first. completed is
+    get_completed_race_sessions() output (oldest first); stored_keys is the
+    set of session keys that already have laps."""
+    if not completed:
+        raise ValueError("No completed races found")
+    latest = completed[-1]
+    missing = [s for s in completed[:-1] if s["session_key"] not in stored_keys]
+    return [latest] + missing
+
+
+def format_catch_up(missing):
+    """The run log's one-line record of what catch-up picked and why."""
+    if not missing:
+        return "Catch-up: none — every other completed race has laps stored"
+    picked = ", ".join(
+        f"{s['location']} ({s['date_start'][:10]}, session_key={s['session_key']})"
+        for s in missing
+    )
+    return (
+        f"Catch-up: {len(missing)} completed race(s) with no laps stored, "
+        f"fetching oldest first: {picked}"
+    )
 
 
 def _group_by_driver(rows, endpoint):
@@ -194,7 +222,10 @@ def process_session(conn, session):
 def main():
     logger.info("F1 tracker run started")
 
-    session = get_latest_completed_race_session()
+    completed = get_completed_race_sessions()
+    if not completed:
+        raise ValueError("No completed races found for 2026")
+    session = completed[-1]
     logger.info(
         "Latest completed race: %s (%s) — session_key=%s",
         session["location"],
@@ -204,7 +235,13 @@ def main():
 
     conn = get_connection()
     try:
-        process_session(conn, session)
+        sessions = select_sessions_to_fetch(completed, session_keys_with_laps(conn))
+        logger.info(format_catch_up(sessions[1:]))
+
+        # Latest first, so it's committed before any catch-up race runs.
+        # FetchVerificationError propagates and aborts, as in backfill.
+        for s in sessions:
+            process_session(conn, s)
         logger.info("F1 tracker run complete")
     finally:
         conn.close()
