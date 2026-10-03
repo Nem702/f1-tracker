@@ -518,6 +518,12 @@ def official_result(session_key: int, conn=Depends(get_db)):
         },
         "fetched_at": _utc_now_iso(),
     }
+    # An empty race classification means Jolpica hasn't published the result
+    # yet — serve it, but don't cache it, or the no-TTL cache would hold the
+    # empty result forever.
+    if not result["race"]:
+        logger.debug("GET /api/races/%s/official-result - race result not published yet, not caching", session_key)
+        return payload
     _official_result_cache[cache_key] = payload
     _save_official_result_cache()
     logger.debug("GET /api/races/%s/official-result - fetched fresh from Jolpica", session_key)

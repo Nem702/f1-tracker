@@ -1,0 +1,12 @@
+# Test-only deps, for local runs and the CI workflow. Never installed by
+# Render or the fetch job. Install it on top of both runtime files:
+#   pip install -r backend/requirements.txt -r backend/api/requirements.txt -r backend/requirements-dev.txt
+# httpx is what FastAPI's TestClient uses; the rest are pytest's and httpx's
+# own deps that the runtime files don't already pull in.
+pytest==9.1.1
+httpx==0.28.1
+httpcore==1.0.9
+iniconfig==2.3.0
+packaging==26.3
+pluggy==1.6.0
+Pygments==2.21.0
