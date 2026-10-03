@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Also sent as an X-Robots-Tag header on /admin (vercel.json); this
+         covers a direct /admin.html hit, which that header rule doesn't. -->
+    <meta name="robots" content="noindex" />
+    <title>F1 Tracker admin</title>
+  </head>
+  <body>
+    <!-- Its own entry, deliberately sharing no modules with index.html, so
+         the public bundle stays byte-identical (see src/admin/main.ts). -->
+    <main id="admin"></main>
+    <script type="module" src="/src/admin/main.ts"></script>
+  </body>
+</html>

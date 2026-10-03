@@ -14,3 +14,9 @@ certifi==2026.6.17
 charset-normalizer==3.4.7
 idna==3.18
 urllib3==2.7.0
+# Admin JWT verification (backend/api/admin_auth.py): PyJWT's crypto extra
+# brings cryptography for EdDSA; cffi/pycparser are its own deps.
+PyJWT[crypto]==2.15.1
+cryptography==50.0.2
+cffi==2.1.1
+pycparser==3.0
