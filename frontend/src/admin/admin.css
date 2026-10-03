@@ -1,24 +1,15 @@
-:root {
-  color-scheme: light dark;
-  --bg: #efeff1;
-  --surface: #ffffff;
-  --text: #1c1c1f;
-  --muted: #5e5e66;
-  --line: #d6d6db;
-  --accent: #e10600;
-  --error: #b00020;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-}
+@import "@fontsource-variable/inter/wght.css";
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0e0e10;
-    --surface: #18181b;
-    --text: #e6e6ea;
-    --muted: #9a9aa3;
-    --line: #2c2c31;
-    --error: #ff6b6b;
-  }
+:root {
+  color-scheme: dark;
+  --bg: #0e0e10;
+  --surface: #18181b;
+  --text: #e6e6ea;
+  --muted: #9a9aa3;
+  --line: #2c2c31;
+  --accent: #e10600;
+  --error: #ff6b6b;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 body {
@@ -33,7 +24,7 @@ main {
   padding: 24px 16px 48px;
 }
 
-header {
+main > header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -156,4 +147,231 @@ button[hidden] {
 
 a {
   color: inherit;
+}
+
+/* ---------- site navbar ---------- */
+/* A copy of the public bar (src/components/Navbar.tsx + index.css), not an
+   import: sharing a module with index.html would change the public bundle.
+   The variables are the public theme's dark values for the default tint
+   (theme.ts base.dark + TEAM_PALETTES.dark.ferrari), scoped to .navbar so
+   they don't collide with this page's own --accent. Copied, so a palette
+   change in theme.ts does not reach this page on its own. */
+
+.navbar {
+  --glass: rgba(30, 30, 34, 0.44);
+  --glass-opaque: rgba(26, 26, 30, 0.85);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --spec: rgba(255, 255, 255, 0.14);
+  --shadow-card: 0 24px 48px -20px rgba(0, 0, 0, 0.65);
+  --ink-primary: #ffffff;
+  --ink-secondary: #c3c2b7;
+  --ink-muted: #898781;
+  --border: rgba(255, 255, 255, 0.1);
+  --accent: #ff4438;
+  --driver2: #bf8b00;
+  --glass-blur: 16px;
+  --radius-sm: 10px;
+  --radius-rail: 28px;
+  --radius-pill: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+
+  position: sticky;
+  top: 16px;
+  z-index: 5;
+  margin: 16px;
+  border-radius: var(--radius-rail);
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  color: var(--ink-primary);
+  font-family: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.navbar,
+.navbar * {
+  box-sizing: border-box;
+}
+
+.glass {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    inset 0 1px 0 var(--spec),
+    var(--shadow-card);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass {
+    background: var(--glass-opaque);
+  }
+}
+
+.navbar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--ink-primary);
+  text-decoration: none;
+  font-weight: 650;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+.navbar__brand-mark {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--accent), var(--driver2));
+}
+
+.navbar__nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: 0;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.navbar__nav::-webkit-scrollbar {
+  display: none;
+}
+
+.navbar__nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  padding: 8px var(--space-3);
+  border-radius: var(--radius-pill);
+  color: var(--ink-secondary);
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  transition: color 0.2s ease;
+}
+
+.navbar__nav-item:hover {
+  color: var(--ink-primary);
+}
+
+.navbar__nav-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+/* Email + Sign out: where the public bar has its theme toggle. */
+.navbar__account {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+  min-width: 0;
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.navbar__account:empty {
+  display: none;
+}
+
+.navbar__email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The public theme-toggle pill; also undoes this page's red `button` style. */
+.navbar__pill,
+.navbar__menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 8px var(--space-3);
+  color: var(--ink-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.navbar__pill:hover,
+.navbar__menu-btn:hover {
+  color: var(--ink-primary);
+  border-color: var(--ink-muted);
+}
+
+.navbar__menu-btn {
+  display: none;
+  margin-left: auto;
+  padding: 9px 11px;
+}
+
+/* Public nav breakpoint (840px): the links and account collapse behind the
+   menu button and drop down as full-width rows inside the bar when open. */
+@media (max-width: 840px) {
+  .navbar {
+    flex-wrap: wrap;
+    row-gap: var(--space-2);
+  }
+
+  .navbar__menu-btn {
+    display: flex;
+  }
+
+  /* order: rows drop below the brand + menu button. */
+  .navbar__nav,
+  .navbar__account {
+    display: none;
+    flex-basis: 100%;
+    order: 1;
+  }
+
+  .navbar--open .navbar__nav {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .navbar--open .navbar__account:not(:empty) {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-4) 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .navbar__nav-item {
+    padding: 12px var(--space-4);
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 640px) {
+  .navbar__brand-word {
+    display: none;
+  }
 }
