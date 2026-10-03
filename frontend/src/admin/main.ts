@@ -1,5 +1,6 @@
-// /admin: Neon Auth sign-in plus three panels over /api/admin/*: two
-// read-only, and one that starts the fetch workflow on GitHub Actions.
+// /admin: Neon Auth sign-in plus four panels over /api/admin/*: two
+// read-only, one that starts the fetch workflow on GitHub Actions, and one
+// that edits circuit facts.
 //
 // Plain DOM, no React, and no imports from the public app: any module
 // shared with index.html would be split into a shared chunk and change the
@@ -62,11 +63,14 @@ function unixToIso(seconds: unknown): string {
 class ApiError extends Error {
   status: number | null;
   detail: string | null;
+  // The parsed error body, e.g. FastAPI's 422 { detail: [{ loc, msg }] }.
+  body: unknown;
 
-  constructor(message: string, status: number | null = null, detail: string | null = null) {
+  constructor(message: string, status: number | null = null, detail: string | null = null, body: unknown = null) {
     super(message);
     this.status = status;
     this.detail = detail;
+    this.body = body;
   }
 }
 
@@ -78,7 +82,7 @@ function authErrorText(err: unknown): string {
   return `Could not reach Neon Auth: ${String(err)}`;
 }
 
-async function adminFetch<T>(path: string, method: "GET" | "POST" = "GET"): Promise<T> {
+async function adminFetch<T>(path: string, method: "GET" | "POST" | "PUT" = "GET", body?: unknown): Promise<T> {
   // A fresh JWT per call: they live 15 minutes. Fetched directly because the
   // SDK's auth.token() maps /token to getSession and answers from its session
   // cache without a request, so it never returns a token.
@@ -87,11 +91,17 @@ async function adminFetch<T>(path: string, method: "GET" | "POST" = "GET"): Prom
   if (typeof token !== "string" || !token) {
     throw new ApiError(`Could not get a token from Neon Auth (${tokenRes.status}) — try signing in again.`);
   }
-  const res = await fetch(`${API_BASE}${path}`, { method, headers: { Authorization: `Bearer ${token}` } });
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    const detail = typeof body.detail === "string" ? body.detail : null;
-    throw new ApiError(`HTTP ${res.status} — ${detail ?? res.statusText}`, res.status, detail);
+    const errBody = await res.json().catch(() => ({}));
+    const detail = typeof errBody.detail === "string" ? errBody.detail : null;
+    throw new ApiError(`HTTP ${res.status} — ${detail ?? res.statusText}`, res.status, detail, errBody);
   }
   return res.json() as Promise<T>;
 }
@@ -245,6 +255,166 @@ function fetchPanel(): HTMLElement {
   return section;
 }
 
+type LapRecord = { time: string; driver: string; year: number };
+type Facts = {
+  length_km: number;
+  turns: number;
+  laps?: number | null;
+  first_gp: number;
+  lap_record: LapRecord | null;
+  note: string;
+};
+type FactsItem = {
+  circuit_id: string;
+  source: "json" | "db";
+  facts: Facts;
+  updated_at: string | null;
+  updated_by: string | null;
+};
+
+// Keys are the field paths FastAPI reports in a 422's loc, minus "body".
+const FACT_FIELDS: { key: string; label: string; step?: string }[] = [
+  { key: "length_km", label: "Length (km)", step: "0.001" },
+  { key: "turns", label: "Turns", step: "1" },
+  { key: "laps", label: "Race laps (optional)", step: "1" },
+  { key: "first_gp", label: "First GP (year)", step: "1" },
+  { key: "lap_record.time", label: "Lap record time (m:ss.SSS)" },
+  { key: "lap_record.driver", label: "Lap record driver" },
+  { key: "lap_record.year", label: "Lap record year", step: "1" },
+  { key: "note", label: "Note" },
+];
+const LAP_RECORD_KEYS = ["lap_record.time", "lap_record.driver", "lap_record.year"];
+
+function factsToValues(f: Facts): Record<string, string> {
+  return {
+    length_km: String(f.length_km),
+    turns: String(f.turns),
+    laps: f.laps == null ? "" : String(f.laps),
+    first_gp: String(f.first_gp),
+    "lap_record.time": f.lap_record?.time ?? "",
+    "lap_record.driver": f.lap_record?.driver ?? "",
+    "lap_record.year": f.lap_record ? String(f.lap_record.year) : "",
+    note: f.note,
+  };
+}
+
+async function circuitFactsPanel(): Promise<Node[]> {
+  const items = await adminFetch<FactsItem[]>("/api/admin/circuit-facts");
+  const byId = new Map(items.map((i) => [i.circuit_id, i]));
+
+  const optionText = (i: FactsItem) => (i.source === "db" ? `${i.circuit_id} (edited)` : i.circuit_id);
+  const picker = el(
+    "select",
+    { name: "circuit" },
+    ...items.map((i) => el("option", { value: i.circuit_id }, optionText(i))),
+  ) as HTMLSelectElement;
+  const meta = el("p", { class: "muted" });
+  const message = el("p", { role: "status" });
+  const save = el("button", { type: "submit" }, "Save") as HTMLButtonElement;
+
+  const inputs = new Map<string, HTMLInputElement | HTMLTextAreaElement>();
+  const errors = new Map<string, HTMLElement>();
+  const fields = FACT_FIELDS.map(({ key, label, step }) => {
+    const input = (
+      key === "note"
+        ? el("textarea", { name: key, rows: "3" })
+        : el("input", step ? { name: key, type: "number", step } : { name: key, type: "text" })
+    ) as HTMLInputElement | HTMLTextAreaElement;
+    const error = el("span", { class: "error" });
+    inputs.set(key, input);
+    errors.set(key, error);
+    return el("label", {}, label, input, error);
+  });
+  // novalidate: the API is the one validator, and its messages land per field.
+  const form = el("form", { novalidate: "" }, el("label", {}, "Circuit", picker), ...fields, save, message);
+
+  function say(text: string, isError = false) {
+    message.className = isError ? "error" : "muted";
+    message.textContent = text;
+  }
+
+  function clearErrors() {
+    for (const e of errors.values()) e.textContent = "";
+  }
+
+  function show(item: FactsItem) {
+    for (const [key, value] of Object.entries(factsToValues(item.facts))) inputs.get(key)!.value = value;
+    clearErrors();
+    meta.textContent =
+      item.source === "db"
+        ? `Source: database · last edited ${item.updated_at} by ${item.updated_by}`
+        : "Source: circuit_facts.json (never edited)";
+  }
+
+  const text = (key: string) => inputs.get(key)!.value.trim();
+  // Blank becomes null, so a missing required number is the API's to report.
+  const num = (key: string) => (text(key) === "" ? null : Number(text(key)));
+
+  function readForm() {
+    const noRecord = LAP_RECORD_KEYS.every((k) => text(k) === "");
+    return {
+      length_km: num("length_km"),
+      turns: num("turns"),
+      laps: num("laps"),
+      first_gp: num("first_gp"),
+      lap_record: noRecord
+        ? null
+        : { time: text("lap_record.time"), driver: text("lap_record.driver"), year: num("lap_record.year") },
+      note: text("note"),
+    };
+  }
+
+  // Puts each 422 message next to its field; returns the ones with no field.
+  function showValidation(detail: unknown): string[] {
+    const unmatched: string[] = [];
+    if (!Array.isArray(detail)) return unmatched;
+    for (const issue of detail as { loc?: unknown[]; msg?: unknown }[]) {
+      const key = (issue.loc ?? []).slice(1).join(".");
+      const msg = String(issue.msg ?? "invalid");
+      const target = errors.get(key);
+      if (target) target.textContent = target.textContent ? `${target.textContent}; ${msg}` : msg;
+      else unmatched.push(`${key || "body"}: ${msg}`);
+    }
+    return unmatched;
+  }
+
+  picker.addEventListener("change", () => {
+    say("");
+    show(byId.get(picker.value)!);
+  });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const circuitId = picker.value;
+    save.disabled = picker.disabled = true;
+    clearErrors();
+    say("");
+    try {
+      const saved = await adminFetch<FactsItem>(
+        `/api/admin/circuit-facts/${encodeURIComponent(circuitId)}`,
+        "PUT",
+        readForm(),
+      );
+      byId.set(circuitId, saved);
+      picker.selectedOptions[0].textContent = optionText(saved);
+      show(saved);
+      say("Saved.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 422) {
+        const unmatched = showValidation((err.body as { detail?: unknown } | null)?.detail);
+        say(unmatched.length ? unmatched.join("; ") : "Fix the fields marked above.", true);
+      } else {
+        say(errorText(err), true);
+      }
+    } finally {
+      save.disabled = picker.disabled = false;
+    }
+  });
+
+  if (items.length) show(items[0]);
+  return [meta, form];
+}
+
 async function statusPanel(): Promise<Node[]> {
   const s = await adminFetch<StatusResponse>("/api/admin/status");
   const latest = s.latest_race;
@@ -313,6 +483,7 @@ function renderSignedIn(email: string) {
     panel("Data status", statusPanel),
     panel("How the API checked you", checksPanel),
     fetchPanel(),
+    panel("Circuit facts", circuitFactsPanel),
   );
 }
 

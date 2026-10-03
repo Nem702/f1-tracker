@@ -89,3 +89,24 @@ CREATE TABLE IF NOT EXISTS race_control (
     driver_number INTEGER REFERENCES drivers(driver_number),
     message TEXT
 );
+
+-- Circuit facts edited from /admin: a row replaces that circuit's entry in
+-- backend/shared/circuit_facts.json. Same table as backend/sql/16-circuit-facts.sql,
+-- which also creates the role the API writes it with.
+CREATE TABLE IF NOT EXISTS circuit_facts (
+    circuit_id TEXT PRIMARY KEY,
+    length_km DOUBLE PRECISION NOT NULL CHECK (length_km BETWEEN 2.0 AND 8.0),
+    turns INTEGER NOT NULL CHECK (turns BETWEEN 5 AND 30),
+    laps INTEGER CHECK (laps BETWEEN 40 AND 90),
+    first_gp INTEGER NOT NULL CHECK (first_gp >= 1950),
+    lap_record_time TEXT CHECK (lap_record_time ~ '^[0-9]:[0-5][0-9]\.[0-9]{3}$'),
+    lap_record_driver TEXT CHECK (char_length(lap_record_driver) BETWEEN 1 AND 60),
+    lap_record_year INTEGER CHECK (lap_record_year >= 1950),
+    note TEXT NOT NULL CHECK (char_length(note) <= 200),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by TEXT NOT NULL,
+    CHECK (
+        (lap_record_time IS NULL AND lap_record_driver IS NULL AND lap_record_year IS NULL)
+        OR (lap_record_time IS NOT NULL AND lap_record_driver IS NOT NULL AND lap_record_year IS NOT NULL)
+    )
+);

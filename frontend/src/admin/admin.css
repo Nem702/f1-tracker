@@ -67,13 +67,22 @@ form {
   max-width: 360px;
 }
 
+/* A form inside a panel (circuit facts) uses the panel's box. */
+section form {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
 label {
   display: grid;
   gap: 4px;
   font-size: 14px;
 }
 
-input {
+input,
+select,
+textarea {
   font: inherit;
   padding: 8px 10px;
   border: 1px solid var(--line);
