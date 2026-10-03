@@ -37,27 +37,53 @@ function el(tag: string, attrs: Record<string, string> = {}, ...children: Child[
   return node;
 }
 
-function table(headers: string[], rows: (Node | string | number | null)[][]): HTMLElement {
+// Columns listed in `numeric` are right-aligned; the rest wrap. Rows marked
+// in `dimmed` take the muted colour.
+function table(
+  headers: string[],
+  rows: (Node | string | number | null)[][],
+  { numeric = [], dimmed = [] }: { numeric?: number[]; dimmed?: boolean[] } = {},
+): HTMLElement {
+  const isNum = (i: number) => numeric.includes(i);
   return el(
     "div",
     { class: "scroll" },
     el(
       "table",
       {},
-      el("thead", {}, el("tr", {}, ...headers.map((h) => el("th", {}, h)))),
+      el("thead", {}, el("tr", {}, ...headers.map((h, i) => el("th", isNum(i) ? { class: "num" } : {}, h)))),
       el(
         "tbody",
         {},
-        ...rows.map((r) =>
-          el("tr", {}, ...r.map((c) => el("td", { class: "wrap" }, c instanceof Node ? c : String(c ?? "—")))),
+        ...rows.map((r, ri) =>
+          el(
+            "tr",
+            dimmed[ri] ? { class: "dim" } : {},
+            ...r.map((c, i) => el("td", { class: isNum(i) ? "num" : "wrap" }, c instanceof Node ? c : String(c ?? "—"))),
+          ),
         ),
       ),
     ),
   );
 }
 
-function unixToIso(seconds: unknown): string {
-  return typeof seconds === "number" ? new Date(seconds * 1000).toISOString() : String(seconds);
+// Browser time zone, no seconds. en-GB fixes the order: "Sat, 3 Oct 2026, 13:41".
+const DATE_TIME = new Intl.DateTimeFormat("en-GB", {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const DATE_ONLY = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" });
+
+// API timestamps are ISO strings; JWT iat/exp are Unix seconds. Null or
+// anything unparseable comes back unchanged, so it shows as it did before.
+function formatTime<T>(value: T, dateOnly = false): string | T {
+  const d = typeof value === "number" ? new Date(value * 1000) : typeof value === "string" ? new Date(value) : null;
+  if (!d || Number.isNaN(d.getTime())) return value;
+  return (dateOnly ? DATE_ONLY : DATE_TIME).format(d);
 }
 
 class ApiError extends Error {
@@ -138,12 +164,21 @@ function errorText(e: unknown): string {
   return e instanceof ApiError ? e.message : `Request failed: ${String(e)}`;
 }
 
-function panel(title: string, load: () => Promise<Node[]>): HTMLElement {
+// A collapsed panel still loads straight away. Its error sits outside the
+// <details>, so a failure shows while it is closed.
+function panel(title: string, load: () => Promise<Node[]>, collapsed = false): HTMLElement {
   const body = el("div", {}, el("p", { class: "muted" }, "Loading…"));
+  const error = el("p", { class: "error" });
   load()
     .then((nodes) => body.replaceChildren(...nodes))
-    .catch((e: unknown) => body.replaceChildren(el("p", { class: "error" }, errorText(e))));
-  return el("section", {}, el("h2", {}, title), body);
+    .catch((e: unknown) => {
+      body.replaceChildren();
+      error.textContent = errorText(e);
+    });
+  const heading = el("h2", {}, title);
+  return collapsed
+    ? el("section", {}, el("details", {}, el("summary", {}, heading), body), error)
+    : el("section", {}, heading, body, error);
 }
 
 // Fixed, like the repo/workflow constants in backend/api/github_actions.py.
@@ -201,7 +236,7 @@ function fetchPanel(): HTMLElement {
       r.runs.length
         ? table(
             ["Run", "Status", "Conclusion", "Event", "Created"],
-            r.runs.map((run) => [runLink(run), run.status, run.conclusion, run.event, run.created_at]),
+            r.runs.map((run) => [runLink(run), run.status, run.conclusion, run.event, formatTime(run.created_at)]),
           )
         : el("p", { class: "muted" }, "No runs yet."),
     );
@@ -342,7 +377,7 @@ async function circuitFactsPanel(): Promise<Node[]> {
     clearErrors();
     meta.textContent =
       item.source === "db"
-        ? `Source: database · last edited ${item.updated_at} by ${item.updated_by}`
+        ? `Source: database · last edited ${formatTime(item.updated_at)} by ${item.updated_by}`
         : "Source: circuit_facts.json (never edited)";
   }
 
@@ -419,34 +454,38 @@ async function statusPanel(): Promise<Node[]> {
   const s = await adminFetch<StatusResponse>("/api/admin/status");
   const latest = s.latest_race;
   const next = s.next_race;
+  const raceCounts = (r: RaceCounts) => [r.laps, r.pit, r.stints, r.positions, r.race_control, r.weather];
+  // A stored race with no rows in any table (e.g. a cancelled one) is dimmed.
+  const empty = s.races.map((r) => raceCounts(r).every((n) => n === 0));
   return [
     el(
       "p",
       {},
       "Latest stored race: ",
-      latest ? `${latest.location}, ${latest.country_name} · ${latest.date_start} · session_key ${latest.session_key}` : "none",
+      latest
+        ? `${latest.location}, ${latest.country_name} · ${formatTime(latest.date_start)} · session_key ${latest.session_key}`
+        : "none",
     ),
     el(
       "p",
       {},
       "Next race (cached): ",
-      next ? `${next.session_name} · ${next.location}, ${next.country_name} · ${next.date_start}` : "nothing cached",
+      next
+        ? `${next.session_name} · ${next.location}, ${next.country_name} · ${formatTime(next.date_start)}`
+        : "nothing cached",
       // The cache is shown as-is, so say how old it is.
-      s.next_race_fetched_at ? ` (cached at ${s.next_race_fetched_at})` : null,
+      s.next_race_fetched_at ? ` (cached at ${formatTime(s.next_race_fetched_at)})` : null,
     ),
     table(
-      ["Race", "Date", "session_key", "laps", "pit", "stints", "positions", "race_control", "weather"],
-      s.races.map((r) => [
+      ["Race", "Date", "Session", "Laps", "Pit stops", "Stints", "Positions", "Race control", "Weather"],
+      // null renders as "—".
+      s.races.map((r, i) => [
         r.location,
-        r.date_start?.slice(0, 10) ?? null,
+        formatTime(r.date_start, true),
         r.session_key,
-        r.laps,
-        r.pit,
-        r.stints,
-        r.positions,
-        r.race_control,
-        r.weather,
+        ...raceCounts(r).map((n) => (empty[i] ? null : n)),
       ]),
+      { numeric: [2, 3, 4, 5, 6, 7, 8], dimmed: empty },
     ),
   ];
 }
@@ -460,7 +499,7 @@ async function checksPanel(): Promise<Node[]> {
       ["Claim", "Value"],
       Object.entries(me.claims).map(([k, v]) => [
         k,
-        k === "iat" || k === "exp" ? `${v} (${unixToIso(v)})` : typeof v === "object" ? JSON.stringify(v) : String(v),
+        k === "iat" || k === "exp" ? `${v} (${formatTime(v)})` : typeof v === "object" ? JSON.stringify(v) : String(v),
       ]),
     ),
   ];
@@ -614,7 +653,7 @@ function renderSignedIn(email: string) {
   root.replaceChildren(
     el("header", {}, el("h1", {}, "Admin")),
     panel("Data status", statusPanel),
-    panel("How the API checked you", checksPanel),
+    panel("How the API checked you", checksPanel, true),
     fetchPanel(),
     panel("Circuit facts", circuitFactsPanel),
   );
