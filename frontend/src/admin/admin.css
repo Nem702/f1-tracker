@@ -130,6 +130,28 @@ td.wrap {
   word-break: break-all;
 }
 
+th.num,
+td.num {
+  text-align: right;
+}
+
+tr.dim {
+  color: var(--muted);
+}
+
+summary {
+  cursor: pointer;
+}
+
+/* Inline, so the disclosure marker sits beside the title, not above it. */
+summary h2 {
+  display: inline;
+}
+
+details[open] > summary {
+  margin-bottom: 12px;
+}
+
 .error:empty,
 .muted:empty {
   display: none;
