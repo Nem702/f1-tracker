@@ -37,17 +37,26 @@ function el(tag: string, attrs: Record<string, string> = {}, ...children: Child[
   return node;
 }
 
-// Columns listed in `numeric` are right-aligned; the rest wrap. Rows marked
-// in `dimmed` take the muted colour.
+// Cells stay on one line and a wide table scrolls sideways inside its plate.
+// Columns in `numeric` are right-aligned, `wrap` wraps at spaces, and
+// `breakAll` may break anywhere (long tokens only). Rows marked in `dimmed`
+// take the muted colour.
 function table(
   headers: string[],
   rows: (Node | string | number | null)[][],
-  { numeric = [], dimmed = [] }: { numeric?: number[]; dimmed?: boolean[] } = {},
+  {
+    numeric = [],
+    wrap = [],
+    breakAll = [],
+    dimmed = [],
+  }: { numeric?: number[]; wrap?: number[]; breakAll?: number[]; dimmed?: boolean[] } = {},
 ): HTMLElement {
   const isNum = (i: number) => numeric.includes(i);
+  const cellAttrs = (i: number): Record<string, string> =>
+    isNum(i) ? { class: "num" } : wrap.includes(i) ? { class: "wrap" } : breakAll.includes(i) ? { class: "break" } : {};
   return el(
     "div",
-    { class: "scroll" },
+    { class: "plate" },
     el(
       "table",
       {},
@@ -59,7 +68,7 @@ function table(
           el(
             "tr",
             dimmed[ri] ? { class: "dim" } : {},
-            ...r.map((c, i) => el("td", { class: isNum(i) ? "num" : "wrap" }, c instanceof Node ? c : String(c ?? "—"))),
+            ...r.map((c, i) => el("td", cellAttrs(i), c instanceof Node ? c : String(c ?? "—"))),
           ),
         ),
       ),
@@ -77,13 +86,15 @@ const DATE_TIME = new Intl.DateTimeFormat("en-GB", {
   minute: "2-digit",
 });
 const DATE_ONLY = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" });
+const DAY_MONTH = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
+const FORMATS = { dateTime: DATE_TIME, date: DATE_ONLY, short: DAY_MONTH };
 
 // API timestamps are ISO strings; JWT iat/exp are Unix seconds. Null or
 // anything unparseable comes back unchanged, so it shows as it did before.
-function formatTime<T>(value: T, dateOnly = false): string | T {
+function formatTime<T>(value: T, format: keyof typeof FORMATS = "dateTime"): string | T {
   const d = typeof value === "number" ? new Date(value * 1000) : typeof value === "string" ? new Date(value) : null;
   if (!d || Number.isNaN(d.getTime())) return value;
-  return (dateOnly ? DATE_ONLY : DATE_TIME).format(d);
+  return FORMATS[format].format(d);
 }
 
 class ApiError extends Error {
@@ -164,10 +175,21 @@ function errorText(e: unknown): string {
   return e instanceof ApiError ? e.message : `Request failed: ${String(e)}`;
 }
 
-// A collapsed panel still loads straight away. Its error sits outside the
-// <details>, so a failure shows while it is closed.
-function panel(title: string, load: () => Promise<Node[]>, collapsed = false): HTMLElement {
-  const body = el("div", {}, el("p", { class: "muted" }, "Loading…"));
+// Checked once at load; no resize handling. Stored races and Circuit facts
+// start open above the phone breakpoint and closed on a phone.
+const DESKTOP = window.matchMedia("(min-width: 641px)").matches;
+
+// A glass card whose content is one <details>. The error sits outside it, so
+// a failure shows while the card is closed.
+function card(title: string, open: boolean, summaryExtra: Child[], body: Node, error: Child): HTMLElement {
+  const details = el("details", {}, el("summary", {}, el("h2", {}, title), ...summaryExtra), body) as HTMLDetailsElement;
+  details.open = open;
+  return el("section", { class: "card glass" }, details, error);
+}
+
+// A closed panel still loads straight away.
+function panel(title: string, load: () => Promise<Node[]>, open: boolean, ...summaryExtra: Child[]): HTMLElement {
+  const body = el("div", { class: "card__body" }, el("p", { class: "muted" }, "Loading…"));
   const error = el("p", { class: "error" });
   load()
     .then((nodes) => body.replaceChildren(...nodes))
@@ -175,10 +197,26 @@ function panel(title: string, load: () => Promise<Node[]>, collapsed = false): H
       body.replaceChildren();
       error.textContent = errorText(e);
     });
-  const heading = el("h2", {}, title);
-  return collapsed
-    ? el("section", {}, el("details", {}, el("summary", {}, heading), body), error)
-    : el("section", {}, heading, body, error);
+  return card(title, open, summaryExtra, body, error);
+}
+
+type Tone = "ok" | "fail" | "run" | "neutral";
+
+// Colour never carries the meaning alone: a chip always has text.
+function chip(text: string, tone: Tone): HTMLElement {
+  return el("span", { class: `chip tone-${tone}` }, text);
+}
+
+function dot(tone: Tone, label: string): HTMLElement {
+  return el("span", { class: `dot tone-${tone}`, role: "img", "aria-label": label });
+}
+
+type Tile = { root: HTMLElement; value: HTMLElement; sub: HTMLElement };
+
+function tile(label: string): Tile {
+  const value = el("p", { class: "tile__value" }, "…");
+  const sub = el("p", { class: "tile__sub" });
+  return { root: el("div", { class: "tile glass" }, el("p", { class: "tile__label" }, label), value, sub), value, sub };
 }
 
 // Fixed, like the repo/workflow constants in backend/api/github_actions.py.
@@ -204,20 +242,46 @@ function runLink(run: Run): Node | string {
   return run.html_url?.startsWith("https://github.com/") ? externalLink(run.html_url, `#${run.id}`) : `#${run.id}`;
 }
 
-function fetchPanel(): HTMLElement {
-  const title = el("h2", {}, "Fetch");
-  const stateLine = el("p", { class: "muted" }, "Loading…");
+// No conclusion yet means queued or in progress.
+function runResult(run: Run): [text: string, tone: Tone] {
+  if (!run.conclusion) return ["Running", "run"];
+  if (run.conclusion === "success") return ["Success", "ok"];
+  if (run.conclusion === "failure") return ["Failure", "fail"];
+  return [run.conclusion, "neutral"];
+}
+
+function runDot(run: Run): HTMLElement {
+  const [text, tone] = runResult(run);
+  return dot(tone, text);
+}
+
+const TRIGGERS = new Map([
+  ["workflow_dispatch", "Manual"],
+  ["schedule", "Scheduled"],
+]);
+
+function triggerText(event: string | null): string {
+  return event === null ? "—" : (TRIGGERS.get(event) ?? event);
+}
+
+// Fills the Last fetch tile too, on every load.
+function fetchPanel(lastFetch: Tile): HTMLElement {
+  const schedule = chip("Loading…", "neutral");
+  const head = el("div", { class: "card__head" }, el("h2", {}, "Fetch"), schedule);
   const message = el("p", { role: "status" });
   const runsBox = el("div");
-  const runButton = el("button", { type: "button" }, "Fetch latest data") as HTMLButtonElement;
-  const refreshButton = el("button", { type: "button" }, "Refresh") as HTMLButtonElement;
-  const enableButton = el("button", { type: "button", hidden: "" }, "Re-enable schedule") as HTMLButtonElement;
+  const runButton = el("button", { type: "button", class: "primary" }, "Fetch latest data") as HTMLButtonElement;
+  const refreshButton = el("button", { type: "button", class: "secondary" }, "Refresh") as HTMLButtonElement;
+  const enableButton = el(
+    "button",
+    { type: "button", class: "secondary", hidden: "" },
+    "Re-enable schedule",
+  ) as HTMLButtonElement;
   const buttons = [runButton, refreshButton, enableButton];
   const section = el(
     "section",
-    {},
-    title,
-    stateLine,
+    { class: "card glass" },
+    head,
     el("div", { class: "actions" }, ...buttons),
     message,
     runsBox,
@@ -228,17 +292,63 @@ function fetchPanel(): HTMLElement {
     message.textContent = text;
   }
 
+  function showLastFetch(value: (Node | string)[], sub = "") {
+    lastFetch.value.replaceChildren(...value);
+    lastFetch.sub.textContent = sub;
+  }
+
   async function load() {
     const r = await adminFetch<RunsResponse>("/api/admin/runs");
-    stateLine.textContent = `Workflow state: ${r.state}`;
-    enableButton.hidden = r.state === "active";
+    const active = r.state === "active";
+    schedule.className = `chip tone-${active ? "ok" : "run"}`;
+    schedule.textContent = active ? "Schedule active" : `Schedule: ${r.state}`;
+    enableButton.hidden = active;
+    const newest = r.runs[0];
+    if (newest) {
+      showLastFetch([runDot(newest), runResult(newest)[0]], `${formatTime(newest.created_at) ?? "—"} · ${triggerText(newest.event)}`);
+    } else {
+      showLastFetch(["No runs"]);
+    }
     runsBox.replaceChildren(
-      r.runs.length
-        ? table(
-            ["Run", "Status", "Conclusion", "Event", "Created"],
-            r.runs.map((run) => [runLink(run), run.status, run.conclusion, run.event, formatTime(run.created_at)]),
-          )
-        : el("p", { class: "muted" }, "No runs yet."),
+      ...(r.runs.length
+        ? [
+            el(
+              "div",
+              { class: "desk-only" },
+              table(
+                ["Run", "Result", "Trigger", "Started"],
+                r.runs.map((run) => [
+                  runLink(run),
+                  chip(...runResult(run)),
+                  triggerText(run.event),
+                  formatTime(run.created_at),
+                ]),
+              ),
+            ),
+            el(
+              "details",
+              { class: "phone-only" },
+              el("summary", {}, el("h3", {}, "Recent runs")),
+              el(
+                "div",
+                { class: "plate" },
+                el(
+                  "ul",
+                  { class: "list runs-list" },
+                  ...r.runs.map((run) =>
+                    el(
+                      "li",
+                      {},
+                      runDot(run),
+                      el("span", {}, String(formatTime(run.created_at) ?? "—")),
+                      el("span", {}, triggerText(run.event)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ]
+        : [el("p", { class: "muted" }, "No runs yet.")]),
     );
   }
 
@@ -251,8 +361,10 @@ function fetchPanel(): HTMLElement {
       if (done) say(done);
     } catch (e) {
       if (e instanceof ApiError && e.status === 503 && e.detail === NOT_CONFIGURED) {
+        schedule.textContent = "";
+        showLastFetch(["Not configured"]);
         section.replaceChildren(
-          title,
+          head,
           el(
             "p",
             {},
@@ -263,7 +375,10 @@ function fetchPanel(): HTMLElement {
         );
       } else {
         // A failed first load must not leave "Loading…" up.
-        if (stateLine.textContent === "Loading…") stateLine.textContent = "Workflow state: unknown";
+        if (schedule.textContent === "Loading…") {
+          schedule.textContent = "Schedule unknown";
+          showLastFetch(["—"]);
+        }
         say(errorText(e), true);
       }
     } finally {
@@ -308,15 +423,16 @@ type FactsItem = {
 };
 
 // Keys are the field paths FastAPI reports in a 422's loc, minus "body".
-const FACT_FIELDS: { key: string; label: string; step?: string }[] = [
+// In two-column grid order: `wide` fields span both columns.
+const FACT_FIELDS: { key: string; label: string; step?: string; wide?: boolean }[] = [
   { key: "length_km", label: "Length (km)", step: "0.001" },
   { key: "turns", label: "Turns", step: "1" },
   { key: "laps", label: "Race laps (optional)", step: "1" },
   { key: "first_gp", label: "First GP (year)", step: "1" },
   { key: "lap_record.time", label: "Lap record time (m:ss.SSS)" },
-  { key: "lap_record.driver", label: "Lap record driver" },
   { key: "lap_record.year", label: "Lap record year", step: "1" },
-  { key: "note", label: "Note" },
+  { key: "lap_record.driver", label: "Lap record driver", wide: true },
+  { key: "note", label: "Note", wide: true },
 ];
 const LAP_RECORD_KEYS = ["lap_record.time", "lap_record.driver", "lap_record.year"];
 
@@ -345,11 +461,11 @@ async function circuitFactsPanel(): Promise<Node[]> {
   ) as HTMLSelectElement;
   const meta = el("p", { class: "muted" });
   const message = el("p", { role: "status" });
-  const save = el("button", { type: "submit" }, "Save") as HTMLButtonElement;
+  const save = el("button", { type: "submit", class: "primary" }, "Save") as HTMLButtonElement;
 
   const inputs = new Map<string, HTMLInputElement | HTMLTextAreaElement>();
   const errors = new Map<string, HTMLElement>();
-  const fields = FACT_FIELDS.map(({ key, label, step }) => {
+  const fields = FACT_FIELDS.map(({ key, label, step, wide }) => {
     const input = (
       key === "note"
         ? el("textarea", { name: key, rows: "3" })
@@ -358,10 +474,16 @@ async function circuitFactsPanel(): Promise<Node[]> {
     const error = el("span", { class: "error" });
     inputs.set(key, input);
     errors.set(key, error);
-    return el("label", {}, label, input, error);
+    return el("label", wide ? { class: "span2" } : {}, label, input, error);
   });
   // novalidate: the API is the one validator, and its messages land per field.
-  const form = el("form", { novalidate: "" }, el("label", {}, "Circuit", picker), ...fields, save, message);
+  const form = el(
+    "form",
+    { novalidate: "" },
+    el("div", { class: "fields" }, el("label", { class: "span2" }, "Circuit", picker), ...fields),
+    el("div", { class: "actions" }, save),
+    message,
+  );
 
   function say(text: string, isError = false) {
     message.className = isError ? "error" : "muted";
@@ -450,57 +572,111 @@ async function circuitFactsPanel(): Promise<Node[]> {
   return [meta, form];
 }
 
-async function statusPanel(): Promise<Node[]> {
-  const s = await adminFetch<StatusResponse>("/api/admin/status");
-  const latest = s.latest_race;
-  const next = s.next_race;
-  const raceCounts = (r: RaceCounts) => [r.laps, r.pit, r.stints, r.positions, r.race_control, r.weather];
-  // A stored race with no rows in any table (e.g. a cancelled one) is dimmed.
-  const empty = s.races.map((r) => raceCounts(r).every((n) => n === 0));
-  return [
-    el(
-      "p",
-      {},
-      "Latest stored race: ",
-      latest
-        ? `${latest.location}, ${latest.country_name} · ${formatTime(latest.date_start)} · session_key ${latest.session_key}`
-        : "none",
-    ),
-    el(
-      "p",
-      {},
-      "Next race (cached): ",
-      next
-        ? `${next.session_name} · ${next.location}, ${next.country_name} · ${formatTime(next.date_start)}`
-        : "nothing cached",
-      // The cache is shown as-is, so say how old it is.
-      s.next_race_fetched_at ? ` (cached at ${formatTime(s.next_race_fetched_at)})` : null,
-    ),
-    table(
-      ["Race", "Date", "Session", "Laps", "Pit stops", "Stints", "Positions", "Race control", "Weather"],
-      // null renders as "—".
-      s.races.map((r, i) => [
-        r.location,
-        formatTime(r.date_start, true),
-        r.session_key,
-        ...raceCounts(r).map((n) => (empty[i] ? null : n)),
-      ]),
-      { numeric: [2, 3, 4, 5, 6, 7, 8], dimmed: empty },
-    ),
-  ];
+type StatusView = { cacheLine: HTMLElement; tiles: HTMLElement; error: HTMLElement; races: HTMLElement };
+
+// One /status call fills the header's cache line, three of the four tiles
+// (the fetch panel fills Last fetch) and Stored races.
+function statusView(lastFetch: Tile): StatusView {
+  const cacheLine = el("p", { class: "muted" });
+  const latestTile = tile("Latest stored race");
+  const nextTile = tile("Next race");
+  const countTile = tile("Races stored");
+  const error = el("p", { class: "error" });
+  const racesMeta = el("span", { class: "summary-meta phone-only" });
+  const racesBody = el("div", {}, el("p", { class: "muted" }, "Loading…"));
+  const tiles = el("div", { class: "tiles" }, latestTile.root, nextTile.root, lastFetch.root, countTile.root);
+  // Its load error shows under the tiles, which fail with it.
+  const races = card("Stored races", DESKTOP, [racesMeta], racesBody, null);
+
+  async function load() {
+    const s = await adminFetch<StatusResponse>("/api/admin/status");
+    const latest = s.latest_race;
+    const next = s.next_race;
+    const raceCounts = (r: RaceCounts) => [r.laps, r.pit, r.stints, r.positions, r.race_control, r.weather];
+    // A stored race with no rows in any table (e.g. a cancelled one) is dimmed.
+    const empty = s.races.map((r) => raceCounts(r).every((n) => n === 0));
+    const emptyCount = empty.filter(Boolean).length;
+
+    // The cache is shown as-is, so say how old it is.
+    cacheLine.textContent = s.next_race_fetched_at ? `Next-race cache from ${formatTime(s.next_race_fetched_at)}` : "";
+    latestTile.value.textContent = latest ? latest.location : "None";
+    latestTile.sub.replaceChildren(
+      ...(latest
+        ? [
+            el("span", { class: "desk-only" }, `${formatTime(latest.date_start)} · session ${latest.session_key}`),
+            el("span", { class: "phone-only" }, String(formatTime(latest.date_start, "date"))),
+          ]
+        : []),
+    );
+    nextTile.value.textContent = next ? next.location : "Nothing cached";
+    nextTile.sub.textContent = next ? String(formatTime(next.date_start)) : "";
+    countTile.value.textContent = String(s.races.length);
+    countTile.sub.textContent = `${emptyCount} with no data`;
+    racesMeta.textContent = `${s.races.length} · ${emptyCount} empty`;
+
+    racesBody.replaceChildren(
+      el(
+        "div",
+        { class: "desk-only" },
+        table(
+          ["Race", "Date", "Session", "Laps", "Pit stops", "Stints", "Positions", "Race control", "Weather"],
+          // null renders as "—".
+          s.races.map((r, i) => [
+            r.location,
+            formatTime(r.date_start, "date"),
+            r.session_key,
+            ...raceCounts(r).map((n) => (empty[i] ? null : n)),
+          ]),
+          { numeric: [2, 3, 4, 5, 6, 7, 8], dimmed: empty },
+        ),
+      ),
+      el(
+        "div",
+        { class: "plate phone-only" },
+        el(
+          "ul",
+          { class: "list" },
+          ...s.races.map((r, i) => {
+            const date = String(formatTime(r.date_start, "short") ?? "—");
+            return el(
+              "li",
+              empty[i] ? { class: "dim" } : {},
+              el("span", {}, r.location),
+              el("span", {}, empty[i] ? `${date} · no data` : date),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  load().catch((e: unknown) => {
+    for (const t of [latestTile, nextTile, countTile]) t.value.textContent = "—";
+    racesBody.replaceChildren();
+    error.textContent = errorText(e);
+  });
+  return { cacheLine, tiles, error, races };
 }
 
-async function checksPanel(): Promise<Node[]> {
+// Fills the summary's "N passed" chip once /me answers.
+async function checksPanel(passed: HTMLElement): Promise<Node[]> {
   const me = await adminFetch<MeResponse>("/api/admin/me");
+  passed.textContent = `${me.checks.length} passed`;
   return [
-    table(["Check", "Passed with"], me.checks.map((c) => [c.check, c.detail])),
-    el("h2", {}, "Decoded claims"),
+    table(
+      ["Check", "Passed with"],
+      me.checks.map((c) => [c.check, c.detail]),
+      { wrap: [1] },
+    ),
+    el("h3", {}, "Decoded claims"),
     table(
       ["Claim", "Value"],
       Object.entries(me.claims).map(([k, v]) => [
         k,
         k === "iat" || k === "exp" ? `${v} (${formatTime(v)})` : typeof v === "object" ? JSON.stringify(v) : String(v),
       ]),
+      // Tokens and URLs are long unbroken strings.
+      { breakAll: [1] },
     ),
   ];
 }
@@ -626,14 +802,26 @@ function mountNavbar() {
     menuBtn.setAttribute("aria-label", open ? "Close navigation" : "Open navigation");
     menuBtn.replaceChildren(svgIcon(open ? CLOSE_ICON : MENU_ICON));
   }
+  const isOpen = () => bar.classList.contains("navbar--open");
   setOpen(false);
-  menuBtn.addEventListener("click", () => setOpen(!bar.classList.contains("navbar--open")));
+  menuBtn.addEventListener("click", () => setOpen(!isOpen()));
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && bar.classList.contains("navbar--open")) {
+    if (e.key === "Escape" && isOpen()) {
       setOpen(false);
       menuBtn.focus();
     }
   });
+  // An open menu also closes on a tap outside the bar and on scroll.
+  document.addEventListener("pointerdown", (e) => {
+    if (isOpen() && !bar.contains(e.target as Node)) setOpen(false);
+  });
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (isOpen()) setOpen(false);
+    },
+    { passive: true },
+  );
   document.body.prepend(bar);
 }
 
@@ -650,12 +838,17 @@ function renderSignedIn(email: string) {
     }
   });
   navAccount.replaceChildren(el("span", { class: "navbar__email" }, email), signOut);
+  const lastFetch = tile("Last fetch");
+  const status = statusView(lastFetch);
+  const passed = chip("", "ok");
+  root.className = "dash";
   root.replaceChildren(
-    el("header", {}, el("h1", {}, "Admin")),
-    panel("Data status", statusPanel),
-    panel("How the API checked you", checksPanel, true),
-    fetchPanel(),
-    panel("Circuit facts", circuitFactsPanel),
+    el("header", { class: "page-head" }, el("h1", {}, "Admin"), status.cacheLine),
+    status.tiles,
+    status.error,
+    status.races,
+    el("div", { class: "split" }, fetchPanel(lastFetch), panel("Circuit facts", circuitFactsPanel, DESKTOP)),
+    panel("API checks", () => checksPanel(passed), false, passed),
   );
 }
 
@@ -667,11 +860,14 @@ function renderSignedOut(message = "") {
     autocomplete: "current-password",
     required: "",
   }) as HTMLInputElement;
-  const submit = el("button", { type: "submit" }, "Sign in") as HTMLButtonElement;
+  const submit = el("button", { type: "submit", class: "primary" }, "Sign in") as HTMLButtonElement;
   const status = el("p", { class: "error", role: "alert" }, message);
   const form = el(
     "form",
-    {},
+    { class: "signin-card glass" },
+    el("span", { class: "brand-mark", "aria-hidden": "true" }),
+    el("h1", {}, "Admin sign-in"),
+    el("p", { class: "muted" }, "Only allow-listed accounts can sign in."),
     el("label", {}, "Email", email),
     el("label", {}, "Password", password),
     submit,
@@ -695,7 +891,8 @@ function renderSignedOut(message = "") {
     }
   });
   navAccount.replaceChildren();
-  root.replaceChildren(el("header", {}, el("h1", {}, "Admin")), form);
+  root.className = "signin";
+  root.replaceChildren(form);
 }
 
 async function start() {

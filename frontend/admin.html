@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- iOS otherwise turns the signed-in email into a mailto link. -->
+    <meta name="format-detection" content="email=no, telephone=no" />
     <!-- Also sent as an X-Robots-Tag header on /admin (vercel.json); this
          covers a direct /admin.html hit, which that header rule doesn't. -->
     <meta name="robots" content="noindex" />
