@@ -1,198 +1,40 @@
 @import "@fontsource-variable/inter/wght.css";
 
+/* One token set for the whole page. The public values are copies, not
+   imports (sharing a module with index.html would change the public
+   bundle): src/index.css for type, radius, spacing and --content-pad-x, and
+   theme.ts base.dark + TEAM_PALETTES.dark.ferrari for the colours. A change
+   there does not reach this page on its own. Admin is dark only. */
 :root {
   color-scheme: dark;
-  --bg: #0e0e10;
-  --surface: #18181b;
-  --text: #e6e6ea;
-  --muted: #9a9aa3;
-  --line: #2c2c31;
-  --accent: #e10600;
-  --error: #ff6b6b;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-}
 
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-}
-
-main {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 24px 16px 48px;
-}
-
-main > header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 24px;
-}
-
-h1 {
-  font-size: 20px;
-  margin: 0;
-}
-
-h2 {
-  font-size: 16px;
-  margin: 0 0 12px;
-}
-
-section,
-form {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-
-form {
-  display: grid;
-  gap: 12px;
-  max-width: 360px;
-}
-
-/* A form inside a panel (circuit facts) uses the panel's box. */
-section form {
-  border: 0;
-  padding: 0;
-  margin: 0;
-}
-
-label {
-  display: grid;
-  gap: 4px;
-  font-size: 14px;
-}
-
-input,
-select,
-textarea {
-  font: inherit;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
-}
-
-button {
-  font: inherit;
-  padding: 8px 14px;
-  border: 0;
-  border-radius: 6px;
-  background: var(--accent);
-  color: #fff;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.muted {
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.error {
-  color: var(--error);
-}
-
-.scroll {
-  overflow-x: auto;
-}
-
-table {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-
-th,
-td {
-  text-align: left;
-  padding: 6px 10px 6px 0;
-  border-bottom: 1px solid var(--line);
-  white-space: nowrap;
-}
-
-td.wrap {
-  white-space: normal;
-  word-break: break-all;
-}
-
-th.num,
-td.num {
-  text-align: right;
-}
-
-tr.dim {
-  color: var(--muted);
-}
-
-summary {
-  cursor: pointer;
-}
-
-/* Inline, so the disclosure marker sits beside the title, not above it. */
-summary h2 {
-  display: inline;
-}
-
-details[open] > summary {
-  margin-bottom: 12px;
-}
-
-.error:empty,
-.muted:empty {
-  display: none;
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-button[hidden] {
-  display: none;
-}
-
-a {
-  color: inherit;
-}
-
-/* ---------- site navbar ---------- */
-/* A copy of the public bar (src/components/Navbar.tsx + index.css), not an
-   import: sharing a module with index.html would change the public bundle.
-   The variables are the public theme's dark values for the default tint
-   (theme.ts base.dark + TEAM_PALETTES.dark.ferrari), scoped to .navbar so
-   they don't collide with this page's own --accent. Copied, so a palette
-   change in theme.ts does not reach this page on its own. */
-
-.navbar {
+  /* ---- public theme (dark, default Ferrari tint) ---- */
+  --page-base: #0a0a0c;
   --glass: rgba(30, 30, 34, 0.44);
   --glass-opaque: rgba(26, 26, 30, 0.85);
   --glass-border: rgba(255, 255, 255, 0.14);
   --spec: rgba(255, 255, 255, 0.14);
   --shadow-card: 0 24px 48px -20px rgba(0, 0, 0, 0.65);
+  --plate: rgba(18, 18, 20, 0.6);
+  --plate-border: rgba(255, 255, 255, 0.07);
   --ink-primary: #ffffff;
   --ink-secondary: #c3c2b7;
   --ink-muted: #898781;
   --border: rgba(255, 255, 255, 0.1);
   --accent: #ff4438;
+  --driver1: #d60009;
   --driver2: #bf8b00;
+
+  /* ---- public non-colour tokens (src/index.css) ---- */
+  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --fs-display: clamp(2rem, 1.35rem + 2.6vw, 3.25rem);
+  --fs-stat-value: clamp(1.3rem, 0.9rem + 1.8vw, 1.7rem);
+  --weight-display: 560;
   --glass-blur: 16px;
   --radius-sm: 10px;
+  --radius-plate: 14px;
+  --radius-tile: 18px;
+  --radius-card: 20px;
   --radius-rail: 28px;
   --radius-pill: 999px;
   --space-1: 4px;
@@ -200,27 +42,149 @@ a {
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 24px;
+  --space-6: 32px;
+  --content-pad-x: 40px;
 
-  position: sticky;
-  top: 16px;
-  z-index: 5;
-  margin: 16px;
-  border-radius: var(--radius-rail);
+  /* ---- admin only ---- */
+  /* A shade under --accent so white text clears 4.5:1 (5.06:1). */
+  --primary: #d42a20;
+  --error: #ff6b6b;
+  --ok: #4ade80;
+  --fail: #ff8a80;
+  --run: #f5b83d;
+}
+
+/* Public breakpoints: tablet 900px, phone 640px. */
+@media (max-width: 900px) {
+  :root {
+    --content-pad-x: 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --content-pad-x: 16px;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Opening the menu makes the sticky bar taller. Chrome's scroll anchoring
+   would answer with a scroll event, and the menu closes on scroll. */
+html {
+  overflow-anchor: none;
+}
+
+body {
   display: flex;
-  align-items: center;
-  gap: var(--space-5);
-  padding: var(--space-3) var(--space-4);
+  flex-direction: column;
+  min-height: 100dvh;
+  margin: 0;
+  background: var(--page-base);
   color: var(--ink-primary);
-  font-family: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
-.navbar,
-.navbar * {
-  box-sizing: border-box;
+/* The public aurora, frozen: same three blobs, sizes, mask stops and dark
+   opacities (.20/.18/.16) as .aurora__blob--a/b/c, drawn as gradients. No
+   animation, so the glass above never has to re-blur. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle 460px at 200px 140px,
+      rgba(255, 68, 56, 0.2) 42%,
+      rgba(255, 68, 56, 0.14) 60%,
+      rgba(255, 68, 56, 0.06) 78%,
+      transparent 98%
+    ),
+    radial-gradient(
+      circle 460px at calc(100% - 120px) calc(16% + 460px),
+      rgba(214, 0, 9, 0.18) 42%,
+      rgba(214, 0, 9, 0.126) 60%,
+      rgba(214, 0, 9, 0.054) 78%,
+      transparent 98%
+    ),
+    radial-gradient(
+      circle 460px at calc(28% + 460px) calc(100% - 100px),
+      rgba(191, 139, 0, 0.16) 42%,
+      rgba(191, 139, 0, 0.112) 60%,
+      rgba(191, 139, 0, 0.048) 78%,
+      transparent 98%
+    ),
+    var(--page-base);
 }
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--content-pad-x) 48px;
+}
+
+main.dash {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-content: start;
+}
+
+/* Centred in the space below the bar, at every width. */
+main.signin {
+  display: grid;
+  place-items: center;
+  padding-bottom: var(--space-5);
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h2 {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+h3 {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+a {
+  color: inherit;
+}
+
+.muted {
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.error {
+  color: var(--error);
+}
+
+.error:empty,
+.muted:empty {
+  display: none;
+}
+
+/* ---------- the public .glass recipe ---------- */
 
 .glass {
   background: var(--glass);
@@ -236,6 +200,493 @@ a {
   .glass {
     background: var(--glass-opaque);
   }
+}
+
+/* ---------- desktop / phone forms ---------- */
+
+@media (min-width: 641px) {
+  .phone-only {
+    display: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .desk-only {
+    display: none !important;
+  }
+}
+
+/* ---------- header + tiles ---------- */
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-2);
+}
+
+.page-head h1 {
+  font-size: var(--fs-display);
+  font-weight: var(--weight-display);
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-4);
+  border-radius: var(--radius-tile);
+}
+
+.tile__label {
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tile__value {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-stat-value);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.tile__sub {
+  color: var(--ink-secondary);
+  font-size: 13px;
+}
+
+/* ---------- cards ---------- */
+
+.card {
+  min-width: 0;
+  padding: var(--space-5);
+  border-radius: var(--radius-card);
+}
+
+.split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .tile {
+    gap: var(--space-1);
+    padding: var(--space-3);
+  }
+
+  .card {
+    padding: var(--space-4);
+  }
+}
+
+.card__head,
+summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.card__head,
+details[open] > summary {
+  margin-bottom: var(--space-4);
+}
+
+.card > * + * {
+  margin-top: var(--space-3);
+}
+
+.card > .card__head + *,
+.card > details[open] > summary + * {
+  margin-top: 0;
+}
+
+summary {
+  min-height: 28px;
+  cursor: pointer;
+  list-style: none;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+/* The chevron, at every width. */
+summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-right: 1.6px solid var(--ink-secondary);
+  border-bottom: 1.6px solid var(--ink-secondary);
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 0.2s ease;
+}
+
+details[open] > summary::after {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.card__body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.summary-meta {
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+/* ---------- chips + dots ---------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 14%, transparent);
+}
+
+.chip:empty {
+  display: none;
+}
+
+.dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+
+.tone-ok {
+  --tone: var(--ok);
+}
+
+.tone-fail {
+  --tone: var(--fail);
+}
+
+.tone-run {
+  --tone: var(--run);
+}
+
+.tone-neutral {
+  --tone: var(--ink-secondary);
+}
+
+/* ---------- plates + tables ---------- */
+
+.plate {
+  overflow-x: auto;
+  padding: 6px 12px;
+  background: var(--plate);
+  border: 1px solid var(--plate-border);
+  border-radius: var(--radius-plate);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 9px 16px 9px 0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+th:last-child,
+td:last-child {
+  padding-right: 0;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+th {
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+th.num,
+td.num {
+  text-align: right;
+}
+
+/* Prose wraps at spaces; only long tokens (claim values) may break anywhere. */
+td.wrap {
+  white-space: normal;
+}
+
+td.break {
+  white-space: normal;
+  word-break: break-all;
+}
+
+tr.dim {
+  color: var(--ink-muted);
+}
+
+/* Phone lists (stored races, recent runs): one row per item. */
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.list li:last-child {
+  border-bottom: 0;
+}
+
+.list li > :last-child {
+  color: var(--ink-secondary);
+  white-space: nowrap;
+}
+
+.list li.dim,
+.list li.dim > :last-child {
+  color: var(--ink-muted);
+}
+
+.runs-list li {
+  justify-content: flex-start;
+}
+
+.runs-list li > :last-child {
+  margin-left: auto;
+}
+
+/* ---------- controls ---------- */
+
+button.primary,
+button.secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: var(--radius-pill);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease,
+    filter 0.2s ease;
+}
+
+button.primary {
+  color: #fff;
+  background: var(--primary);
+  border: 1px solid transparent;
+}
+
+button.primary:hover {
+  filter: brightness(1.08);
+}
+
+button.secondary {
+  color: var(--ink-secondary);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+button.secondary:hover {
+  color: var(--ink-primary);
+  border-color: var(--ink-muted);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+button[hidden] {
+  display: none;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ink-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--ink-primary);
+  font: inherit;
+  font-size: 14px;
+}
+
+input,
+select {
+  height: 44px;
+}
+
+textarea {
+  resize: vertical;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* 16px stops iOS zooming in on focus. */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.fields .span2 {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 640px) {
+  .fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.fields .error {
+  font-size: 13px;
+  font-weight: 400;
+}
+
+/* ---------- sign-in ---------- */
+
+.signin-card {
+  width: 100%;
+  max-width: 400px;
+  padding: var(--space-6);
+  border-radius: var(--radius-card);
+}
+
+@media (max-width: 640px) {
+  .signin-card {
+    padding: var(--space-5);
+  }
+}
+
+.signin-card h1 {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.signin-card .muted {
+  margin-top: calc(-1 * var(--space-3));
+}
+
+.brand-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--accent), var(--driver2));
+}
+
+.signin-card button {
+  width: 100%;
+}
+
+/* ---------- site navbar ---------- */
+/* A copy of the public bar (src/components/Navbar.tsx + index.css), not an
+   import: sharing a module with index.html would change the public bundle.
+   Its tokens are the :root set above. */
+
+.navbar {
+  position: sticky;
+  top: 16px;
+  z-index: 5;
+  margin: 16px;
+  border-radius: var(--radius-rail);
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  color: var(--ink-primary);
 }
 
 .navbar__brand {
@@ -319,7 +770,7 @@ a {
   white-space: nowrap;
 }
 
-/* The public theme-toggle pill; also undoes this page's red `button` style. */
+/* The public theme-toggle pill, at the public bar's size. */
 .navbar__pill,
 .navbar__menu-btn {
   display: flex;
