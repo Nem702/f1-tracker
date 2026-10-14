@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>F1 Tracker AI Lab</title>
+  </head>
+  <body>
+    <!-- Built in its own Vite pass (`vite build --mode lab`), so it shares
+         no chunks with index.html (see src/lab/main.ts). -->
+    <main id="lab">
+      <header>
+        <h1>AI Lab</h1>
+        <p>
+          Twenty-two cars, one full grid, each driven by a tiny neural network, try to lap a real
+          circuit. After every generation the best drivers are kept, and the rest are replaced by
+          mixed and mutated copies of them. Nobody tells them how to drive.
+        </p>
+      </header>
+
+      <section class="controls" aria-label="Controls">
+        <label>Circuit <select id="circuit"></select></label>
+        <button id="play" type="button">Pause</button>
+        <span class="speeds" role="group" aria-label="Speed">
+          <button type="button" data-speed="1" aria-pressed="true">1x</button>
+          <button type="button" data-speed="5" aria-pressed="false">5x</button>
+          <button type="button" data-speed="25" aria-pressed="false">25x</button>
+        </span>
+        <button id="new-run" type="button">New run</button>
+        <label>
+          Mutation
+          <input id="mutation" type="range" min="0" max="50" step="1" />
+          <output id="mutation-value" for="mutation"></output>
+        </label>
+        <button id="watch" type="button">Watch best saved</button>
+      </section>
+
+      <div class="layout">
+        <canvas id="track" aria-label="Circuit with the cars racing"></canvas>
+        <aside>
+          <dl class="stats">
+            <div><dt>Generation</dt><dd id="stat-generation"></dd></div>
+            <div><dt>Running / finished</dt><dd id="stat-alive"></dd></div>
+            <div><dt>Best this generation</dt><dd id="stat-best-gen"></dd></div>
+            <div><dt>Best lap ever</dt><dd id="stat-best-ever"></dd></div>
+          </dl>
+          <p id="status" role="status"></p>
+
+          <h2>Leader's brain</h2>
+          <div id="brain"><h3>Inputs</h3></div>
+
+          <h2>Best lap per generation</h2>
+          <canvas id="chart" aria-label="Best lap time per generation"></canvas>
+        </aside>
+      </div>
+
+      <footer>
+        <p>
+          Lap times are simulation seconds, not real lap times. Red dots show where the leader
+          braked.
+        </p>
+        <p id="attribution"></p>
+      </footer>
+    </main>
+    <script type="module" src="/src/lab/main.ts"></script>
+  </body>
+</html>

@@ -1,7 +1,8 @@
 {
   "rewrites": [
     { "source": "/neon-auth/:path*", "destination": "/api/neon-auth?_path=:path*" },
-    { "source": "/admin", "destination": "/admin.html" }
+    { "source": "/admin", "destination": "/admin.html" },
+    { "source": "/lab", "destination": "/lab.html" }
   ],
   "headers": [
     {
