@@ -36,7 +36,25 @@
         <button id="watch" type="button">Watch best saved</button>
       </section>
 
+      <section class="grid-share" aria-label="Grid share">
+        <h2>Grid share</h2>
+        <div id="grid-share"></div>
+      </section>
+
       <div class="layout">
+        <section class="tower" aria-label="Timing tower">
+          <h2>Timing</h2>
+          <div class="tower-head" aria-hidden="true">
+            <span>Pos</span><span>Car</span><span>S1</span><span>S2</span><span>S3</span><span>Lap</span>
+          </div>
+          <ol id="tower"></ol>
+          <p class="legend">
+            Sectors are equal thirds of the lap.
+            <span class="purple">Purple</span> fastest this run,
+            <span class="green">green</span> fastest this generation,
+            <span class="yellow">yellow</span> the rest.
+          </p>
+        </section>
         <canvas id="track" aria-label="Circuit with the cars racing"></canvas>
         <aside>
           <dl class="stats">
@@ -57,8 +75,8 @@
 
       <footer>
         <p>
-          Lap times are simulation seconds, not real lap times. Red dots show where the leader
-          braked.
+          Lap times are simulation seconds, not real lap times. Cars race in the colours of the
+          team their line started with. Red dots show where the leader braked.
         </p>
         <p id="attribution"></p>
       </footer>

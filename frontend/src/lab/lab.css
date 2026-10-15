@@ -10,6 +10,10 @@
   --gas: #5cc98a;
   --brake: #ff4d4d;
   --accent: #ffd166;
+  /* Timing-tower sector colours (lab only; teams come from theme.ts). */
+  --sector-purple: #c18cff;
+  --sector-green: #4cd98a;
+  --sector-yellow: #f2d45c;
 }
 
 * {
@@ -24,7 +28,7 @@ body {
 }
 
 #lab {
-  max-width: 1200px;
+  max-width: 1480px;
   margin: 0 auto;
   padding: 16px;
 }
@@ -94,20 +98,150 @@ button[aria-pressed="true"] {
   gap: 4px;
 }
 
+/* Wide: timing tower on the left like F1 TV, track centre, stats right.
+   Narrower layouts are at the end of the file. */
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: 280px minmax(0, 1fr) 300px;
+  grid-template-areas: "tower track side";
   gap: 20px;
   align-items: start;
 }
 
+.tower {
+  grid-area: tower;
+}
+
+aside {
+  grid-area: side;
+}
+
 #track {
+  grid-area: track;
   display: block;
   width: 100%;
   /* The renderer fits the circuit to any shape, so keep the whole track
      in view instead of forcing a square taller than the window. */
-  height: clamp(320px, calc(100vh - 220px), 900px);
+  height: clamp(320px, calc(100vh - 290px), 900px);
   border-radius: 8px;
+}
+
+/* Grid share: one bar split by seats per team, a chip per team below. */
+.grid-share {
+  margin-bottom: 16px;
+}
+
+.grid-share h2,
+.tower h2 {
+  margin-top: 0;
+}
+
+.share-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.share-segment {
+  flex: 0 1 0;
+  min-width: 0;
+}
+
+.share-teams {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.share-teams li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.share-teams li.out {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.chip {
+  width: 4px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--muted);
+}
+
+/* Timing tower. */
+.tower-head,
+#tower li {
+  display: grid;
+  grid-template-columns: 20px 4px 52px repeat(3, 38px) minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The header has no chip column: Car spans it. */
+.tower-head span:nth-child(2) {
+  grid-column: span 2;
+}
+
+.tower-head {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+#tower {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+#tower li:nth-child(odd) {
+  background: var(--surface);
+}
+
+#tower li.stopped {
+  opacity: 0.45;
+}
+
+.tower .pos,
+.tower .sector,
+.tower .status,
+.tower-head span:nth-child(n + 3) {
+  text-align: right;
+}
+
+.tower .pos {
+  color: var(--muted);
+}
+
+.purple {
+  color: var(--sector-purple);
+}
+
+.green {
+  color: var(--sector-green);
+}
+
+.yellow {
+  color: var(--sector-yellow);
+}
+
+.legend {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
 }
 
 .stats {
@@ -188,8 +322,27 @@ footer {
   color: var(--muted);
 }
 
+/* Medium: the tower moves under the track, beside the stats. */
+@media (max-width: 1179px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-areas:
+      "track side"
+      "tower side";
+  }
+
+  .tower {
+    max-width: 420px;
+  }
+}
+
+/* Narrow: one column, track first. */
 @media (max-width: 800px) {
   .layout {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "track"
+      "tower"
+      "side";
   }
 }
