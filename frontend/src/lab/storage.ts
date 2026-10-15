@@ -13,9 +13,10 @@ export interface SavedBrain {
   lapS: number | null;
 }
 
-// Bump the version if the physics or the brain shape changes, so old brains
-// (tuned for different rules) are ignored rather than replayed.
-const VERSION = 1;
+// Bump the version if the physics, the brain shape or the circuits change, so
+// old brains (tuned for different rules or roads) are ignored rather than
+// replayed. 2: smooth outlines from circuits.ts.
+const VERSION = 2;
 const key = (circuitId: string) => `f1-lab:best:${circuitId}`;
 
 export function loadBest(circuitId: string): SavedBrain | null {

@@ -6,11 +6,11 @@ export default defineConfig(({ mode }): UserConfig =>
   mode === 'lab'
     ? {
         // lab.html (served at /lab via vercel.json) is built in a second pass
-        // (`vite build --mode lab`, see package.json) because it imports
-        // src/data/heroCircuits.ts, which index.html also imports. As a third
-        // input here, Rolldown would split that module into a shared chunk
-        // and change every public chunk hash. Its own pass leaves the first
-        // build's output untouched.
+        // (`vite build --mode lab`, see package.json). As a third input here,
+        // any module it shares with index.html (it used to import
+        // src/data/heroCircuits.ts, and still imports src/teams.ts) could be
+        // split into a shared chunk and change every public chunk hash. Its
+        // own pass leaves the first build's output untouched.
         build: {
           emptyOutDir: false,
           copyPublicDir: false,

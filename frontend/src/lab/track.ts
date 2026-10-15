@@ -1,6 +1,7 @@
-// A circuit as the cars see it: the centreline polyline from heroCircuits.ts
-// (0-1000 box, start/finish at the first point, already in race direction),
-// walls at a half-width either side, and "how far round the lap is this point".
+// A circuit as the cars see it: the centreline polyline from circuits.ts
+// (0-1000 box, evenly spaced, start/finish at the first point, already in
+// race direction), walls at a half-width either side, and "how far round the
+// lap is this point".
 //
 // The walls are not stored as two offset polylines. On tight corners and
 // close-running sections (Jeddah, Austin, Baku) an offset polyline folds
@@ -24,6 +25,18 @@ export interface Track {
   cum: number[];
   length: number;
   halfWidth: number;
+  /** Runs of BLOCK segments with a circle around each, so distanceToWall can
+   *  skip a whole run the sensor ray can't reach. */
+  blocks: Block[];
+}
+
+interface Block {
+  /** Segments first..last-1. */
+  first: number;
+  last: number;
+  x: number;
+  y: number;
+  radius: number;
 }
 
 /** Where a point sits relative to the centreline. */
@@ -45,6 +58,16 @@ export const HALF_WIDTH = 14;
  *  stops progress jumping to a different part of the track that happens to
  *  pass nearby. */
 const SEARCH_WINDOW = 6;
+
+/** Segments per block in Track.blocks. */
+const BLOCK = 16;
+
+/** circuits.ts stores each outline as x0, y0, x1, y1, ... */
+export function pointsFromFlat(flat: number[]): Point[] {
+  const points: Point[] = [];
+  for (let i = 0; i + 1 < flat.length; i += 2) points.push({ x: flat[i], y: flat[i + 1] });
+  return points;
+}
 
 /** Reads the M/L/Z polyline into points, dropping repeats and the closing
  *  point if it duplicates the first. */
@@ -71,7 +94,17 @@ export function buildTrack(points: Point[], halfWidth: number): Track {
     cum.push(cum[i - 1] + Math.hypot(b.x - a.x, b.y - a.y));
   }
 
-  return { points, cum, length: cum[n], halfWidth };
+  const blocks: Block[] = [];
+  for (let first = 0; first < n; first += BLOCK) {
+    const last = Math.min(n, first + BLOCK);
+    const ends = Array.from({ length: last - first + 1 }, (_, k) => points[(first + k) % n]);
+    const x = ends.reduce((sum, p) => sum + p.x, 0) / ends.length;
+    const y = ends.reduce((sum, p) => sum + p.y, 0) / ends.length;
+    const radius = Math.max(...ends.map((p) => Math.hypot(p.x - x, p.y - y)));
+    blocks.push({ first, last, x, y, radius });
+  }
+
+  return { points, cum, length: cum[n], halfWidth, blocks };
 }
 
 /** Nearest point on the centreline. With `hint` (the car's last segment) it
@@ -129,7 +162,11 @@ export function segmentAngle(track: Track, seg: number): number {
  *  The track is a chain of capsules, one per segment (the segment widened by
  *  halfWidth, with round ends). Each capsule covers one stretch of the ray;
  *  starting at 0, the ray stays on track for as long as those stretches
- *  overlap, and the first gap is the wall. */
+ *  overlap, and the first gap is the wall.
+ *
+ *  Capsules (and whole blocks of them) that lie entirely to one side of the
+ *  ray, behind it, or out of range are skipped: they can't add a stretch, so
+ *  the answer is the same, only faster on finely spaced outlines. */
 export function distanceToWall(track: Track, p: Point, angle: number, range: number): number {
   const { points, cum, halfWidth: r } = track;
   const n = points.length;
@@ -137,60 +174,62 @@ export function distanceToWall(track: Track, p: Point, angle: number, range: num
   const dy = Math.sin(angle);
   const spans: [number, number][] = [];
 
-  for (let i = 0; i < n; i++) {
-    const a = points[i];
-    const b = points[(i + 1) % n];
-    const len = cum[i + 1] - cum[i];
-    // Skip capsules the ray can't reach within range.
-    const reachable = range + len / 2 + r;
-    const mx = (a.x + b.x) / 2 - p.x;
-    const my = (a.y + b.y) / 2 - p.y;
-    if (mx * mx + my * my > reachable * reachable) continue;
+  const missesRay = (mx: number, my: number, pad: number) =>
+    mx * mx + my * my > (range + pad) ** 2 || Math.abs(mx * dy - my * dx) > pad || mx * dx + my * dy < -pad;
 
-    // Inside the capsule = within r of the segment: the segment's own band
-    // (a rectangle in its frame) plus a circle at each end.
-    const fx = p.x - a.x;
-    const fy = p.y - a.y;
-    const ux = (b.x - a.x) / len;
-    const uy = (b.y - a.y) / len;
-    let lo = Infinity;
-    let hi = -Infinity;
+  for (const block of track.blocks) {
+    if (missesRay(block.x - p.x, block.y - p.y, block.radius + r)) continue;
+    for (let i = block.first; i < block.last; i++) {
+      const a = points[i];
+      const b = points[(i + 1) % n];
+      const len = cum[i + 1] - cum[i];
+      if (missesRay((a.x + b.x) / 2 - p.x, (a.y + b.y) / 2 - p.y, len / 2 + r)) continue;
 
-    for (let end = 0; end < 2; end++) {
-      const cx = end === 0 ? fx : p.x - b.x;
-      const cy = end === 0 ? fy : p.y - b.y;
-      const proj = cx * dx + cy * dy;
-      const disc = proj * proj - (cx * cx + cy * cy - r * r);
-      if (disc >= 0) {
-        const root = Math.sqrt(disc);
-        lo = Math.min(lo, -proj - root);
-        hi = Math.max(hi, -proj + root);
+      // Inside the capsule = within r of the segment: the segment's own band
+      // (a rectangle in its frame) plus a circle at each end.
+      const fx = p.x - a.x;
+      const fy = p.y - a.y;
+      const ux = (b.x - a.x) / len;
+      const uy = (b.y - a.y) / len;
+      let lo = Infinity;
+      let hi = -Infinity;
+
+      for (let end = 0; end < 2; end++) {
+        const cx = end === 0 ? fx : p.x - b.x;
+        const cy = end === 0 ? fy : p.y - b.y;
+        const proj = cx * dx + cy * dy;
+        const disc = proj * proj - (cx * cx + cy * cy - r * r);
+        if (disc >= 0) {
+          const root = Math.sqrt(disc);
+          lo = Math.min(lo, -proj - root);
+          hi = Math.max(hi, -proj + root);
+        }
       }
-    }
 
-    // Band: 0 <= along <= len and -r <= across <= r, both linear in t.
-    let t0 = -Infinity;
-    let t1 = Infinity;
-    const slabs: [number, number, number, number][] = [
-      [fx * ux + fy * uy, dx * ux + dy * uy, 0, len],
-      [fx * uy - fy * ux, dx * uy - dy * ux, -r, r],
-    ];
-    for (const [v0, rate, min, max] of slabs) {
-      if (Math.abs(rate) < 1e-12) {
-        if (v0 < min || v0 > max) t0 = Infinity;
-      } else {
-        const ta = (min - v0) / rate;
-        const tb = (max - v0) / rate;
-        t0 = Math.max(t0, Math.min(ta, tb));
-        t1 = Math.min(t1, Math.max(ta, tb));
+      // Band: 0 <= along <= len and -r <= across <= r, both linear in t.
+      let t0 = -Infinity;
+      let t1 = Infinity;
+      const slabs: [number, number, number, number][] = [
+        [fx * ux + fy * uy, dx * ux + dy * uy, 0, len],
+        [fx * uy - fy * ux, dx * uy - dy * ux, -r, r],
+      ];
+      for (const [v0, rate, min, max] of slabs) {
+        if (Math.abs(rate) < 1e-12) {
+          if (v0 < min || v0 > max) t0 = Infinity;
+        } else {
+          const ta = (min - v0) / rate;
+          const tb = (max - v0) / rate;
+          t0 = Math.max(t0, Math.min(ta, tb));
+          t1 = Math.min(t1, Math.max(ta, tb));
+        }
       }
-    }
-    if (t0 <= t1) {
-      lo = Math.min(lo, t0);
-      hi = Math.max(hi, t1);
-    }
+      if (t0 <= t1) {
+        lo = Math.min(lo, t0);
+        hi = Math.max(hi, t1);
+      }
 
-    if (hi > 0 && lo < range) spans.push([lo, hi]);
+      if (hi > 0 && lo < range) spans.push([lo, hi]);
+    }
   }
 
   spans.sort((s1, s2) => s1[0] - s2[0]);
