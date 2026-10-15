@@ -7,9 +7,10 @@
 
 import "./lab.css";
 import { HERO_CIRCUITS, HERO_CIRCUITS_ATTRIBUTION, type HeroCircuit } from "../data/heroCircuits.ts";
+import { TEAM_ORDER, type TeamSlug } from "../teams.ts";
 import { randomWeights } from "./brain.ts";
 import { drawChart } from "./chart.ts";
-import { EVO, nextGeneration } from "./evolution.ts";
+import { EVO, gridTeam, nextGeneration } from "./evolution.ts";
 import { drawScene, fitCanvas } from "./render.ts";
 import { createRng, type Rng } from "./rng.ts";
 import {
@@ -23,9 +24,13 @@ import {
   type Runner,
 } from "./sim.ts";
 import { loadBest, saveBest } from "./storage.ts";
+import { bestSectors, foldBest, type SectorBests } from "./timing.ts";
+import { createGridShare, createTower } from "./tower.ts";
 import { buildTrack, HALF_WIDTH, parsePath, type Track } from "./track.ts";
 
 const DEFAULT_CIRCUIT = "hu-1986";
+/** The tower redraws at most this often, not every frame. */
+const TOWER_INTERVAL_MS = 250;
 
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -49,6 +54,8 @@ const ui = {
   bestEver: el("stat-best-ever"),
   status: el("status"),
   brain: el("brain"),
+  tower: el<HTMLOListElement>("tower"),
+  gridShare: el("grid-share"),
   attribution: el("attribution"),
 };
 
@@ -63,6 +70,10 @@ interface Run {
   /** Best lap of each finished generation, null where none lapped. */
   laps: (number | null)[];
   bestLapEver: number | null;
+  /** Fastest time per sector over the run's finished generations, in frames. */
+  bestSectors: SectorBests;
+  /** First generation each eliminated team had no seats. */
+  outSince: Partial<Record<TeamSlug, number>>;
 }
 
 let run: Run;
@@ -71,24 +82,42 @@ let watching: { weights: number[]; gen: Generation } | null = null;
 let paused = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 let speed = 1;
 let mutationRate: number = EVO.MUTATION_RATE;
+const updateTower = createTower(ui.tower, EVO.POPULATION);
+const updateGridShare = createGridShare(ui.gridShare);
+let towerDrawnAt = -Infinity;
 
 function startRun(circuit: HeroCircuit): void {
   const track = buildTrack(parsePath(circuit.path), HALF_WIDTH);
   const rng = createRng(crypto.getRandomValues(new Uint32Array(1))[0]);
-  const population = Array.from({ length: EVO.POPULATION }, () => randomWeights(rng));
+  const seats = Array.from({ length: EVO.POPULATION }, (_, i) => ({
+    weights: randomWeights(rng),
+    team: gridTeam(i),
+  }));
   run = {
     circuit,
     track,
     rng,
-    gen: createGeneration(track, population),
+    gen: createGeneration(track, seats),
     generation: 1,
     laps: [],
     bestLapEver: null,
+    bestSectors: [null, null, null],
+    outSince: {},
   };
   watching = null;
   ui.status.textContent = "";
   updateWatchButton();
   drawChart(ui.chart, run.laps);
+  showGridShare();
+}
+
+/** Grid share only changes between generations. */
+function showGridShare(): void {
+  const teams = run.gen.runners.map((r) => r.team);
+  for (const slug of TEAM_ORDER) {
+    if (!teams.includes(slug) && run.outSince[slug] === undefined) run.outSince[slug] = run.generation;
+  }
+  updateGridShare(teams, run.outSince);
 }
 
 function endGeneration(): void {
@@ -97,6 +126,7 @@ function endGeneration(): void {
   const best = ranked[0];
   const lapS = best.lapFrames === null ? null : lapSeconds(best.lapFrames);
   run.laps.push(lapS);
+  run.bestSectors = foldBest(run.bestSectors, bestSectors(run.gen.runners));
   if (lapS !== null && (run.bestLapEver === null || lapS < run.bestLapEver)) run.bestLapEver = lapS;
 
   const score = fitness(best, track.length);
@@ -110,19 +140,22 @@ function endGeneration(): void {
   }
 
   const next = nextGeneration(
-    ranked.map((r) => r.weights),
+    // Every evolving car has a team (seated by startRun or nextGeneration);
+    // only the replayed saved brain has none, and it never evolves.
+    ranked.map((r) => ({ weights: r.weights, team: r.team as TeamSlug })),
     run.rng,
     mutationRate,
   );
   run.gen = createGeneration(track, next);
   run.generation++;
   drawChart(ui.chart, run.laps);
+  showGridShare();
 }
 
 function step(): void {
   if (watching) {
     stepGeneration(run.track, watching.gen);
-    if (watching.gen.done) watching.gen = createGeneration(run.track, [watching.weights]);
+    if (watching.gen.done) watching.gen = createGeneration(run.track, [{ weights: watching.weights, team: null }]);
     return;
   }
   stepGeneration(run.track, run.gen);
@@ -140,6 +173,12 @@ function frame(): void {
   }
   updateStats();
   updateBrain(leader);
+  const now = performance.now();
+  if (now - towerDrawnAt >= TOWER_INTERVAL_MS) {
+    // The tower always shows the evolving generation (frozen while watching).
+    updateTower(run.gen.runners, run.track.length, run.bestSectors);
+    towerDrawnAt = now;
+  }
   requestAnimationFrame(frame);
 }
 
@@ -261,7 +300,10 @@ ui.watch.addEventListener("click", () => {
   } else {
     const saved = loadBest(run.circuit.id);
     if (saved) {
-      watching = { weights: saved.weights, gen: createGeneration(run.track, [saved.weights]) };
+      watching = {
+        weights: saved.weights,
+        gen: createGeneration(run.track, [{ weights: saved.weights, team: null }]),
+      };
       ui.status.textContent = `Watching the best saved brain for ${run.circuit.name}${
         saved.lapS === null ? " (no full lap yet)" : `: ${formatLap(saved.lapS)}`
       }.`;

@@ -1,6 +1,7 @@
 // One generation on track: every car drives itself until it finishes a lap,
 // crashes, stalls, turns back, or runs out of time. Then each gets a score.
 
+import type { TeamSlug } from "../teams.ts";
 import { think } from "./brain.ts";
 import { CAR, senseInputs, spawnCar, stepCar, type CarState } from "./car.ts";
 import { isOffTrack, project, unwrapDelta, type Point, type Track } from "./track.ts";
@@ -17,8 +18,14 @@ export const SIM = {
   BRAKE_DOT_SPACING: 8,
 } as const;
 
+/** Why a car stopped: finished the lap, left the track, turned back, made no
+ *  progress, or hit the time cap. */
+export type StopReason = "lap" | "off" | "back" | "stall" | "time";
+
 export interface Runner extends CarState {
   weights: number[];
+  /** Null for the replayed saved brain (storage v1 has no team). */
+  team: TeamSlug | null;
   inputs: number[];
   gas: number;
   steer: number;
@@ -33,6 +40,10 @@ export interface Runner extends CarState {
   done: boolean;
   /** Steps taken to complete the lap, or null if it never did. */
   lapFrames: number | null;
+  /** Step on which progress first reached 1/3, 2/3 and a full lap: the ends
+   *  of three equal-length sectors. */
+  sectorFrames: (number | null)[];
+  stop: StopReason | null;
   /** Where this car braked, for drawing. */
   brakes: Point[];
 }
@@ -42,12 +53,16 @@ export interface Generation {
   done: boolean;
 }
 
-export function createGeneration(track: Track, population: number[][]): Generation {
-  const runners = population.map((weights): Runner => {
+export function createGeneration(
+  track: Track,
+  seats: { weights: number[]; team: TeamSlug | null }[],
+): Generation {
+  const runners = seats.map(({ weights, team }): Runner => {
     const car = spawnCar(track);
     return {
       ...car,
       weights,
+      team,
       inputs: senseInputs(track, car),
       gas: 0,
       steer: 0,
@@ -59,6 +74,8 @@ export function createGeneration(track: Track, population: number[][]): Generati
       frames: 0,
       done: false,
       lapFrames: null,
+      sectorFrames: [null, null, null],
+      stop: null,
       brakes: [],
     };
   });
@@ -93,32 +110,57 @@ function stepRunner(track: Track, r: Runner): void {
   const proj = project(track, r, r.seg);
   r.seg = proj.seg;
   if (isOffTrack(track, proj)) {
-    r.done = true;
+    stopRunner(r, "off");
     return;
   }
 
   r.progress += unwrapDelta(r.lastS, proj.s, track.length);
   r.lastS = proj.s;
   r.maxProgress = Math.max(r.maxProgress, r.progress);
+  recordSectors(r, track.length);
 
   if (r.progress >= track.length) {
     r.lapFrames = r.frames;
-    r.done = true;
+    stopRunner(r, "lap");
     return;
   }
   if (r.progress > r.gainMark + SIM.STALL_GAIN) {
     r.gainMark = r.progress;
     r.gainFrame = r.frames;
   }
-  if (
-    r.progress < r.maxProgress - SIM.BACKWARDS ||
-    r.frames - r.gainFrame > SIM.STALL_FRAMES ||
-    r.frames >= SIM.FRAME_CAP
-  ) {
-    r.done = true;
+  if (r.progress < r.maxProgress - SIM.BACKWARDS) {
+    stopRunner(r, "back");
+    return;
+  }
+  if (r.frames - r.gainFrame > SIM.STALL_FRAMES) {
+    stopRunner(r, "stall");
+    return;
+  }
+  if (r.frames >= SIM.FRAME_CAP) {
+    stopRunner(r, "time");
     return;
   }
   r.inputs = senseInputs(track, r);
+}
+
+function stopRunner(r: Runner, reason: StopReason): void {
+  r.done = true;
+  r.stop = reason;
+}
+
+/** Marks the step on which `progress` (which keeps counting past the
+ *  start/finish line) first reaches each sector end. A car that dips back
+ *  over a boundary keeps its first crossing. */
+export function recordSectors(
+  r: Pick<Runner, "progress" | "frames" | "sectorFrames">,
+  length: number,
+): void {
+  const n = r.sectorFrames.length;
+  for (let i = 0; i < n; i++) {
+    // The last end is exactly `length`, so S3 closes on the lap's own step.
+    const end = i === n - 1 ? length : (length * (i + 1)) / n;
+    if (r.sectorFrames[i] === null && r.progress >= end) r.sectorFrames[i] = r.frames;
+  }
 }
 
 /** Any lap beats any non-lap, and a faster lap beats a slower one (1..2);

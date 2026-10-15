@@ -1,6 +1,7 @@
 // Drawing the track and cars on the main canvas. Everything is drawn in the
 // 0-1000 box units the sim uses, under one transform that fits the circuit.
 
+import { teamSwatch } from "../theme.ts";
 import { CAR, SENSOR_ANGLES } from "./car.ts";
 import type { Runner } from "./sim.ts";
 import { segmentAngle, type Track } from "./track.ts";
@@ -10,12 +11,15 @@ const COLORS = {
   asphalt: "#34343b",
   wall: "#8a8a93",
   startLine: "#f5f5f5",
-  car: "rgba(138, 180, 248, 0.85)",
-  carStopped: "rgba(138, 180, 248, 0.2)",
+  /** A car with no team: the replayed saved brain. Teams use theme.ts. */
+  neutral: "rgba(138, 180, 248, 0.85)",
   leader: "#ffd166",
   ray: "rgba(255, 209, 102, 0.45)",
   brake: "#ff4d4d",
 };
+
+/** Opacity of a car that has stopped, so the running cars stand out. */
+const STOPPED_ALPHA = 0.25;
 
 /** Matches the canvas's drawing buffer to its on-screen size. */
 export function fitCanvas(canvas: HTMLCanvasElement): void {
@@ -81,8 +85,11 @@ export function drawScene(
   ctx.stroke();
 
   for (const r of runners) {
-    if (r !== leader) drawCar(ctx, r, r.done ? COLORS.carStopped : COLORS.car);
+    if (r === leader) continue;
+    ctx.globalAlpha = r.done ? STOPPED_ALPHA : 1;
+    drawCar(ctx, r, carColor(r));
   }
+  ctx.globalAlpha = 1;
 
   if (leader) {
     ctx.strokeStyle = COLORS.ray;
@@ -100,8 +107,13 @@ export function drawScene(
       ctx.arc(b.x, b.y, 3.5 * px, 0, Math.PI * 2);
       ctx.fill();
     }
-    drawCar(ctx, leader, COLORS.leader);
+    // Team colour inside, highlight outline around it.
+    drawCar(ctx, leader, carColor(leader), COLORS.leader, 1.5 * px);
   }
+}
+
+function carColor(r: Runner): string {
+  return r.team ? teamSwatch("dark", r.team) : COLORS.neutral;
 }
 
 function strokeLoop(ctx: CanvasRenderingContext2D, points: { x: number; y: number }[]): void {
@@ -111,11 +123,22 @@ function strokeLoop(ctx: CanvasRenderingContext2D, points: { x: number; y: numbe
   ctx.stroke();
 }
 
-function drawCar(ctx: CanvasRenderingContext2D, r: Runner, color: string): void {
+function drawCar(
+  ctx: CanvasRenderingContext2D,
+  r: Runner,
+  color: string,
+  outline?: string,
+  outlineWidth = 0,
+): void {
   ctx.save();
   ctx.translate(r.x, r.y);
   ctx.rotate(r.heading);
   ctx.fillStyle = color;
   ctx.fillRect(-6, -3, 12, 6);
+  if (outline) {
+    ctx.strokeStyle = outline;
+    ctx.lineWidth = outlineWidth;
+    ctx.strokeRect(-6, -3, 12, 6);
+  }
   ctx.restore();
 }
