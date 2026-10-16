@@ -1,8 +1,10 @@
 // Drawing the track and cars on the main canvas. Everything is drawn in the
-// 0-1000 box units the sim uses, under one transform that fits the circuit.
+// metres the sim uses, under one transform that fits the circuit. The road is
+// its true width; cars and dots are a fixed size on screen, since a 5.6 m car
+// would be a few pixels long.
 
 import { teamSwatch } from "../theme.ts";
-import { CAR, SENSOR_ANGLES } from "./car.ts";
+import { SENSOR_ANGLES, SENSOR_RANGES } from "./car.ts";
 import type { Runner } from "./sim.ts";
 import { segmentAngle, type Track } from "./track.ts";
 
@@ -20,6 +22,9 @@ const COLORS = {
 
 /** Opacity of a car that has stopped, so the running cars stand out. */
 const STOPPED_ALPHA = 0.25;
+/** Car size on screen, in CSS pixels. */
+const CAR_LENGTH_PX = 10;
+const CAR_WIDTH_PX = 5;
 
 /** Matches the canvas's drawing buffer to its on-screen size. */
 export function fitCanvas(canvas: HTMLCanvasElement): void {
@@ -52,12 +57,13 @@ export function drawScene(
     maxX = Math.max(maxX, p.x);
     maxY = Math.max(maxY, p.y);
   }
-  const margin = track.halfWidth + 20;
+  const margin = track.halfWidth + 40;
   const scale = Math.min(width / (maxX - minX + 2 * margin), height / (maxY - minY + 2 * margin));
   const ox = (width - (maxX - minX) * scale) / 2 - minX * scale;
   const oy = (height - (maxY - minY) * scale) / 2 - minY * scale;
   ctx.setTransform(scale, 0, 0, scale, ox, oy);
-  const px = 1 / scale; // one device pixel, in box units
+  const px = 1 / scale; // one device pixel, in metres
+  const css = px * (window.devicePixelRatio || 1); // one CSS pixel, in metres
 
   // The centreline stroked at full track width with round joins is exactly
   // the track (everything within halfWidth of it). Stroking it slightly
@@ -87,7 +93,7 @@ export function drawScene(
   for (const r of runners) {
     if (r === leader) continue;
     ctx.globalAlpha = r.done ? STOPPED_ALPHA : 1;
-    drawCar(ctx, r, carColor(r));
+    drawCar(ctx, r, css, carColor(r));
   }
   ctx.globalAlpha = 1;
 
@@ -95,7 +101,7 @@ export function drawScene(
     ctx.strokeStyle = COLORS.ray;
     ctx.lineWidth = 1.5 * px;
     SENSOR_ANGLES.forEach((a, i) => {
-      const d = leader.inputs[i] * CAR.SENSOR_RANGE;
+      const d = leader.inputs[i] * SENSOR_RANGES[i];
       ctx.beginPath();
       ctx.moveTo(leader.x, leader.y);
       ctx.lineTo(leader.x + Math.cos(leader.heading + a) * d, leader.y + Math.sin(leader.heading + a) * d);
@@ -108,7 +114,7 @@ export function drawScene(
       ctx.fill();
     }
     // Team colour inside, highlight outline around it.
-    drawCar(ctx, leader, carColor(leader), COLORS.leader, 1.5 * px);
+    drawCar(ctx, leader, css, carColor(leader), COLORS.leader, 1.5 * px);
   }
 }
 
@@ -126,6 +132,7 @@ function strokeLoop(ctx: CanvasRenderingContext2D, points: { x: number; y: numbe
 function drawCar(
   ctx: CanvasRenderingContext2D,
   r: Runner,
+  css: number,
   color: string,
   outline?: string,
   outlineWidth = 0,
@@ -133,12 +140,13 @@ function drawCar(
   ctx.save();
   ctx.translate(r.x, r.y);
   ctx.rotate(r.heading);
+  const [l, w] = [CAR_LENGTH_PX * css, CAR_WIDTH_PX * css];
   ctx.fillStyle = color;
-  ctx.fillRect(-6, -3, 12, 6);
+  ctx.fillRect(-l / 2, -w / 2, l, w);
   if (outline) {
     ctx.strokeStyle = outline;
     ctx.lineWidth = outlineWidth;
-    ctx.strokeRect(-6, -3, 12, 6);
+    ctx.strokeRect(-l / 2, -w / 2, l, w);
   }
   ctx.restore();
 }

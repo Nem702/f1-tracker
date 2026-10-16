@@ -1,7 +1,7 @@
 // A circuit as the cars see it: the centreline polyline from circuits.ts
-// (0-1000 box, evenly spaced, start/finish at the first point, already in
-// race direction), walls at a half-width either side, and "how far round the
-// lap is this point".
+// (evenly spaced, start/finish at the first point, already in race
+// direction) scaled to metres, walls at a half-width either side, and "how
+// far round the lap is this point".
 //
 // The walls are not stored as two offset polylines. On tight corners and
 // close-running sections (Jeddah, Austin, Baku) an offset polyline folds
@@ -10,7 +10,8 @@
 // centreline, and the walls are its edge: exactly what isOffTrack tests, what
 // the sensors measure to, and what render.ts draws.
 //
-// Everything here is in box units. Real metres are out of scope for v1.
+// The geometry functions work in any unit; the lab feeds them metres
+// (labTrack). circuits.ts and the builder stay in 0-1000 box units.
 
 export interface Point {
   x: number;
@@ -49,9 +50,9 @@ export interface Projection {
   seg: number;
 }
 
-/** One global track width for every circuit (per-circuit tuning is out of
- *  scope for v1). */
-export const HALF_WIDTH = 14;
+/** Half the road width in metres, the same on every circuit: a real F1 track
+ *  is about 15 m wide. */
+export const HALF_WIDTH = 7.5;
 
 /** How many segments either side of a hint `project` searches. A car moves a
  *  few units per step, so it never skips this many; searching locally also
@@ -83,6 +84,17 @@ export function parsePath(d: string): Point[] {
   const last = points[points.length - 1];
   if (points.length > 1 && first.x === last.x && first.y === last.y) points.pop();
   return points;
+}
+
+/** A circuits.ts outline in metres: scaled so the centreline is exactly the
+ *  official lap length, with the road HALF_WIDTH either side. */
+export function labTrack(circuit: { points: number[]; lengthM: number }): Track {
+  const box = pointsFromFlat(circuit.points);
+  const k = circuit.lengthM / buildTrack(box, HALF_WIDTH).length;
+  return buildTrack(
+    box.map((p) => ({ x: p.x * k, y: p.y * k })),
+    HALF_WIDTH,
+  );
 }
 
 export function buildTrack(points: Point[], halfWidth: number): Track {

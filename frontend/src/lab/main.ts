@@ -13,10 +13,10 @@ import { LAB_CIRCUITS, LAB_CIRCUITS_ATTRIBUTION, type LabCircuit } from "./circu
 import { EVO, gridTeam, nextGeneration } from "./evolution.ts";
 import { drawScene, fitCanvas } from "./render.ts";
 import { createRng, type Rng } from "./rng.ts";
+import { referenceLap } from "./reference.ts";
 import {
   createGeneration,
   fitness,
-  lapSeconds,
   leaderOf,
   rankByFitness,
   stepGeneration,
@@ -24,9 +24,9 @@ import {
   type Runner,
 } from "./sim.ts";
 import { loadBest, saveBest } from "./storage.ts";
-import { bestSectors, foldBest, type SectorBests } from "./timing.ts";
+import { bestSectors, foldBest, formatLap, type SectorBests } from "./timing.ts";
 import { createGridShare, createTower } from "./tower.ts";
-import { buildTrack, HALF_WIDTH, pointsFromFlat, type Track } from "./track.ts";
+import { labTrack, type Track } from "./track.ts";
 
 const DEFAULT_CIRCUIT = "hu-1986";
 /** The tower redraws at most this often, not every frame. */
@@ -52,6 +52,7 @@ const ui = {
   alive: el("stat-alive"),
   bestGen: el("stat-best-gen"),
   bestEver: el("stat-best-ever"),
+  pole: el("stat-pole"),
   status: el("status"),
   brain: el("brain"),
   tower: el<HTMLOListElement>("tower"),
@@ -64,6 +65,8 @@ const trackCtx = ui.track.getContext("2d");
 interface Run {
   circuit: LabCircuit;
   track: Track;
+  /** Every car's speed on the line at the start, m/s. */
+  startSpeed: number;
   rng: Rng;
   gen: Generation;
   generation: number;
@@ -87,7 +90,9 @@ const updateGridShare = createGridShare(ui.gridShare);
 let towerDrawnAt = -Infinity;
 
 function startRun(circuit: LabCircuit): void {
-  const track = buildTrack(pointsFromFlat(circuit.points), HALF_WIDTH);
+  const track = labTrack(circuit);
+  // The pole lap's speed at the line; without one, the reference lap's.
+  const startSpeed = circuit.lineSpeedMs ?? referenceLap(track, null).speeds[0];
   const rng = createRng(crypto.getRandomValues(new Uint32Array(1))[0]);
   const seats = Array.from({ length: EVO.POPULATION }, (_, i) => ({
     weights: randomWeights(rng),
@@ -96,8 +101,9 @@ function startRun(circuit: LabCircuit): void {
   run = {
     circuit,
     track,
+    startSpeed,
     rng,
-    gen: createGeneration(track, seats),
+    gen: createGeneration(track, seats, startSpeed),
     generation: 1,
     laps: [],
     bestLapEver: null,
@@ -124,7 +130,7 @@ function endGeneration(): void {
   const { track } = run;
   const ranked = rankByFitness(run.gen, track.length);
   const best = ranked[0];
-  const lapS = best.lapFrames === null ? null : lapSeconds(best.lapFrames);
+  const lapS = best.lapS;
   run.laps.push(lapS);
   run.bestSectors = foldBest(run.bestSectors, bestSectors(run.gen.runners));
   if (lapS !== null && (run.bestLapEver === null || lapS < run.bestLapEver)) run.bestLapEver = lapS;
@@ -146,7 +152,7 @@ function endGeneration(): void {
     run.rng,
     mutationRate,
   );
-  run.gen = createGeneration(track, next);
+  run.gen = createGeneration(track, next, run.startSpeed);
   run.generation++;
   drawChart(ui.chart, run.laps);
   showGridShare();
@@ -155,7 +161,9 @@ function endGeneration(): void {
 function step(): void {
   if (watching) {
     stepGeneration(run.track, watching.gen);
-    if (watching.gen.done) watching.gen = createGeneration(run.track, [{ weights: watching.weights, team: null }]);
+    if (watching.gen.done) {
+      watching.gen = createGeneration(run.track, [{ weights: watching.weights, team: null }], run.startSpeed);
+    }
     return;
   }
   stepGeneration(run.track, run.gen);
@@ -182,23 +190,33 @@ function frame(): void {
   requestAnimationFrame(frame);
 }
 
-function formatLap(s: number | null): string {
-  return s === null ? "—" : `${s.toFixed(2)} sim s`;
+function lapText(s: number | null): string {
+  return s === null ? "—" : formatLap(s);
+}
+
+/** e.g. "1:17.207 NOR · best +2.341": the 2026 pole and the run's gap to it. */
+function poleText(): string {
+  const { poleS, poleDriver } = run.circuit;
+  if (poleS === null) return "No 2026 pole lap yet";
+  const gap = run.bestLapEver === null ? null : run.bestLapEver - poleS;
+  const gapText = gap === null ? "—" : `${gap < 0 ? "−" : "+"}${Math.abs(gap).toFixed(3)}`;
+  return `${formatLap(poleS)} ${poleDriver} · best ${gapText}`;
 }
 
 function updateStats(): void {
   const { runners } = run.gen;
   const alive = runners.filter((r) => !r.done).length;
-  const laps = runners.flatMap((r) => (r.lapFrames === null ? [] : [lapSeconds(r.lapFrames)]));
+  const laps = runners.flatMap((r) => (r.lapS === null ? [] : [r.lapS]));
   ui.generation.textContent = String(run.generation);
   ui.alive.textContent = `${alive} / ${laps.length}`;
   if (laps.length > 0) {
-    ui.bestGen.textContent = formatLap(Math.min(...laps));
+    ui.bestGen.textContent = lapText(Math.min(...laps));
   } else {
     const furthest = Math.max(...runners.map((r) => r.maxProgress));
     ui.bestGen.textContent = `${((furthest / run.track.length) * 100).toFixed(1)}% of a lap`;
   }
-  ui.bestEver.textContent = formatLap(run.bestLapEver);
+  ui.bestEver.textContent = lapText(run.bestLapEver);
+  ui.pole.textContent = poleText();
 }
 
 // Leader's brain: one row per input and output, built once, updated per frame.
@@ -302,10 +320,10 @@ ui.watch.addEventListener("click", () => {
     if (saved) {
       watching = {
         weights: saved.weights,
-        gen: createGeneration(run.track, [{ weights: saved.weights, team: null }]),
+        gen: createGeneration(run.track, [{ weights: saved.weights, team: null }], run.startSpeed),
       };
       ui.status.textContent = `Watching the best saved brain for ${run.circuit.name}${
-        saved.lapS === null ? " (no full lap yet)" : `: ${formatLap(saved.lapS)}`
+        saved.lapS === null ? " (no full lap yet)" : `: ${lapText(saved.lapS)}`
       }.`;
     }
   }

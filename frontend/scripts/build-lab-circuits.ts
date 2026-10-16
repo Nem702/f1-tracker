@@ -8,11 +8,12 @@
 //   1. downloads the bacinger/f1-circuits GeoJSON (OpenStreetMap, MIT),
 //   2. projects lat/lon to metres and draws a smooth spline through it,
 //   3. lines the result up with today's hero outline, so the lab keeps the
-//      same box size, orientation and HALF_WIDTH behaviour,
+//      same box size and orientation,
 //   4. resamples it evenly, SPACING box units apart,
 //   5. sets start/finish and direction from the 2026 qualifying pole lap on
 //      OpenF1 where there is one (and checks the outline against it), else
-//      from the hero outline,
+//      from the hero outline, and records that lap's time, driver and speed
+//      at the line (the lab's target and flying-start speed),
 //   6. finds where the road would merge with itself and where it crosses
 //      itself (Suzuka's bridge),
 // then prints one table row per circuit. With --overlays it also saves a
@@ -24,7 +25,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { HERO_CIRCUITS, HERO_CIRCUITS_ATTRIBUTION, type HeroCircuit } from "../src/data/heroCircuits.ts";
-import { buildTrack, HALF_WIDTH, parsePath, project, unwrapDelta, type Point, type Track } from "../src/lab/track.ts";
+import { buildTrack, parsePath, project, unwrapDelta, type Point, type Track } from "../src/lab/track.ts";
 import {
   alignLoops,
   applySimilarity,
@@ -46,6 +47,10 @@ const OPENF1 = "https://api.openf1.org/v1";
 const SPACING = 3;
 /** A real F1 track is about 15 m wide; the lab's road is 14 box units each side. */
 const REAL_HALF_WIDTH_M = 7.5;
+/** The lab's road before real units (task 25): 14 box units each side. Still
+ *  the bar for the pole-lap reality check and the ±14 merge spots, so the
+ *  outlines this script writes don't change with the sim's road width. */
+const BOX_HALF_WIDTH = 14;
 
 /** 2026 qualifying session keys (OpenF1 /v1/sessions). Bahrain and Jeddah were
  *  cancelled. A session that hasn't run yet returns no laps, and the circuit
@@ -66,7 +71,11 @@ interface Sample extends Point {
 
 interface PoleLap {
   driver: number;
+  /** Three-letter code, e.g. NOR. */
+  driverCode: string;
   seconds: number;
+  /** Speed at the start/finish line as the lap began, m/s. */
+  lineSpeedMs: number;
   /** Samples from the line to the line. */
   path: Sample[];
   /** Car position interpolated at the moment the lap started. */
@@ -130,9 +139,30 @@ async function fetchPoleLap(sessionKey: number): Promise<PoleLap | null> {
   if (after < 1) return null;
   const [a, b] = [samples[after - 1], samples[after]];
   const f = (t0 - a.t) / (b.t - a.t);
+
+  const drivers = (await fetchJson(
+    `${OPENF1}/drivers?session_key=${sessionKey}&driver_number=${pole.driver_number}`,
+  )) as { name_acronym: string }[] | null;
+  const driverCode = drivers?.[0]?.name_acronym;
+  if (typeof driverCode !== "string" || !/^[A-Z]{3}$/.test(driverCode)) {
+    throw new Error(`session ${sessionKey}: no three-letter code for car ${pole.driver_number}`);
+  }
+  // Speed (km/h) either side of the lap start, interpolated to the moment it began.
+  const speeds = ((await fetchJson(
+    `${OPENF1}/car_data?session_key=${sessionKey}&driver_number=${pole.driver_number}` +
+      `&date>=${iso(t0 - 2000)}&date<=${iso(t0 + 2000)}`,
+  )) ?? []) as { date: string; speed: number }[];
+  const telemetry = speeds.map((r) => ({ t: Date.parse(r.date), v: r.speed })).sort((p, q) => p.t - q.t);
+  const next = telemetry.findIndex((s) => s.t >= t0);
+  if (next < 1) throw new Error(`session ${sessionKey}: no car_data around the lap start`);
+  const [u, w] = [telemetry[next - 1], telemetry[next]];
+  const lineSpeedKmh = u.v + ((w.v - u.v) * (t0 - u.t)) / (w.t - u.t);
+
   return {
     driver: pole.driver_number,
+    driverCode,
     seconds: pole.lap_duration!,
+    lineSpeedMs: lineSpeedKmh / 3.6,
     path: samples.filter((s) => s.t >= t0 && s.t <= t1),
     start: { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f },
   };
@@ -181,7 +211,7 @@ async function buildCircuit(hero: HeroCircuit): Promise<Built> {
   const toBox = alignLoops(metres, heroPoints, false);
   let dense = metres.map((p) => applySimilarity(toBox, p));
   const metresPerBox = lengthM / loopLength(dense);
-  const denseTrack = buildTrack(dense, HALF_WIDTH);
+  const denseTrack = buildTrack(dense, BOX_HALF_WIDTH);
   const heroFitMeanM =
     (heroPoints.reduce((sum, p) => sum + project(denseTrack, p).dist, 0) / heroPoints.length) * metresPerBox;
 
@@ -203,9 +233,9 @@ async function buildCircuit(hero: HeroCircuit): Promise<Built> {
       lap,
       box,
       p95,
-      within: dists.filter((d) => d <= HALF_WIDTH).length / dists.length,
+      within: dists.filter((d) => d <= BOX_HALF_WIDTH).length / dists.length,
       withinReal: dists.filter((d) => d <= realHalf).length / dists.length,
-      pass: p95 <= HALF_WIDTH,
+      pass: p95 <= BOX_HALF_WIDTH,
     };
     if (pole.pass) {
       startS = project(denseTrack, applySimilarity(toTrack, lap.start)).s;
@@ -220,10 +250,10 @@ async function buildCircuit(hero: HeroCircuit): Promise<Built> {
   if (dir < 0) {
     const startPoint = pointAt(denseTrack, startS);
     dense = [...dense].reverse();
-    startS = project(buildTrack(dense, HALF_WIDTH), startPoint).s;
+    startS = project(buildTrack(dense, BOX_HALF_WIDTH), startPoint).s;
   }
   const points = resampleEven(dense, SPACING, startS);
-  const track = buildTrack(points, HALF_WIDTH);
+  const track = buildTrack(points, BOX_HALF_WIDTH);
 
   const crossings = findCrossings(points).map((c) => {
     const z1 = pole ? zNear(pole.box, track, c.s1) : null;
@@ -240,11 +270,11 @@ async function buildCircuit(hero: HeroCircuit): Promise<Built> {
     crossings,
     rawPoints: coords.length,
     lengthM,
-    boxRatio: track.length / buildTrack(heroPoints, HALF_WIDTH).length,
+    boxRatio: track.length / buildTrack(heroPoints, BOX_HALF_WIDTH).length,
     metresPerBox,
     heroFitMeanM,
     start,
-    merge14: mergeSpots(points, 2 * HALF_WIDTH),
+    merge14: mergeSpots(points, 2 * BOX_HALF_WIDTH),
     mergeReal: mergeSpots(points, realRoadWidth),
     realRoadWidth,
     pole,
@@ -274,6 +304,8 @@ const spotText = (s: MergeSpot, n: number, mpb: number) =>
 
 function moduleText(built: Built[]): string {
   const entries = built.map((b) => {
+    // Only a pole lap that passed the reality check set this start/finish.
+    const pole = b.pole?.pass ? b.pole.lap : null;
     const flat = b.points.flatMap((p) => [r1(p.x), r1(p.y)]);
     const lines: string[] = [];
     for (let i = 0; i < flat.length; i += 16) lines.push(`      ${flat.slice(i, i + 16).join(", ")},`);
@@ -286,6 +318,9 @@ function moduleText(built: Built[]): string {
       `    name: ${JSON.stringify(b.hero.name)},`,
       `    round2026: ${b.hero.round2026},`,
       `    lengthM: ${b.hero.lengthM},`,
+      `    poleS: ${pole ? pole.seconds : null},`,
+      `    poleDriver: ${pole ? JSON.stringify(pole.driverCode) : null},`,
+      `    lineSpeedMs: ${pole ? Math.round(pole.lineSpeedMs * 100) / 100 : null},`,
       `    crossings: [${crossings.join(", ")}],`,
       "    points: [",
       ...lines,
@@ -297,8 +332,9 @@ function moduleText(built: Built[]): string {
 //
 // The AI Lab's circuit outlines: bacinger/f1-circuits (MIT, OpenStreetMap
 // geometry) smoothed and evenly resampled, in the same 0-1000 box as the
-// homepage's heroCircuits.ts so HALF_WIDTH and the car behave as before.
-// Start/finish is the first point and the points run in race direction.
+// homepage's heroCircuits.ts. The sim scales each one to metres by lengthM
+// (track.ts labTrack). Start/finish is the first point and the points run in
+// race direction.
 
 export interface LabCircuit {
   id: string;
@@ -306,6 +342,12 @@ export interface LabCircuit {
   round2026: number;
   /** Official lap length in metres. */
   lengthM: number;
+  /** The 2026 qualifying pole lap (fastest OpenF1 lap of the session): time
+   *  in seconds, driver code, and speed at the start/finish line in m/s.
+   *  All null where there is no pole lap yet. */
+  poleS: number | null;
+  poleDriver: string | null;
+  lineSpeedMs: number | null;
   /** Where the track passes over itself (Suzuka's bridge): the point, and the
    *  lap distance (box units from start/finish) of the upper and lower pass. */
   crossings: { x: number; y: number; over: number; under: number }[];
@@ -338,12 +380,12 @@ function overlaySvg(b: Built): string {
   const marks = b.merge14.flatMap((s) =>
     [s.a, s.b].map((r) => {
       const p = b.points[Math.round((r[0] + r[1]) / 2) % n];
-      return `<circle cx="${r1(p.x)}" cy="${r1(p.y)}" r="${HALF_WIDTH * 1.4}" fill="none" stroke="#f08c00" stroke-width="2"/>`;
+      return `<circle cx="${r1(p.x)}" cy="${r1(p.y)}" r="${BOX_HALF_WIDTH * 1.4}" fill="none" stroke="#f08c00" stroke-width="2"/>`;
     }),
   );
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="${Math.round((1000 * h) / w)}" viewBox="${r1(x0)} ${r1(y0)} ${r1(w)} ${r1(h)}">
 <rect x="${r1(x0)}" y="${r1(y0)}" width="${r1(w)}" height="${r1(h)}" fill="#fff"/>
-<polygon points="${poly(b.points)}" fill="none" stroke="#e3e3e3" stroke-width="${2 * HALF_WIDTH}" stroke-linejoin="round"/>
+<polygon points="${poly(b.points)}" fill="none" stroke="#e3e3e3" stroke-width="${2 * BOX_HALF_WIDTH}" stroke-linejoin="round"/>
 <polygon points="${poly(b.points)}" fill="none" stroke="#b9b9b9" stroke-width="${r1(b.realRoadWidth)}" stroke-linejoin="round"/>
 <polygon points="${poly(parsePath(b.hero.path))}" fill="none" stroke="#1f6feb" stroke-width="1" stroke-dasharray="6 4"/>
 <polygon points="${poly(b.points)}" fill="none" stroke="#222" stroke-width="0.8"/>

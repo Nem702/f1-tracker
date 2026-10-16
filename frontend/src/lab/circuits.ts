@@ -2,8 +2,9 @@
 //
 // The AI Lab's circuit outlines: bacinger/f1-circuits (MIT, OpenStreetMap
 // geometry) smoothed and evenly resampled, in the same 0-1000 box as the
-// homepage's heroCircuits.ts so HALF_WIDTH and the car behave as before.
-// Start/finish is the first point and the points run in race direction.
+// homepage's heroCircuits.ts. The sim scales each one to metres by lengthM
+// (track.ts labTrack). Start/finish is the first point and the points run in
+// race direction.
 
 export interface LabCircuit {
   id: string;
@@ -11,6 +12,12 @@ export interface LabCircuit {
   round2026: number;
   /** Official lap length in metres. */
   lengthM: number;
+  /** The 2026 qualifying pole lap (fastest OpenF1 lap of the session): time
+   *  in seconds, driver code, and speed at the start/finish line in m/s.
+   *  All null where there is no pole lap yet. */
+  poleS: number | null;
+  poleDriver: string | null;
+  lineSpeedMs: number | null;
   /** Where the track passes over itself (Suzuka's bridge): the point, and the
    *  lap distance (box units from start/finish) of the upper and lower pass. */
   crossings: { x: number; y: number; over: number; under: number }[];
@@ -27,6 +34,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Albert Park Circuit",
     round2026: 1,
     lengthM: 5278,
+    poleS: 78.518,
+    poleDriver: "RUS",
+    lineSpeedMs: 77.5,
     crossings: [],
     points: [
       746.5, 577.5, 744.4, 579.6, 742.3, 581.7, 740.1, 583.8, 738, 585.9, 735.9, 588, 733.8, 590.1, 731.7, 592.3,
@@ -161,6 +171,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Shanghai International Circuit",
     round2026: 2,
     lengthM: 5451,
+    poleS: 92.064,
+    poleDriver: "ANT",
+    lineSpeedMs: 53.88,
     crossings: [],
     points: [
       588.8, 769.9, 585.9, 770.6, 583, 771.3, 580, 772, 577.1, 772.7, 574.2, 773.4, 571.3, 774, 568.4, 774.7,
@@ -356,6 +369,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Suzuka International Racing Course",
     round2026: 3,
     lengthM: 5807,
+    poleS: 88.778,
+    poleDriver: "ANT",
+    lineSpeedMs: 73.99,
     crossings: [{ x: 403.3, y: 482.3, over: 2499.5, under: 1290.6 }],
     points: [
       787, 436.8, 788.9, 439.1, 790.8, 441.5, 792.7, 443.8, 794.6, 446.1, 796.5, 448.4, 798.4, 450.8, 800.3, 453.1,
@@ -489,6 +505,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Bahrain International Circuit",
     round2026: 4,
     lengthM: 5412,
+    poleS: null,
+    poleDriver: null,
+    lineSpeedMs: null,
     crossings: [],
     points: [
       544.7, 819.8, 541.7, 819.5, 538.7, 819.3, 535.7, 819.1, 532.7, 818.9, 529.7, 818.7, 526.7, 818.5, 523.7, 818.3,
@@ -686,6 +705,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Jeddah Corniche Circuit",
     round2026: 5,
     lengthM: 6175,
+    poleS: null,
+    poleDriver: null,
+    lineSpeedMs: null,
     crossings: [],
     points: [
       770, 448.5, 767.2, 449.5, 764.3, 450.4, 761.5, 451.4, 758.6, 452.3, 755.8, 453.2, 752.9, 454.2, 750.1, 455.1,
@@ -789,6 +811,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Miami International Autodrome",
     round2026: 6,
     lengthM: 5412,
+    poleS: 87.798,
+    poleDriver: "ANT",
+    lineSpeedMs: 78.03,
     crossings: [],
     points: [
       425.2, 369, 427.7, 370.6, 430.3, 372.2, 432.8, 373.8, 435.3, 375.4, 437.9, 377.1, 440.4, 378.7, 442.9, 380.3,
@@ -949,6 +974,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Circuit Gilles-Villeneuve",
     round2026: 7,
     lengthM: 4361,
+    poleS: 72.578,
+    poleDriver: "RUS",
+    lineSpeedMs: 77.31,
     crossings: [],
     points: [
       842.9, 365.2, 845.8, 364.8, 848.8, 364.3, 851.8, 364, 854.8, 363.7, 857.8, 363.4, 860.7, 363.2, 863.7, 363,
@@ -1053,6 +1081,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Circuit de Monaco",
     round2026: 8,
     lengthM: 3337,
+    poleS: 72.051,
+    poleDriver: "ANT",
+    lineSpeedMs: 75,
     crossings: [],
     points: [
       670.2, 876, 667.2, 876.3, 664.3, 876.5, 661.3, 876.7, 658.3, 876.9, 655.3, 877.1, 652.3, 877.3, 649.3, 877.4,
@@ -1205,6 +1236,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Circuit de Barcelona-Catalunya",
     round2026: 9,
     lengthM: 4655,
+    poleS: 74.679,
+    poleDriver: "RUS",
+    lineSpeedMs: 84.84,
     crossings: [],
     points: [
       381, 223.3, 383.6, 224.9, 386.1, 226.5, 388.6, 228.1, 391.1, 229.7, 393.7, 231.3, 396.2, 233, 398.7, 234.6,
@@ -1380,6 +1414,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Red Bull Ring",
     round2026: 10,
     lengthM: 4318,
+    poleS: 66.113,
+    poleDriver: "RUS",
+    lineSpeedMs: 78.53,
     crossings: [],
     points: [
       750.8, 726.9, 747.9, 727.7, 745, 728.4, 742.1, 729.2, 739.2, 730, 736.3, 730.8, 733.4, 731.5, 730.5, 732.3,
@@ -1533,6 +1570,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Silverstone Circuit",
     round2026: 11,
     lengthM: 5891,
+    poleS: 88.111,
+    poleDriver: "ANT",
+    lineSpeedMs: 74.16,
     crossings: [],
     points: [
       680.2, 758.1, 677.8, 756.3, 675.4, 754.5, 673, 752.7, 670.6, 750.8, 668.3, 749, 665.9, 747.2, 663.5, 745.4,
@@ -1685,6 +1725,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Circuit de Spa-Francorchamps",
     round2026: 12,
     lengthM: 7004,
+    poleS: 104.361,
+    poleDriver: "ANT",
+    lineSpeedMs: 64.15,
     crossings: [],
     points: [
       158.8, 592.3, 156.2, 593.8, 153.6, 595.3, 151, 596.8, 148.4, 598.2, 145.8, 599.7, 143.2, 601.2, 140.6, 602.7,
@@ -1836,6 +1879,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Hungaroring",
     round2026: 13,
     lengthM: 4381,
+    poleS: 77.207,
+    poleDriver: "NOR",
+    lineSpeedMs: 78.75,
     crossings: [],
     points: [
       442.4, 883.9, 440.1, 882, 437.7, 880.2, 435.4, 878.3, 433, 876.4, 430.7, 874.6, 428.3, 872.7, 426, 870.8,
@@ -1996,6 +2042,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Circuit Zandvoort",
     round2026: 14,
     lengthM: 4259,
+    poleS: 71.163,
+    poleDriver: "NOR",
+    lineSpeedMs: 85.84,
     crossings: [],
     points: [
       166.9, 356.3, 168.1, 353.6, 169.2, 350.8, 170.3, 348, 171.5, 345.2, 172.6, 342.5, 173.8, 339.7, 174.9, 336.9,
@@ -2188,6 +2237,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Autodromo Nazionale Monza",
     round2026: 15,
     lengthM: 5793,
+    poleS: 81.786,
+    poleDriver: "GAS",
+    lineSpeedMs: 83.75,
     crossings: [],
     points: [
       761, 784.6, 758, 784.3, 755, 784, 752, 783.7, 749, 783.4, 746.1, 783.1, 743.1, 782.8, 740.1, 782.5,
@@ -2309,6 +2361,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Circuito de Madring",
     round2026: 16,
     lengthM: 5474,
+    poleS: 91.824,
+    poleDriver: "NOR",
+    lineSpeedMs: 69.2,
     crossings: [],
     points: [
       922.8, 290.8, 923.3, 293.8, 923.8, 296.8, 924.3, 299.7, 924.8, 302.7, 925.4, 305.6, 925.9, 308.6, 926.4, 311.5,
@@ -2443,6 +2498,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Baku City Circuit",
     round2026: 17,
     lengthM: 6003,
+    poleS: 102.526,
+    poleDriver: "RUS",
+    lineSpeedMs: 82.78,
     crossings: [],
     points: [
       876, 340.5, 878.8, 339.4, 881.5, 338.2, 884.3, 337.1, 887.1, 335.9, 889.8, 334.8, 892.6, 333.6, 895.4, 332.5,
@@ -2573,6 +2631,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Marina Bay Street Circuit",
     round2026: 18,
     lengthM: 4928,
+    poleS: 91.373,
+    poleDriver: "VER",
+    lineSpeedMs: 76.07,
     crossings: [],
     points: [
       987.4, 490.6, 987, 487.6, 986.6, 484.7, 986.2, 481.7, 985.8, 478.7, 985.4, 475.8, 985, 472.8, 984.6, 469.8,
@@ -2727,6 +2788,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Circuit of the Americas",
     round2026: 19,
     lengthM: 5514,
+    poleS: null,
+    poleDriver: null,
+    lineSpeedMs: null,
     crossings: [],
     points: [
       83.4, 589.9, 85.8, 591.8, 88.1, 593.6, 90.5, 595.5, 92.8, 597.3, 95.2, 599.2, 97.6, 601, 99.9, 602.9,
@@ -2862,6 +2926,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Autódromo Hermanos Rodríguez",
     round2026: 20,
     lengthM: 4304,
+    poleS: null,
+    poleDriver: null,
+    lineSpeedMs: null,
     crossings: [],
     points: [
       167.9, 151, 170.9, 151.5, 173.8, 151.9, 176.8, 152.3, 179.8, 152.8, 182.8, 153.2, 185.7, 153.6, 188.7, 154,
@@ -2996,6 +3063,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Autódromo José Carlos Pace - Interlagos",
     round2026: 21,
     lengthM: 4309,
+    poleS: null,
+    poleDriver: null,
+    lineSpeedMs: null,
     crossings: [],
     points: [
       706.5, 757.5, 709.4, 756.8, 712.3, 756, 715.2, 755.3, 718.1, 754.6, 721, 753.8, 723.9, 753.1, 726.8, 752.4,
@@ -3176,6 +3246,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Las Vegas Street Circuit",
     round2026: 22,
     lengthM: 6201,
+    poleS: null,
+    poleDriver: null,
+    lineSpeedMs: null,
     crossings: [],
     points: [
       937.8, 293, 935.5, 291.1, 933.2, 289.1, 931, 287.1, 928.7, 285.1, 926.5, 283.2, 924.2, 281.2, 922, 279.2,
@@ -3318,6 +3391,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Losail International Circuit",
     round2026: 23,
     lengthM: 5380,
+    poleS: null,
+    poleDriver: null,
+    lineSpeedMs: null,
     crossings: [],
     points: [
       748.2, 697.3, 745.6, 698.7, 742.9, 700.1, 740.3, 701.6, 737.7, 703, 735, 704.4, 732.4, 705.8, 729.7, 707.2,
@@ -3480,6 +3556,9 @@ export const LAB_CIRCUITS: LabCircuit[] = [
     name: "Yas Marina Circuit",
     round2026: 24,
     lengthM: 5281,
+    poleS: null,
+    poleDriver: null,
+    lineSpeedMs: null,
     crossings: [],
     points: [
       568.9, 569.1, 568.5, 566.2, 568.1, 563.2, 567.7, 560.2, 567.3, 557.3, 566.8, 554.3, 566.4, 551.3, 566, 548.3,
