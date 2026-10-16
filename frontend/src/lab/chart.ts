@@ -2,6 +2,7 @@
 // Generations without a lap are gaps.
 
 import { fitCanvas } from "./render.ts";
+import { formatLap } from "./timing.ts";
 
 export function drawChart(canvas: HTMLCanvasElement, laps: (number | null)[]): void {
   fitCanvas(canvas);
@@ -29,8 +30,8 @@ export function drawChart(canvas: HTMLCanvasElement, laps: (number | null)[]): v
   // Faster laps sit lower, so improvement reads as a line going down.
   const y = (t: number) => height - pad.b - ((t - lo) / span) * (height - pad.t - pad.b);
 
-  ctx.fillText(`${hi.toFixed(2)} sim s`, pad.l, 14 * dpr);
-  ctx.fillText(`${lo.toFixed(2)} sim s`, pad.l, height - 6 * dpr);
+  ctx.fillText(formatLap(hi), pad.l, 14 * dpr);
+  ctx.fillText(formatLap(lo), pad.l, height - 6 * dpr);
   const genLabel = `gen ${laps.length}`;
   ctx.fillText(genLabel, width - pad.r - ctx.measureText(genLabel).width, height - 6 * dpr);
 

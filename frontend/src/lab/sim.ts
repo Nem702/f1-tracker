@@ -1,5 +1,7 @@
 // One generation on track: every car drives itself until it finishes a lap,
 // crashes, stalls, turns back, or runs out of time. Then each gets a score.
+// Metres and seconds. Every lap is a flying lap: each car starts on the line
+// already at speed (the pole lap's speed there, where there is one).
 
 import type { TeamSlug } from "../teams.ts";
 import { think } from "./brain.ts";
@@ -7,15 +9,15 @@ import { CAR, senseInputs, spawnCar, stepCar, type CarState } from "./car.ts";
 import { isOffTrack, project, unwrapDelta, type Point, type Track } from "./track.ts";
 
 export const SIM = {
-  /** Give up on a car after this many steps (90 sim seconds). */
-  FRAME_CAP: 90 * 60,
-  /** Stalled: less than STALL_GAIN of new progress in STALL_FRAMES steps. */
+  /** Give up on a car after this many steps (180 seconds). */
+  FRAME_CAP: 180 * 60,
+  /** Stalled: less than STALL_GAIN metres of new progress in STALL_FRAMES steps. */
   STALL_FRAMES: 120,
   STALL_GAIN: 15,
-  /** Turned back: this far behind its own furthest point. */
-  BACKWARDS: 25,
-  /** Minimum gap between recorded braking points, so the dots stay sparse. */
-  BRAKE_DOT_SPACING: 8,
+  /** Turned back: this many metres behind its own furthest point. */
+  BACKWARDS: 30,
+  /** Minimum metres between recorded braking points, so the dots stay sparse. */
+  BRAKE_DOT_SPACING: 30,
 } as const;
 
 /** Why a car stopped: finished the lap, left the track, turned back, made no
@@ -40,6 +42,9 @@ export interface Runner extends CarState {
   done: boolean;
   /** Steps taken to complete the lap, or null if it never did. */
   lapFrames: number | null;
+  /** Lap time in seconds, timed to the moment within the last step that the
+   *  car crossed the line; null if it never did. */
+  lapS: number | null;
   /** Step on which progress first reached 1/3, 2/3 and a full lap: the ends
    *  of three equal-length sectors. */
   sectorFrames: (number | null)[];
@@ -53,12 +58,14 @@ export interface Generation {
   done: boolean;
 }
 
+/** `startSpeed`: every car's speed on the line at the start, m/s. */
 export function createGeneration(
   track: Track,
   seats: { weights: number[]; team: TeamSlug | null }[],
+  startSpeed: number,
 ): Generation {
   const runners = seats.map(({ weights, team }): Runner => {
-    const car = spawnCar(track);
+    const car = spawnCar(track, startSpeed);
     return {
       ...car,
       weights,
@@ -74,6 +81,7 @@ export function createGeneration(
       frames: 0,
       done: false,
       lapFrames: null,
+      lapS: null,
       sectorFrames: [null, null, null],
       stop: null,
       brakes: [],
@@ -114,6 +122,7 @@ function stepRunner(track: Track, r: Runner): void {
     return;
   }
 
+  const before = r.progress;
   r.progress += unwrapDelta(r.lastS, proj.s, track.length);
   r.lastS = proj.s;
   r.maxProgress = Math.max(r.maxProgress, r.progress);
@@ -121,6 +130,8 @@ function stepRunner(track: Track, r: Runner): void {
 
   if (r.progress >= track.length) {
     r.lapFrames = r.frames;
+    const within = (track.length - before) / (r.progress - before);
+    r.lapS = (r.frames - 1 + within) * CAR.DT;
     stopRunner(r, "lap");
     return;
   }
@@ -166,7 +177,7 @@ export function recordSectors(
 /** Any lap beats any non-lap, and a faster lap beats a slower one (1..2);
  *  without a lap, the share of the lap covered (0..1). */
 export function fitness(r: Runner, length: number): number {
-  if (r.lapFrames !== null) return 2 - r.lapFrames / SIM.FRAME_CAP;
+  if (r.lapS !== null) return 2 - r.lapS / (SIM.FRAME_CAP * CAR.DT);
   return Math.min(0.999999, Math.max(0, r.maxProgress / length));
 }
 

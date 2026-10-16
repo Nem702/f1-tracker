@@ -9,13 +9,15 @@ export interface SavedBrain {
   weights: number[];
   /** Comparable within one circuit; a new brain is saved only if higher. */
   fitness: number;
-  /** Lap time in sim seconds, or null if it never finished a lap. */
+  /** Lap time in seconds, or null if it never finished a lap. */
   lapS: number | null;
 }
 
-// Bump the version if the physics or the brain shape changes, so old brains
-// (tuned for different rules) are ignored rather than replayed.
-const VERSION = 1;
+// Bump the version if the physics, the brain shape or the circuits change, so
+// old brains (tuned for different rules or roads) are ignored rather than
+// replayed. 2: smooth outlines from circuits.ts. 3: real units (metres,
+// task 23's car, flying start).
+const VERSION = 3;
 const key = (circuitId: string) => `f1-lab:best:${circuitId}`;
 
 export function loadBest(circuitId: string): SavedBrain | null {

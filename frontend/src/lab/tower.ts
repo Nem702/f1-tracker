@@ -63,7 +63,7 @@ export function createTower(list: HTMLOListElement, seats: number) {
         }
       });
       row.status.textContent = statusLabel(r, length);
-      row.li.classList.toggle("stopped", r.done && r.lapFrames === null);
+      row.li.classList.toggle("stopped", r.done && r.lapS === null);
       list.append(row.li);
     });
   };
